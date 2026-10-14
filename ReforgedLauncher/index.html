@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" data-style="dauntless">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' rr-art: data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+    <meta name="color-scheme" content="dark" />
+    <title>Dauntless Reforged Revival Launcher</title>
+    <link rel="stylesheet" href="/src/renderer/styles.css" />
+    <link rel="stylesheet" href="/src/renderer/dauntless-style.css" />
+    <script type="module" src="/src/renderer/index.ts"></script>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="titlebar">
+        <div class="titlebar-brand">
+          <img class="titlebar-emblem" src="./src/renderer/brand/emblem.svg" width="20" height="20" alt="" draggable="false" />
+          <span class="titlebar-title" data-i18n="app_title">Dauntless Reforged Revival Launcher</span>
+        </div>
+        <div class="titlebar-controls">
+          <button type="button" class="win-btn" id="win-min" data-i18n-aria="window_minimize"></button>
+          <button type="button" class="win-btn" id="win-max" data-i18n-aria="window_maximize"></button>
+          <button type="button" class="win-btn win-close" id="win-close" data-i18n-aria="window_close"></button>
+        </div>
+      </header>
+
+      <div class="shell">
+        <nav class="rail" id="rail" data-i18n-aria="nav_label">
+          <div class="game-tile" id="game-tile">
+            <img class="tile-emblem" src="./src/renderer/brand/emblem.svg" width="112" height="112" alt="" draggable="false" />
+            <div class="tile-wordmark" role="img" data-i18n-aria="logo_alt">
+              <span class="tile-word-small">DAUNTLESS</span>
+              <span class="tile-word-big">REFORGED</span>
+              <span class="tile-word-small">REVIVAL</span>
+            </div>
+            <div class="tile-version" data-i18n="tile_sub">Dauntless 1.14.7</div>
+          </div>
+          <ul class="nav" id="nav"></ul>
+          <div class="rail-foot">
+            <div class="account-chip" id="account-chip"></div>
+            <div class="lang-switch" id="lang-switch" role="group" data-i18n-aria="set_language">
+              <button type="button" class="lang-btn" data-lang="en" lang="en">English</button>
+              <button type="button" class="lang-btn" data-lang="pt-BR" lang="pt-BR">Português</button>
+            </div>
+            <div class="rail-links">
+              <button type="button" class="rail-link" id="credits-btn"><span data-i18n="nav_credits">Credits</span></button>
+              <button type="button" class="icon-btn" id="github-btn" data-i18n-aria="github_link"></button>
+            </div>
+          </div>
+        </nav>
+
+        <div class="world">
+          <!-- The built-in background: src/renderer/scene.ts draws into these layers, styles.css colours
+               and moves them. A host's art pack fades in over it (#art-a, #art-b). -->
+          <div class="hero" id="hero" aria-hidden="true">
+            <div class="scene" id="scene">
+              <svg class="layer" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false"><g id="sc-stars"></g></svg>
+              <svg class="layer twinkle" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false"><g id="sc-twinkle"></g></svg>
+              <svg class="layer aurora" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+                <defs>
+                  <linearGradient id="g-aurora-a" x1="0" y1="0" x2="0" y2="1">
+                    <stop class="au-clear" offset="0" />
+                    <stop class="au-glow" offset="0.72" />
+                    <stop class="au-edge" offset="1" />
+                  </linearGradient>
+                  <linearGradient id="g-aurora-b" x1="0" y1="0" x2="0" y2="1">
+                    <stop class="au-clear" offset="0" />
+                    <stop class="au-ice" offset="0.78" />
+                    <stop class="au-edge" offset="1" />
+                  </linearGradient>
+                  <filter id="f-aurora" x="-10%" y="-40%" width="120%" height="180%"><feGaussianBlur stdDeviation="14" /></filter>
+                </defs>
+                <g id="sc-aurora" filter="url(#f-aurora)"></g>
+              </svg>
+              <svg class="layer" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+                <defs>
+                  <linearGradient id="g-far" x1="0" y1="0" x2="0" y2="1">
+                    <stop class="far-top" offset="0.3" />
+                    <stop class="far-foot" offset="0.75" />
+                  </linearGradient>
+                  <linearGradient id="g-snow-far" gradientUnits="userSpaceOnUse" x1="0" y1="270" x2="0" y2="560">
+                    <stop class="snow-top" offset="0" />
+                    <stop class="snow-foot" offset="1" />
+                  </linearGradient>
+                </defs>
+                <image class="motif" href="./src/renderer/brand/emblem.svg" x="500" y="60" width="300" height="300" />
+                <g id="sc-far"></g>
+              </svg>
+              <svg class="layer mist mist-far" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+                <defs>
+                  <radialGradient id="g-mist">
+                    <stop class="mist-core" offset="0" />
+                    <stop class="mist-clear" offset="1" />
+                  </radialGradient>
+                </defs>
+                <g id="sc-mist-far"></g>
+              </svg>
+              <svg class="layer" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+                <defs>
+                  <linearGradient id="g-mid" x1="0" y1="0" x2="0" y2="1">
+                    <stop class="mid-top" offset="0.45" />
+                    <stop class="mid-foot" offset="0.8" />
+                  </linearGradient>
+                  <linearGradient id="g-snow-mid" gradientUnits="userSpaceOnUse" x1="0" y1="460" x2="0" y2="690">
+                    <stop class="snow-top" offset="0" />
+                    <stop class="snow-foot" offset="1" />
+                  </linearGradient>
+                </defs>
+                <g id="sc-mid"></g>
+              </svg>
+              <svg class="layer mist mist-near" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false"><g id="sc-mist-near"></g></svg>
+              <div class="layer embers">
+                <svg viewBox="0 0 1600 1800" preserveAspectRatio="xMidYMid slice" focusable="false"><g class="sparks" id="sc-embers"></g></svg>
+              </div>
+              <svg class="layer" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false"><g id="sc-forest"></g></svg>
+              <div class="layer snowfall">
+                <svg viewBox="0 0 1600 1800" preserveAspectRatio="xMidYMid slice" focusable="false"><g class="flakes" id="sc-snow"></g></svg>
+              </div>
+            </div>
+            <div class="art art-a" id="art-a"></div>
+            <div class="art art-b" id="art-b"></div>
+            <div class="hero-shade"></div>
+            <div class="art-credit" id="art-credit"></div>
+          </div>
+
+          <main class="stage" id="stage">
+            <div class="banners" id="banners"></div>
+            <section class="view" id="view-play" aria-labelledby="play-title"></section>
+            <section class="view" id="view-news" aria-labelledby="news-title" hidden></section>
+            <section class="view" id="view-server" aria-labelledby="server-title" hidden></section>
+            <section class="view" id="view-host" aria-labelledby="host-title" hidden></section>
+            <section class="view" id="view-settings" aria-labelledby="settings-title" hidden></section>
+            <section class="view" id="view-credits" aria-labelledby="credits-title" hidden></section>
+            <footer class="actionbar" id="actionbar">
+              <div class="action-info" id="action-info"></div>
+              <button type="button" class="big-button" id="primary">PLAY</button>
+              <div class="sr-only" id="action-live" role="status" aria-live="polite" aria-atomic="true"></div>
+            </footer>
+          </main>
+
+          <aside class="server-panel" id="server-panel" data-i18n-aria="sp_title"></aside>
+        </div>
+      </div>
+
+      <div class="modal-root" id="modal-root" hidden></div>
+    </div>
+  </body>
+</html>

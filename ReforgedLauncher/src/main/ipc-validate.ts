@@ -1,0 +1,120 @@
+// Argument checks for every IPC call from the renderer. Anything unexpected is refused before it
+// reaches the controller.
+
+import {
+  GAME_LANGUAGES,
+  GRAPHICS_PRESETS,
+  LANGUAGES,
+  RUNTIME_PROFILES,
+  type ExternalTarget,
+  type GameLanguage,
+  type GraphicsPreset,
+  type HostAction,
+  type HostFolder,
+  type Language,
+  type RuntimeProfile,
+  type Settings,
+} from "../shared/types";
+
+export function boundedString(v: unknown, max: number): string | null {
+  return typeof v === "string" && v.length <= max ? v : null;
+}
+
+export function settingsPatch(v: unknown): Partial<Settings> | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const out: Partial<Settings> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (k === "graphics" && GRAPHICS_PRESETS.includes(val as GraphicsPreset)) out.graphics = val as GraphicsPreset;
+    else if (k === "windowed" && typeof val === "boolean") out.windowed = val;
+    else if (k === "streamerMode" && typeof val === "boolean") out.streamerMode = val;
+    else if (k === "hostTools" && typeof val === "boolean") out.hostTools = val;
+    else if (k === "language" && LANGUAGES.includes(val as Language)) out.language = val as Language;
+    else if (k === "gameLanguage" && GAME_LANGUAGES.includes(val as GameLanguage)) out.gameLanguage = val as GameLanguage;
+    else if (k === "runtimeProfile" && RUNTIME_PROFILES.includes(val as RuntimeProfile)) out.runtimeProfile = val as RuntimeProfile;
+    else return null;
+  }
+  return out;
+}
+
+// Every link name the page may send (a Record, so the compiler catches a name missing here). Only
+// these exact strings pass: never a URL.
+const TARGETS: Readonly<Record<ExternalTarget, true>> = {
+  tailscale_download: true,
+  tailscale_share: true,
+  vc_redist: true,
+  server_source: true,
+  project_source: true,
+  project_license: true,
+  project_issues: true,
+  project_docs_players: true,
+  project_docs_hosting: true,
+  project_docs_sdk: true,
+  installing_guide: true,
+  legendary: true,
+  dumper7: true,
+  visual_studio: true,
+  rust: true,
+  nodejs: true,
+  mongodb: true,
+  revived_source: true,
+  mystic_source: true,
+  undaunted_source: true,
+};
+
+function pick<T extends string>(table: Readonly<Record<T, true>>, v: unknown): T | null {
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(table, v) ? (v as T) : null;
+}
+
+export function externalTarget(v: unknown): ExternalTarget | null {
+  return pick(TARGETS, v);
+}
+
+const HOST_ACTIONS: Readonly<Record<HostAction, true>> = {
+  inject_dumper: true,
+  import_sdk: true,
+  build_runtime: true,
+  build_loader: true,
+  build_exporter: true,
+  inject_exporter: true,
+  copy_exports: true,
+  synthetic_data: true,
+  publish_runtime: true,
+};
+
+export function hostAction(v: unknown): HostAction | null {
+  return pick(HOST_ACTIONS, v);
+}
+
+const HOST_FOLDERS: Readonly<Record<HostFolder, true>> = {
+  workspace: true,
+  runtime_source: true,
+  dumps: true,
+  game_data: true,
+  runtime_publish: true,
+  host_logs: true,
+};
+
+export function hostFolder(v: unknown): HostFolder | null {
+  return pick(HOST_FOLDERS, v);
+}
+
+// Hidden override for the relay port (tests and rehearsals on a PC where 61100 is taken).
+export function relayPortOverride(v: string | undefined): number | undefined {
+  if (typeof v !== "string" || !/^[1-9][0-9]{3,4}$/.test(v.trim())) return undefined;
+  const n = Number(v.trim());
+  return n >= 1024 && n <= 65535 ? n : undefined;
+}
+
+// Only the launcher's own page may call in: the packaged file:// page, or the Vite dev server.
+export function isTrustedPageUrl(url: string, devServerUrl: string | undefined, rendererIndexUrl: string): boolean {
+  if (typeof url !== "string") return false;
+  if (devServerUrl) {
+    try {
+      return new URL(url).origin === new URL(devServerUrl).origin;
+    } catch {
+      return false;
+    }
+  }
+  const strip = (u: string) => u.split("#")[0].split("?")[0].toLowerCase();
+  return strip(url) === strip(rendererIndexUrl);
+}

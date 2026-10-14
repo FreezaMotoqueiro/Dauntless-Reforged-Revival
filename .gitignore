@@ -1,0 +1,36 @@
+# Dependencies and build output
+node_modules/
+dist/
+out/
+.vite/
+.test-build/
+*.tsbuildinfo
+
+# The host's working area: the pinned upstream source, the SDK generated from the host's own
+# game, game data exported from it, built runtimes, certificates, keys, logs and databases.
+# None of it is ever committed.
+.workspace/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+secrets/
+
+# Game files and generated SDKs (Phoenix Labs' material)
+*.pak
+*.ucas
+*.utoc
+CppSDK/
+SDK.hpp
+Items_Analysis/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
