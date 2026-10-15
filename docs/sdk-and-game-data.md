@@ -122,8 +122,16 @@ Mystic Paradox builds it from a captured server response. Without one, `npm run 
 source from the progression tables of your own game, which CatalogExporter exports into
 `Items_Analysis\progression_1_14_7\`: every track with its per-rank XP costs and rewards, plus the
 active Hunt Pass (`season43`). The game's Hunt Pass rows hold no tiers, so the pass gets 50 ranks of
-100 XP and no rewards. A captured response in `ParadoxBackend\game-data\raw\progression_config.source.json`
-(a progression-config response with `payload.paths`) is always used instead.
+100 XP and no rewards. Each weapon's prestige track (`PrestigeTrack_Weapon_*`), which the export has no
+rank table for, gets the ranks of that weapon's experience track and no rewards. A captured response in
+`ParadoxBackend\game-data\raw\progression_config.source.json` (a progression-config response with
+`payload.paths`) is always used instead.
+
+To rebuild only this file after a new progression export, without touching the other game data:
+
+```powershell
+npm run gamedata -- --progression
+```
 
 ### The file you supply
 

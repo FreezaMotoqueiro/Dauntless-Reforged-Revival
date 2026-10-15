@@ -107,7 +107,7 @@ export function gameDataSteps(p: Paths, opts: { examplesForMissing: boolean }): 
 
 // Runs every step it can: one that fails does not stop the others (each writes its own file), and the
 // failed ones are listed at the end.
-export async function generateGameData(p: Paths, opts: { examplesForMissing: boolean; logFile: string; print: (line: string) => void }): Promise<{ ok: boolean; failed: string[] }> {
+export async function generateGameData(p: Paths, opts: { examplesForMissing: boolean; logFile: string; print: (line: string) => void; only?: string[] }): Promise<{ ok: boolean; failed: string[] }> {
     // The graph generator fills an existing slayers_path.json, so the example goes first.
     if (!fs.existsSync(path.join(p.backendGameData, "slayers_path.json")) && fs.existsSync(path.join(p.backendGameData, "slayers_path.example.json"))) {
         fs.copyFileSync(path.join(p.backendGameData, "slayers_path.example.json"), path.join(p.backendGameData, "slayers_path.json"));
@@ -116,7 +116,7 @@ export async function generateGameData(p: Paths, opts: { examplesForMissing: boo
     // response was supplied (see progression.ts).
     try {
         const r = writeProgressionSource(p.exports, path.join(p.rawGameData, SUPPLIED_SOURCES["progression_config.json"]));
-        if (typeof r === "object") opts.print(`- Progression config source, from your progression export: ${r.written} tracks`);
+        if (typeof r === "object") opts.print(`- Progression config source, from your progression export: ${r.written} tracks${r.derived ? ` (${r.derived} weapon prestige tracks with their weapon's ranks)` : ""}`);
     } catch (e) {
         opts.print(`- Progression config source: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -126,7 +126,7 @@ export async function generateGameData(p: Paths, opts: { examplesForMissing: boo
         }
     }
     const failed: string[] = [];
-    for (const step of gameDataSteps(p, opts)) {
+    for (const step of gameDataSteps(p, opts).filter((s) => !opts.only || opts.only.includes(s.title))) {
         const skip = step.skipIf?.() ?? null;
         if (skip) {
             opts.print(`- ${step.title}: skipped, ${skip}`);

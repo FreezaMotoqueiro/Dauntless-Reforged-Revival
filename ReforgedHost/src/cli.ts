@@ -5,7 +5,7 @@
 //   npm run start
 //   npm run invite -- [--uses 1] [--for "Alex"] [--unlimited] [--list]
 //   npm run doctor
-//   npm run gamedata [-- --examples | --example-sources]
+//   npm run gamedata [-- --examples | --example-sources | --progression]
 //   npm run publish-runtime
 
 import fs from "node:fs";
@@ -372,7 +372,9 @@ async function gamedata(p: Paths, args: Args): Promise<void> {
         return;
     }
     say("Generating the game data from your export (Items_Analysis):");
-    const r = await generateGameData(p, { examplesForMissing: args["example-sources"] === true, logFile: path.join(p.logs, "gamedata.log"), print: say });
+    // --progression: only the progression config (from the progression export), nothing else rewritten.
+    const only = args.progression === true ? ["Progression config"] : undefined;
+    const r = await generateGameData(p, { examplesForMissing: args["example-sources"] === true, logFile: path.join(p.logs, "gamedata.log"), print: say, only });
     for (const [label, dir, files] of [["backend", p.backendGameData, BACKEND_GAME_DATA], ["Director", p.directorGameData, DIRECTOR_GAME_DATA]] as const) {
         const g = gameDataState(dir, files);
         say(`${label}: ${g.state}${g.missing.length ? ` (missing ${g.missing.join(", ")})` : ""}${g.synthetic.length ? ` (example data in ${g.synthetic.join(", ")})` : ""}`);
@@ -428,7 +430,7 @@ async function main(): Promise<void> {
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list]");
             say("  npm run doctor [-- --no-hash]");
-            say("  npm run gamedata [-- --examples | --example-sources]");
+            say("  npm run gamedata [-- --examples | --example-sources | --progression]");
             say("  npm run publish-runtime");
             say("See README.md and ../docs/hosting.md.");
     }

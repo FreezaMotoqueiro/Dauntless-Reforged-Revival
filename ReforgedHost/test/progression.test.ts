@@ -9,9 +9,10 @@ import { tempDir, write } from "./helpers";
 function reward(rankId: number, extra: Record<string, unknown> = {}) {
     return { rankId, customRewardString: "", stackedItems: [], instancedItems: [], orderedInstancedItems: [], entitlements: [], buffCount: 0, ...extra };
 }
-function track(rowName: string, progressionTrack: string, xp: number[], freeRewards: unknown[] = []) {
+function track(rowName: string, progressionTrack: string, xp: number[], freeRewards: unknown[] = [], prestigeTrack = "None") {
     return {
         rowName,
+        prestigeTrack,
         base: {
             progressionTrack, premiumGatingEntitlement: "", resetWithCharacter: false, progressionMultiplier: 1, requirementCount: xp.length,
             requirements: xp.map((requiredXP, rankId) => ({ rankId, requiredXP })),
@@ -29,7 +30,7 @@ function makeExport(withPlayerLevel = true): string {
             reward(1, { stackedItems: [{ catalogId: "CURRENCY_RAMS", quantity: 500, priority: 0 }], instancedItems: ["WP_SWORD_00"], entitlements: [{ entitlementId: "ent_title_00", duration: 0 }] }),
         ]),
     ] : []));
-    write(path.join(dir, "weapon-experience-tracks.jsonl"), jsonl([track("Sword", "ExperienceTrack_Weapon_Sword", [0, 50]), track("Empty", "ExperienceTrack_Weapon_None", [])]));
+    write(path.join(dir, "weapon-experience-tracks.jsonl"), jsonl([track("Sword", "ExperienceTrack_Weapon_Sword", [0, 50], [], "PrestigeTrack_Weapon_Sword"), track("Empty", "ExperienceTrack_Weapon_None", [])]));
     // A later row with an id already taken is ignored.
     write(path.join(dir, "mastery-tracks.jsonl"), jsonl([track("MasteryPlayer", "MasteryTrack_PlayerLevel", [0, 1, 2]), ...(withPlayerLevel ? [track("Duplicate", "ExperienceTrack_PlayerLevel", [0, 9])] : [])]));
     write(path.join(dir, "huntpass-season-table.jsonl"), jsonl([{ rowName: "HuntPass_Season43", base: { progressionTrack: "season43", premiumGatingEntitlement: "season43_premium", requirements: [], freeRewards: [], premiumRewards: [] } }]));
@@ -41,8 +42,12 @@ describe("the progression config from the game's own tables", () => {
         const built = buildProgressionConfig(makeExport());
         const paths = built.config.payload.paths as Record<string, any>[];
         const ids = paths.map((p) => p.progression_id);
-        assert.deepEqual(ids, ["ExperienceTrack_PlayerLevel", "ExperienceTrack_Weapon_Sword", "MasteryTrack_PlayerLevel", ACTIVE_HUNT_PASS]);
+        assert.deepEqual(ids, ["ExperienceTrack_PlayerLevel", "ExperienceTrack_Weapon_Sword", "MasteryTrack_PlayerLevel", "PrestigeTrack_Weapon_Sword", ACTIVE_HUNT_PASS]);
         assert.deepEqual(built.skipped, ["ExperienceTrack_Weapon_None"], "a track without ranks is left out");
+        assert.deepEqual(built.derived, ["PrestigeTrack_Weapon_Sword"], "the sword's prestige track, which the export has no table for");
+        const prestige = paths[3];
+        assert.deepEqual(prestige.requirements, [{ rank_id: 0, xp_required: 0 }, { rank_id: 1, xp_required: 50 }], "with the sword's ranks");
+        assert.deepEqual([prestige.free_rewards, prestige.premium_rewards], [[], []]);
 
         const level = paths[0];
         assert.deepEqual(level.requirements, [{ rank_id: 0, xp_required: 0 }, { rank_id: 1, xp_required: 100 }, { rank_id: 2, xp_required: 250 }]);
@@ -58,7 +63,7 @@ describe("the progression config from the game's own tables", () => {
             buffs: [],
         });
 
-        const pass = paths[3];
+        const pass = paths[4];
         assert.equal(pass.premium_gating_entitlement, "season43_premium");
         assert.equal(pass.requirements.length, 51);
         assert.deepEqual(pass.requirements.slice(0, 2), [{ rank_id: 0, xp_required: 0 }, { rank_id: 1, xp_required: 100 }]);
@@ -76,9 +81,9 @@ describe("the progression config from the game's own tables", () => {
         const exportsDir = makeExport();
         const source = path.join(tempDir("raw"), "progression_config.source.json");
         assert.equal(writeProgressionSource(tempDir("none"), source), "no_export");
-        assert.deepEqual(writeProgressionSource(exportsDir, source), { written: 4 });
+        assert.deepEqual(writeProgressionSource(exportsDir, source), { written: 5, derived: 1 });
         assert.equal(JSON.parse(fs.readFileSync(source, "utf8")).generated_by, GENERATED_BY);
-        assert.deepEqual(writeProgressionSource(exportsDir, source), { written: 4 }, "a source it wrote is rebuilt");
+        assert.deepEqual(writeProgressionSource(exportsDir, source), { written: 5, derived: 1 }, "a source it wrote is rebuilt");
         fs.writeFileSync(source, JSON.stringify({ code: null, message: "OK", payload: { paths: [] } }));
         assert.equal(writeProgressionSource(exportsDir, source), "supplied");
         assert.deepEqual(JSON.parse(fs.readFileSync(source, "utf8")).payload.paths, [], "a captured response is kept");

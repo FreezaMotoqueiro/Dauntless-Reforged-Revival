@@ -20,7 +20,7 @@ Run them in this folder (`cd ReforgedHost`, then `npm install` once).
 | `npm run start` | Starts everything (MongoDB if managed, backend, Director, content server, allowlist helper in public mode, gateway). Ctrl+C stops it all, the game servers included |
 | `npm run invite -- --for "Alex"` | A one-use invite link (the server must be running). `--uses 5`, `--unlimited`, `--list` |
 | `npm run publish-runtime` | Publishes the built `MysticParadox.dll` and `winmm.dll` for players, and installs them next to the server's game executable |
-| `npm run gamedata` | Generates the game data from your CatalogExporter export (the progression config from the progression export; `-- --example-sources` uses the examples for the files no export produced; `-- --examples` copies every example, for a start-up test only) |
+| `npm run gamedata` | Generates the game data from your CatalogExporter export (the progression config from the progression export; `-- --example-sources` uses the examples for the files no export produced; `-- --progression` rebuilds only the progression config; `-- --examples` copies every example, for a start-up test only) |
 | `npm run doctor` | Checks everything and says what to do next (`-- --no-hash` skips hashing the game executable) |
 
 Other `setup` options: `--registration INVITECODE|OPEN|NONE` (default invite codes only),
