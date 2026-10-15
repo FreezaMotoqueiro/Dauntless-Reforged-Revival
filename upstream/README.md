@@ -69,6 +69,19 @@ load failure whose owner has no net id is now logged (`[PhantomLoadFailure]`) an
 always carry one. `KEEP_PHANTOM_LOAD_FAILURE.flag` beside the game executable restores the original
 handling.
 
+### 0005: XP and objectives reported by the game server are stored
+
+`ParadoxBackend`, `src/routes/progression.ts` and `src/controllers/progression.ts`. The 1.14.7 game
+server sends its XP grants (`POST /progression/<user>/<track>/<amount>`: Slayer level, weapon, Hunt
+Pass after a kill, a hunt or a collectible) without a grant id, so every grant was refused with 400
+("missing or invalid authoritative grant id") and no XP was ever stored. For an authenticated game
+server that sends no id, the backend now mints one, so each grant is applied once through the same
+transactional ledger; an id that is present but invalid is still refused, and a player's own bearer
+still cannot grant XP. Objective reports (`POST /progression/<user>`: daily collectibles, mastery and
+achievement objectives) from a game server are now stored with the repository's max-guard
+(`setObjectiveIfGreater`), so a stale report never lowers one; a player's own reports stay
+diagnostics-only. The backend log shows `mode=gameserver authoritativeMutation=<n>` for them.
+
 ## Updating the pin
 
 1. Pick the new upstream commit and read its changes (the 1.14.7 runtime, the backend routes the
