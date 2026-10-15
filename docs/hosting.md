@@ -21,8 +21,10 @@ Start private: it needs no router changes and nothing is exposed to the internet
 - Windows 10/11 x64, about 20 GB free for the game plus a few GB for the tools.
 - Dauntless 1.14.7, installed as in [players.md](players.md#1-install-dauntless-1147).
 - [Node.js](https://nodejs.org) 20.19 or newer, [Git](https://git-scm.com).
-- [MongoDB Community Server](https://www.mongodb.com/try/download/community) 7 or newer (install it;
-  the host kit starts it as a one-member replica set itself).
+- [MongoDB Community Server](https://www.mongodb.com/try/download/community) 7 or newer. The host kit
+  starts it itself, as a one-member replica set: in the installer, untick **Install MongoD as a
+  Service** (an installed service holds port 27017; stop it with `Stop-Service MongoDB` and
+  `Set-Service MongoDB -StartupType Disabled` as administrator).
 - To build the runtime: [Visual Studio](https://visualstudio.microsoft.com/downloads/) 2022 or newer
   with the **Desktop development with C++** workload, and [Rust](https://www.rust-lang.org/tools/install).
 - [Dumper-7](https://github.com/Encryqed/Dumper-7), built from source (to generate the SDK).

@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { printChecks, runDoctor, tailscaleIPv4 } from "./doctor";
+import { portInUse, printChecks, runDoctor, tailscaleIPv4 } from "./doctor";
 import { BACKEND_GAME_DATA, DIRECTOR_GAME_DATA, gameDataState, generateGameData, useExamples } from "./gamedata";
 import {
     DEFAULT_MONGO_URI,
@@ -96,7 +96,12 @@ export function hostConfigFromArgs(args: Args, existing: HostConfig | null, dete
     const mongoUri = str(args, "mongo-uri") ?? existing?.mongo.uri ?? DEFAULT_MONGO_URI;
     const manage = args["no-manage-mongo"] === true ? false : args["manage-mongo"] === true ? true : existing?.mongo.manage ?? mongoUri === DEFAULT_MONGO_URI;
     const registration = (str(args, "registration")?.toUpperCase() ?? existing?.registration ?? "INVITECODE") as HostConfig["registration"];
-    const gameDir = str(args, "game") ?? existing?.gameDir ?? null;
+    const gameArg = str(args, "game");
+    // A full path in Windows or POSIX form (tests run on Linux with Windows paths).
+    if (gameArg !== undefined && !path.win32.isAbsolute(gameArg) && !path.posix.isAbsolute(gameArg)) {
+        throw new Error(`--game needs the full path of the Dauntless 1.14.7 folder, like "D:\\Games\\Dauntless" (got ${gameArg})`);
+    }
+    const gameDir = gameArg ?? existing?.gameDir ?? null;
     return {
         version: 1,
         mode,
@@ -272,8 +277,18 @@ async function start(p: Paths): Promise<void> {
     if (config.mongo.manage) {
         const mongod = config.mongo.mongod ?? findMongod();
         if (!mongod) fail("MongoDB (mongod) was not found: install MongoDB Community Server, or run setup with --mongod <path>");
-        fs.mkdirSync(p.mongoData, { recursive: true });
-        await supervisor.start({ name: "mongod", cwd: p.workspace, command: mongod, args: mongodArgs(p.mongoData, path.join(p.logs, "mongod-server.log"), PORTS.mongo), envFile: null, ready: { port: PORTS.mongo, tcp: true } }, 60000);
+        if (await portInUse(PORTS.mongo)) {
+            // A mongod left running by an earlier start is a replica set and can be used. The Windows
+            // service the MongoDB installer adds by default is not, and the backend needs one.
+            const there = await ensureReplicaSet(p.backendDir, config.mongo.uri, { initiate: false, timeoutMs: 4000 });
+            if (!there.ok) {
+                fail(`port ${PORTS.mongo} is already taken${there.reason === "standalone" ? " by a MongoDB without a replica set, usually the MongoDB Windows service" : ""}. The host kit runs its own MongoDB: stop the other one first. For the Windows service, in PowerShell as administrator: Stop-Service MongoDB; Set-Service MongoDB -StartupType Disabled`);
+            }
+            say(`- MongoDB is already running on port ${PORTS.mongo} (replica set ${there.setName}): using it`);
+        } else {
+            fs.mkdirSync(p.mongoData, { recursive: true });
+            await supervisor.start({ name: "mongod", cwd: p.workspace, command: mongod, args: mongodArgs(p.mongoData, path.join(p.logs, "mongod-server.log"), PORTS.mongo), envFile: null, ready: { port: PORTS.mongo, tcp: true } }, 60000);
+        }
     }
     const backendEnv = readEnvForProcess(p, "backend");
     const mongo = await ensureReplicaSet(p.backendDir, backendEnv.MONGODB_URI ?? config.mongo.uri, { initiate: true, timeoutMs: 8000 });
