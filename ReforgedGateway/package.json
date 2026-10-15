@@ -1,0 +1,25 @@
+{
+  "name": "dauntless-reforged-revival-gateway",
+  "version": "0.1.0",
+  "description": "Front door of a Dauntless Reforged Revival server: one port (pinned TLS in public mode, plain HTTP inside the tailnet in private mode) in front of the Mystic Paradox backend and the content server, plus the helper that opens the game ports only for players who logged in",
+  "license": "AGPL-3.0-only",
+  "author": "Dauntless Reforged Revival contributors",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "start:allowlist": "node --env-file-if-exists=.env dist/allowlist/server.js",
+    "make-cert": "node tools/make-cert.js",
+    "test": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test --test-concurrency=1 \"build/test/*.test.js\""
+  },
+  "dependencies": {
+    "node-forge": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.0",
+    "typescript": "6.0.3"
+  },
+  "contributors": [
+    "mixutin and the Dauntless Revived contributors (UndauntedGateway, which this is a modified version of)"
+  ]
+}
