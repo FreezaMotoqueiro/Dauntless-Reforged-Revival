@@ -88,9 +88,9 @@ players that the server runs on example data.
 2. Start the server (`npm run start`), make yourself an invite, join it with the launcher and
    press PLAY: the exporter needs the running 1.14.7 game.
 3. Host tools page, step 4: **Inject CatalogExporter**. The launcher writes `export_flags.txt` next
-   to the game (catalog, Slayer's Path, hunts and the store's runtime data) and loads the exporter.
-   While it runs (up to two minutes), go where each export needs you to be:
-   - the catalog: the main menu or Ramsgate;
+   to the game (catalog, Slayer's Path, hunts, the store's runtime data and the progression tables)
+   and loads the exporter. While it runs (up to two minutes), go where each export needs you to be:
+   - the catalog and the progression tables: the main menu or Ramsgate;
    - the Slayer's Path: open the Slayer's Path screen;
    - the hunts: in Ramsgate, open the Hunt/Map screen;
    - the store: in Ramsgate, Journal > Challenges > Reward Cache.
@@ -105,19 +105,32 @@ players that the server runs on example data.
    ```
 
    This runs, in order: the Director's hunt tables, the Slayer's Path graph and definitions, the
-   Reward Cache store, the progression config and the Lady Luck store (when you supply their
-   sources, below), and the Platinum store with the storage policy. Each step that cannot run yet
+   Reward Cache store, the progression config (from the progression export, below), the Lady Luck
+   store (when you supply its source, below), and the Platinum store with the storage policy. Each step that cannot run yet
    says why. The output is in `.workspace\logs\gamedata.log`.
 
-### The two files you supply
+### The progression config
 
-`progression_config.json` (the Hunt Pass reward tables) and `ladyluck_store.json` (the Lady Luck
-offers) are not in the game client, so no export can produce them. Mystic Paradox generates them
-from a captured server response that you put in `ParadoxBackend\game-data\raw\`:
-`progression_config.source.json` (a progression-config response with `payload.paths`) and
-`ladyluck_store.source.json` (an array of store entries). Without them,
-`npm run gamedata -- --example-sources` uses the examples for those two files only, so everything
-else is real.
+`progression_config.json` holds the progression tracks: the player and weapon levels
+(`ExperienceTrack_*`), the mastery and prestige tracks, and the Hunt Pass. The 1.14.7 client needs
+them to load a player: with the example file, Ramsgate never finishes loading your character and
+drops you after a minute ("Loading PlayerData Failed" in its log, "the game server could not be
+reached" in the game).
+
+Mystic Paradox builds it from a captured server response. Without one, `npm run gamedata` builds the
+source from the progression tables of your own game, which CatalogExporter exports into
+`Items_Analysis\progression_1_14_7\`: every track with its per-rank XP costs and rewards, plus the
+active Hunt Pass (`season43`). The game's Hunt Pass rows hold no tiers, so the pass gets 50 ranks of
+100 XP and no rewards. A captured response in `ParadoxBackend\game-data\raw\progression_config.source.json`
+(a progression-config response with `payload.paths`) is always used instead.
+
+### The file you supply
+
+`ladyluck_store.json` (the Lady Luck offers) is not in the game client, so no export can produce it.
+Mystic Paradox generates it from a captured server response that you put in
+`ParadoxBackend\game-data\raw\ladyluck_store.source.json` (an array of store entries). Without it,
+`npm run gamedata -- --example-sources` uses the example for that file (and for the progression
+config, when there is no progression export yet), so everything else is real.
 
 ### Check
 
