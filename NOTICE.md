@@ -1,0 +1,85 @@
+# NOTICE
+
+Dauntless Reforged Revival is licensed as a whole under the GNU Affero General Public License,
+version 3 only (`AGPL-3.0-only`); see [LICENSE.txt](LICENSE.txt). Additional terms under AGPLv3
+section 7 apply to the Mystic Paradox material only; see [ADDITIONAL_TERMS.md](ADDITIONAL_TERMS.md).
+This file records where each part of the repository comes from.
+
+## Modification notice
+
+This repository, [github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival](https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival),
+combines and modifies two AGPL-3.0-only projects to run Dauntless 1.14.7 (`rel-1.14.7-Archon`,
+changelist 647472) on private servers. Work began on 14 October 2026, and every change is recorded
+in the commit history. It is **not** an official release of Dauntless Revived, Mystic Paradox,
+Undaunted or any other project named here, and none of them endorses it.
+
+## Where the parts come from
+
+### Dauntless Revived
+
+- By mixutin and the Dauntless Revived contributors (among them anxo0 and Vvoidddd).
+- Repository: [github.com/mixutin/dauntless-revived](https://github.com/mixutin/dauntless-revived),
+  AGPL-3.0-only. Dauntless Revived is itself a modified version of Undaunted.
+- Modified here:
+  - `ReforgedLauncher/` is a modified version of `UndauntedLauncher/`: its design and look (the
+    `dauntless-style.css` theme, the steel frames, the PLAY plate, the night scene), its state machine
+    and IPC structure, the invite format, the account key store, the pinned TLS connections, the
+    local relay, ServerStatus and the saved servers. Changed for 1.14.7: the game is found instead of
+    downloaded, the host's game runtime is installed after the player accepts it, the relay always
+    runs and answers QoS, the Host tools page, the English and Brazilian Portuguese text, the brand.
+  - `ReforgedGateway/` is a modified version of `UndauntedGateway/` (routing rules for the Mystic
+    Paradox backend and its `/__origin/` paths, a plain-HTTP private mode).
+  - `ReforgedContent/` is based on `UndauntedContent/` (the key check, limits, news and art pack;
+    it serves the game runtime instead of game files).
+  - Files and functions taken over say so in their comments.
+
+### Mystic Paradox
+
+- By Pranav Karande (MysticFox).
+- Repository: [github.com/pranav158/Mystic-Paradox](https://github.com/pranav158/Mystic-Paradox),
+  AGPL-3.0-only with additional terms. Mystic Paradox is itself a modified version of Undaunted.
+- **Mystic Paradox's Dauntless 1.12.0 port and related modifications were developed by Pranav
+  Karande. See NOTICE.md for contribution and provenance information.** (Mystic Paradox's
+  NOTICE.md is part of its source at the pinned commit.)
+- Used at commit `00d3be8aa812e334aaa26e5149d2607acb744360`, which the host kit downloads from that
+  repository; it is not copied into this one. The patches in `upstream/patches/` modify it:
+  the runtime reads its backend address from `REFORGED_BACKEND_URL`; the backend gains the
+  `/reforged/api` launcher API and an HTTP-only mode behind the gateway; the Director binds to one
+  address and lists its instances. [upstream/README.md](upstream/README.md) describes each patch.
+- The runtime's loader (`tools/RuntimeLoader` upstream) is derived from
+  [coldloader-proxy](https://github.com/denuvosanctuary/coldloader-proxy); Mystic Paradox's
+  README, NOTICE.md and Cargo.toml give its license as Apache-2.0, while the LICENSE file in that
+  folder holds the GNU LGPL-3.0 text. The runtime includes MinHook and the Hacker Disassembler
+  Engine 64 (BSD-2-Clause).
+
+### Undaunted
+
+- By gwog (Gregory Morford, [SyST3MDeV](https://github.com/SyST3MDeV)), EisigesEis and its other
+  contributors. Repository: [github.com/SyST3MDeV/Undaunted](https://github.com/SyST3MDeV/Undaunted),
+  AGPL-3.0-only.
+- The project both of the above are built on: the server-mode DLL, the deploy server, the
+  metagame and the original launcher.
+
+### This project
+
+- `ReforgedHost/` (the host kit), `upstream/` (the pin and the patches; the patched upstream files
+  remain under Mystic Paradox's terms), `brand/` (the emblem and icons, made for this project),
+  `docs/` and the new parts of the components above, by the Dauntless Reforged Revival
+  contributors, AGPL-3.0-only.
+
+### Other material
+
+- The software the launcher ships, with its license texts:
+  [ReforgedLauncher/THIRD-PARTY-NOTICES.txt](ReforgedLauncher/THIRD-PARTY-NOTICES.txt).
+- The services' npm dependencies are listed in each `package-lock.json` and keep their own licenses.
+
+## What this repository does not contain
+
+No game files, no generated Unreal Engine SDK, no exported or extracted game data, and no built
+runtime. Each host generates the SDK and the game data from their own legally obtained Dauntless
+1.14.7 installation, and builds their own runtime ([docs/sdk-and-game-data.md](docs/sdk-and-game-data.md)).
+Those files stay in `.workspace/`, which is git-ignored.
+
+"Dauntless" is a trademark of its owners. Dauntless Reforged Revival is an unofficial fan project,
+not affiliated with or endorsed by Phoenix Labs, Epic Games or any current or former Dauntless
+rights holder.

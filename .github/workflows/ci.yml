@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  launcher:
+    name: Launcher (typecheck and tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ReforgedLauncher
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ReforgedLauncher/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  services:
+    name: ${{ matrix.package }} (tests)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [ReforgedGateway, ReforgedContent, ReforgedHost]
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  upstream:
+    name: Mystic Paradox patches (apply, build, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch the pinned commit
+        run: |
+          commit=$(node -p "require('./upstream/mystic-paradox.json').commit")
+          repo=$(node -p "require('./upstream/mystic-paradox.json').repository")
+          mkdir -p .workspace/Mystic-Paradox && cd .workspace/Mystic-Paradox
+          git init --quiet && git remote add origin "$repo"
+          git fetch --quiet --depth 1 origin "$commit" && git checkout --quiet --detach "$commit"
+      - name: Apply the patches
+        working-directory: .workspace/Mystic-Paradox
+        run: |
+          for p in $(node -p "require('../../upstream/mystic-paradox.json').patches.join(' ')"); do
+            git apply --index --whitespace=nowarn "../../upstream/$p"
+          done
+      - name: Backend (build and the Reforged rules tests)
+        working-directory: .workspace/Mystic-Paradox/ParadoxBackend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          node --import tsx --test src/reforgedApiRules.test.ts
+      - name: Director (build and tests)
+        working-directory: .workspace/Mystic-Paradox/ParadoxDirector
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npm test
+
+  launcher-windows:
+    name: Launcher (Windows installer)
+    runs-on: windows-latest
+    needs: launcher
+    defaults:
+      run:
+        working-directory: ReforgedLauncher
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ReforgedLauncher/package-lock.json
+      - run: npm ci
+      - run: npm run make
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReforgedRevivalLauncher-windows
+          path: ReforgedLauncher/out/make/**
+          if-no-files-found: error

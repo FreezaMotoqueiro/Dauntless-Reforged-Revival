@@ -1,0 +1,3187 @@
+/* Dauntless Reforged Revival Launcher. The look is Dauntless Revived's (brand/palette.json there,
+   measured from its logo): its eight colours, defined once below as --rr-* tokens and used by role
+   everywhere else: ink page, navy and deep surfaces, ice for links and primary buttons (ink text),
+   glow for highlights and focus rings, azure for pressed fills, steel for muted text, frost for
+   text. One warm accent of our own, ember, marks the forge (the emblem's glow, the embers in the
+   background, the Host page). Translucent shades are the tokens mixed with transparent.
+   System fonts only: Segoe UI for text, Bahnschrift for display type. */
+
+:root {
+  --rr-ink: #01090D;
+  --rr-navy: #031523;
+  --rr-deep: #093251;
+  --rr-azure: #0D669C;
+  --rr-ice: #18A7E0;
+  --rr-glow: #78ECF9;
+  --rr-steel: #999FA7;
+  --rr-frost: #F3F4F5;
+  --rr-ember: #FFB24A;
+  --rr-ember-deep: #C8612A;
+
+  /* Roles built from the tokens. */
+  --line: var(--rr-deep); /* decorative dividers between surfaces, never a control's only edge */
+  --edge: var(--rr-steel); /* control edges on navy (6.93:1) and ink (7.52:1) */
+  --glass: color-mix(in srgb, var(--rr-navy) 90%, transparent);
+  --glass-strong: color-mix(in srgb, var(--rr-navy) 96%, transparent);
+  --shadow: color-mix(in srgb, var(--rr-ink) 60%, transparent);
+  --host-accent: var(--rr-glow); /* a host's art pack may set its own (index.ts) */
+
+  --rail-w: 232px;
+  --panel-w: 336px;
+  --title-h: 36px;
+  --radius: 14px;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  color-scheme: dark;
+}
+
+@media (max-width: 1180px) {
+  :root {
+    --rail-w: 204px;
+    --panel-w: 300px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--rr-ink);
+  color: var(--rr-frost);
+  font: 14px/1.5 var(--font-ui);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+/* Keyboard focus: a glow ring, 13:1 or more against ink, navy and deep. */
+:focus-visible {
+  outline: 2px solid var(--rr-glow);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: var(--rr-frost); /* 5.61:1 on azure */
+  background: var(--rr-azure);
+}
+
+::placeholder {
+  color: var(--rr-steel); /* 7.52:1 on ink */
+  opacity: 1;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rr-deep);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--rr-azure);
+}
+
+.selectable {
+  user-select: text;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ app frame */
+
+.app {
+  display: grid;
+  grid-template-rows: var(--title-h) 1fr;
+  height: 100vh;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--rr-navy);
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+  padding-left: 10px;
+  z-index: 5;
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rr-steel);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.titlebar-emblem {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: none;
+}
+
+.titlebar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 46px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--rr-steel);
+  display: grid;
+  place-items: center;
+}
+
+.win-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.win-btn:hover {
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+}
+
+.win-close:hover {
+  background: var(--rr-azure);
+  color: var(--rr-frost);
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-w) 1fr;
+  min-height: 0;
+}
+
+/* ------------------------------------------------------------------ left rail */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  background: var(--rr-navy);
+  border-right: 1px solid var(--line);
+  padding: 12px 14px 14px;
+  overflow-y: auto;
+  min-height: 0;
+  z-index: 3;
+}
+
+/* The logo on a soft azure halo, as on the docs site's home page. */
+.game-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 2px 0 4px;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--rr-azure) 35%, transparent), transparent);
+}
+
+/* The emblem over the wordmark: DAUNTLESS / REFORGED / REVIVAL, set in the display face. */
+.tile-emblem {
+  display: block;
+  width: 96px;
+  height: 96px;
+  filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--rr-ember) 22%, transparent));
+}
+
+.tile-wordmark {
+  display: grid;
+  justify-items: center;
+  line-height: 1;
+  margin-top: -2px;
+  text-shadow: 0 2px 10px var(--rr-ink);
+}
+
+.tile-word-small {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  margin-right: -0.42em;
+  color: var(--rr-glow);
+}
+
+.tile-word-big {
+  font-family: var(--font-display);
+  font-stretch: condensed;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 3px 0 2px;
+  color: var(--rr-frost);
+}
+
+.tile-version {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--rr-steel);
+  border: 1px solid var(--line);
+  background: var(--rr-navy);
+  padding: 1px 9px;
+  border-radius: 999px;
+}
+
+.nav {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--rr-steel);
+  font-size: 14.5px;
+  font-weight: 600;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-item:hover {
+  background: color-mix(in srgb, var(--rr-deep) 55%, transparent);
+  color: var(--rr-frost);
+}
+
+/* The current page: frost on deep (12.02:1) with an ice bar, like the docs site's navigation. */
+.nav-item[aria-current="page"] {
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+}
+
+.nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--rr-ice);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--rr-ice) 80%, transparent);
+  animation: nav-marker-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nav-item[aria-current="page"] .icon {
+  color: var(--rr-glow);
+  animation: nav-icon-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes nav-marker-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.25);
+  }
+}
+
+@keyframes nav-icon-in {
+  0% {
+    opacity: 0.45;
+    transform: translateX(-4px) scale(0.88);
+  }
+  70% {
+    transform: translateX(1px) scale(1.05);
+  }
+}
+
+/* Settings: tabs on top, one group at a time; long help behind an info tooltip. */
+/* The settings page uses the whole width: the tabs in a row on top, then one panel with a section
+   heading per group and every setting in its own row box. (.page.page-wide: .page comes later.) */
+.page.page-wide {
+  max-width: none;
+  container: settings / inline-size;
+}
+
+.settings-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-layout .settings-tabs {
+  margin: 0;
+}
+
+/* One panel holds the open tab's groups: the groups lose their own card frame and become sections. */
+.settings-panel {
+  padding: 18px 20px 20px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--line);
+  gap: 22px;
+}
+
+.settings-panel > .card {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.settings-panel .card-title,
+.settings-panel .card-title-text {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rr-steel);
+}
+
+.settings-panel .settings-row {
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.settings-panel .settings-row:hover,
+.settings-panel .settings-row:focus-within {
+  border-color: var(--edge);
+  background: color-mix(in srgb, var(--rr-deep) 45%, transparent);
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: var(--rr-ink);
+  border: 1px solid var(--line);
+}
+
+.settings-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--rr-steel);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-tab .icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.settings-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Narrow window: the tabs keep only their icons (the name stays as the tooltip and accessible name). */
+@container settings (max-width: 520px) {
+  .settings-tab-label {
+    display: none;
+  }
+}
+
+.settings-tab:hover {
+  color: var(--rr-frost);
+}
+
+.settings-tab[aria-selected="true"] {
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-title-text {
+  margin: 0;
+  font: inherit;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--rr-steel);
+  cursor: help;
+  flex: none;
+}
+
+.info-tip .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.info-tip:hover,
+.info-tip:focus-visible {
+  color: var(--rr-frost);
+}
+
+.info-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  z-index: 30;
+  width: max-content;
+  max-width: 340px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--edge);
+  background: var(--glass-strong);
+  color: var(--rr-frost);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 24px var(--shadow);
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
+.info-tip:hover::after,
+.info-tip:focus-visible::after {
+  opacity: 1;
+}
+
+/* Streamer mode: hidden values (filler text, blurred) with an eye to show them, and the invite text
+   as dots. */
+.secret {
+  position: relative;
+}
+
+.secret-blur {
+  filter: blur(5px);
+  user-select: none;
+}
+
+/* Floats just right of the value, so showing or hiding it never moves the layout. */
+.secret-eye {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 4px;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rr-steel);
+  cursor: pointer;
+  flex: none;
+}
+
+.secret-eye:hover {
+  color: var(--rr-frost);
+  background: color-mix(in srgb, var(--rr-deep) 70%, transparent);
+}
+
+.secret-eye .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.textarea.masked {
+  -webkit-text-security: disc;
+}
+
+.nav-badge {
+  margin-left: auto;
+  width: auto;
+  height: 22px;
+  flex: none;
+  filter: drop-shadow(0 1px 3px var(--shadow));
+  pointer-events: none;
+}
+
+.rail-foot {
+  margin-top: auto;
+  padding-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--rr-ink);
+  border: 1px solid var(--line);
+  min-height: 56px;
+}
+
+.account-chip:has(.account-switch) {
+  position: relative;
+  padding: 0;
+}
+
+.account-switch {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 28px 10px 10px;
+  border-radius: inherit;
+  cursor: pointer;
+  position: relative;
+}
+
+/* Up and down chevrons: there is more than one server to pick from. */
+.account-switch::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--rr-steel);
+  border-bottom: 2px solid var(--rr-steel);
+  transform: translateY(-75%) rotate(45deg);
+}
+
+.account-switch[aria-expanded="true"]::after {
+  transform: translateY(-25%) rotate(-135deg);
+}
+
+.account-switch:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rr-frost) 6%, transparent);
+}
+
+.account-switch:focus-visible {
+  outline: 2px solid var(--rr-glow);
+  outline-offset: 2px;
+}
+
+.account-switch:disabled {
+  cursor: default;
+}
+
+.server-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 10px;
+  background: var(--glass-strong);
+  border: 1px solid var(--edge);
+  box-shadow: 0 12px 30px var(--shadow);
+}
+
+.server-menu-head {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rr-steel);
+}
+
+.server-menu-item {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  width: 100%;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.server-menu-item:hover,
+.server-menu-item:focus-visible {
+  background: var(--rr-deep);
+}
+
+.server-menu-name {
+  font-weight: 600;
+  color: var(--rr-frost);
+}
+
+.server-menu-sub {
+  font-size: 11.5px;
+  color: var(--rr-steel);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--rr-ink);
+  background: linear-gradient(160deg, var(--rr-glow), var(--rr-ice));
+}
+
+.avatar.empty {
+  background: var(--rr-deep);
+  color: var(--rr-steel);
+}
+
+.account-text {
+  min-width: 0;
+  display: grid;
+}
+
+.account-label {
+  font-size: 11.5px;
+  color: var(--rr-steel);
+}
+
+.account-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lang-switch {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  background: var(--rr-ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.lang-btn {
+  border: 0;
+  background: transparent;
+  color: var(--rr-steel);
+  border-radius: 7px;
+  padding: 5px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.lang-btn:hover {
+  color: var(--rr-frost);
+}
+
+.lang-btn[aria-pressed="true"] {
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+}
+
+/* Keep every rail action reachable at the launcher's minimum window height. */
+@media (max-height: 800px) {
+  .rail .tile-emblem { width: 72px; height: 72px; }
+  .rail .tile-word-big { font-size: 26px; }
+  .nav { margin-top: 10px; gap: 2px; }
+  .nav-item { height: 36px; }
+  .rail-foot { gap: 8px; padding-top: 10px; }
+}
+
+@media (max-height: 700px) {
+  .rail { padding: 8px 10px; }
+  .rail .tile-emblem { width: 52px; height: 52px; }
+  .rail .tile-word-big { font-size: 22px; }
+  .nav-item { height: 32px; }
+  .rail-foot { gap: 4px; padding-top: 6px; }
+  .account-chip { padding: 8px; }
+}
+
+/* Credits and the GitHub button, under the language switch. */
+.rail-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rail-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--rr-steel);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s;
+}
+
+.rail-link:hover {
+  background: color-mix(in srgb, var(--rr-deep) 55%, transparent);
+  color: var(--rr-frost);
+}
+
+.rail-link[aria-current="page"] {
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+}
+
+.rail-link .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.rail-link[aria-current="page"] .icon {
+  color: var(--rr-glow);
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--rr-ink);
+  color: var(--rr-steel);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.icon-btn:hover {
+  background: var(--rr-deep);
+  border-color: var(--edge);
+  color: var(--rr-frost);
+}
+
+.icon-btn .mark {
+  width: 18px;
+  height: 18px;
+}
+
+/* ------------------------------------------------------------------ world: hero + stage + panel */
+
+.world {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--panel-w);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The Server page shows the panel's content in full, so the panel steps aside there. */
+.world.no-panel {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.world.no-panel .server-panel {
+  display: none;
+}
+
+.world.no-panel .art-credit {
+  right: 16px;
+}
+
+.hero {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--rr-ink);
+}
+
+.art {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 1.6s ease;
+}
+
+.art.show {
+  opacity: 1;
+}
+
+.hero-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--rr-ink) 86%, transparent) 0%,
+      color-mix(in srgb, var(--rr-ink) 52%, transparent) 34%,
+      color-mix(in srgb, var(--rr-ink) 8%, transparent) 56%,
+      transparent 68%
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--rr-ink) 92%, transparent) 0%,
+      color-mix(in srgb, var(--rr-ink) 38%, transparent) 22%,
+      transparent 45%
+    ),
+    linear-gradient(180deg, color-mix(in srgb, var(--rr-ink) 50%, transparent) 0%, transparent 18%);
+}
+
+.art-credit {
+  position: absolute;
+  right: calc(var(--panel-w) + 16px);
+  bottom: 116px;
+  font-size: 11.5px;
+  color: var(--rr-frost);
+  text-shadow: 0 1px 3px var(--rr-ink), 0 0 8px var(--rr-ink);
+}
+
+/* ------------------------------------------------------------------ the built-in background
+   Drawn by scene.ts. Night sky from ink to deep, stars, a faint aurora, the faded emblem, two jagged
+   ranges with snow, mist between them, the forest, falling snow. Only whole layers move (transform
+   and opacity), so the compositor does the work and nothing is repainted; the motion stops for
+   prefers-reduced-motion, while the game runs, and while a host's art covers the scene. */
+
+.scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  contain: strict;
+  background:
+    radial-gradient(ellipse 60% 42% at 46% 64%, color-mix(in srgb, var(--rr-azure) 45%, transparent), transparent 72%),
+    linear-gradient(180deg, var(--rr-ink) 0%, var(--rr-navy) 38%, var(--rr-deep) 68%, var(--rr-navy) 88%);
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.star {
+  fill: var(--rr-frost);
+}
+
+.star-glow {
+  fill: var(--rr-glow);
+}
+
+.aurora {
+  overflow: visible;
+  opacity: 0.7;
+}
+
+.au-clear {
+  stop-color: var(--rr-glow);
+  stop-opacity: 0;
+}
+
+.au-glow {
+  stop-color: var(--rr-glow);
+  stop-opacity: 0.42;
+}
+
+.au-ice {
+  stop-color: var(--rr-ice);
+  stop-opacity: 0.4;
+}
+
+.au-edge {
+  stop-color: var(--rr-ice);
+  stop-opacity: 0;
+}
+
+.aurora-a {
+  fill: url(#g-aurora-a);
+}
+
+.aurora-b {
+  fill: url(#g-aurora-b);
+}
+
+.motif {
+  opacity: 0.09;
+}
+
+.far-top {
+  stop-color: var(--rr-deep);
+}
+
+.far-foot {
+  stop-color: var(--rr-navy);
+}
+
+.ridge-far {
+  fill: url(#g-far);
+}
+
+.snow-top {
+  stop-color: var(--rr-frost);
+  stop-opacity: 0.5;
+}
+
+.snow-foot {
+  stop-color: var(--rr-steel);
+  stop-opacity: 0.12;
+}
+
+.snow-far {
+  fill: url(#g-snow-far);
+}
+
+.shade-far,
+.gully-far {
+  fill: var(--rr-ink);
+  opacity: 0.34;
+}
+
+.rim-far {
+  fill: none;
+  stroke: var(--rr-ice);
+  stroke-opacity: 0.25;
+  stroke-width: 1.2;
+}
+
+.mist-core {
+  stop-color: var(--rr-steel);
+  stop-opacity: 0.16;
+}
+
+.mist-clear {
+  stop-color: var(--rr-steel);
+  stop-opacity: 0;
+}
+
+.mist-puff {
+  fill: url(#g-mist);
+}
+
+.mist {
+  overflow: visible;
+}
+
+.mid-top {
+  stop-color: var(--rr-navy);
+}
+
+.mid-foot {
+  stop-color: var(--rr-ink);
+}
+
+.ridge-mid {
+  fill: url(#g-mid);
+}
+
+.snow-mid {
+  fill: url(#g-snow-mid);
+  opacity: 0.8;
+}
+
+.shade-mid,
+.gully-mid {
+  fill: var(--rr-ink);
+  opacity: 0.42;
+}
+
+.rim-mid {
+  fill: none;
+  stroke: var(--rr-azure);
+  stroke-opacity: 0.6;
+  stroke-width: 1.2;
+}
+
+.trees-mid,
+.trees-back,
+.trees-front,
+.ground {
+  fill: var(--rr-ink);
+}
+
+.trees-back {
+  opacity: 0.92;
+}
+
+.snowfall {
+  inset: auto 0;
+  top: -100%;
+  height: 200%;
+  opacity: 0.55;
+}
+
+.snowfall svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.flakes {
+  fill: var(--rr-frost);
+}
+
+/* Motion: slow and small. Only these layers move, so only they get compositor layers; there is no
+   will-change, so with reduced motion the scene stays one flat picture. */
+.twinkle {
+  animation: twinkle 6s ease-in-out infinite alternate;
+}
+
+.aurora {
+  animation: aurora 40s ease-in-out infinite alternate;
+}
+
+.mist-far {
+  animation: drift 70s ease-in-out infinite alternate;
+}
+
+.mist-near {
+  opacity: 0.75;
+  animation: drift 50s ease-in-out -20s infinite alternate-reverse;
+}
+
+.snowfall {
+  animation: fall 70s linear infinite;
+}
+
+@keyframes twinkle {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes aurora {
+  from {
+    transform: translateX(-2.5%);
+    opacity: 0.55;
+  }
+  to {
+    transform: translateX(2.5%);
+    opacity: 0.85;
+  }
+}
+
+@keyframes drift {
+  from {
+    transform: translateX(-3%);
+  }
+  to {
+    transform: translateX(3%);
+  }
+}
+
+@keyframes fall {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(50%);
+  }
+}
+
+/* Held still while the game runs next to the launcher, and under a host's art. */
+.hero.game-running .scene *,
+.hero.has-art .scene * {
+  animation-play-state: paused !important;
+}
+
+/* ------------------------------------------------------------------ stage */
+
+.stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 30px 40px 24px;
+}
+
+/* A page change gets one short transition. The class is applied only by setView, so polling and
+   ordinary status redraws do not repeatedly animate content the player is already reading. */
+.view.view-entering > .page,
+.view.view-entering > .play-content {
+  animation: view-enter 0.34s cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.view.view-entering > .page > *,
+.view.view-entering > .play-content > * {
+  animation: content-enter 0.32s cubic-bezier(0.2, 0.75, 0.2, 1) both;
+}
+
+.view.view-entering > .page > :nth-child(2),
+.view.view-entering > .play-content > :nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.view.view-entering > .page > :nth-child(3),
+.view.view-entering > .play-content > :nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.view.view-entering > .page > :nth-child(n + 4),
+.view.view-entering > .play-content > :nth-child(n + 4) {
+  animation-delay: 105ms;
+}
+
+@keyframes view-enter {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+
+@keyframes content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+#view-play {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Bottom-aligned while it fits; when it does not, the auto margin collapses to 0 and the view
+   scrolls normally (justify-content: flex-end would push the top out of reach). */
+#view-play > .play-content {
+  margin-top: auto;
+}
+
+#view-play[hidden] {
+  display: none;
+}
+
+.play-content {
+  max-width: 660px;
+  display: grid;
+  gap: 14px;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rr-ice);
+  text-shadow: 0 1px 6px var(--rr-ink);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  border: 1px solid var(--rr-azure);
+  background: var(--rr-ink);
+  color: var(--rr-frost);
+  text-shadow: none;
+}
+
+.badge .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.badge-public {
+  color: var(--rr-glow);
+}
+
+.badge-private {
+  color: var(--rr-ice);
+}
+
+.hero-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-stretch: condensed;
+  font-size: 46px;
+  line-height: 1.02;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 18px var(--shadow);
+}
+
+.hero-text {
+  margin: 0;
+  font-size: 15.5px;
+  color: var(--rr-frost);
+  max-width: 580px;
+  text-shadow: 0 1px 8px var(--rr-ink);
+}
+
+.card {
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 18px 40px var(--shadow);
+}
+
+.card + .card {
+  margin-top: 0;
+}
+
+.card-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.card-text {
+  margin: 0;
+  color: var(--rr-frost);
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Warnings and problems. The palette has no red or amber, so they are told apart by their sign (a
+   warning or shield icon in the title), a bar on the left edge and a brighter edge: ice for a
+   warning, glow for a problem. */
+.card-warn,
+.card-danger {
+  box-shadow: inset 3px 0 0 var(--rr-ice), 0 18px 40px var(--shadow);
+  border-color: var(--rr-azure);
+}
+
+.card-danger {
+  box-shadow: inset 3px 0 0 var(--rr-glow), 0 18px 40px var(--shadow);
+  border-color: var(--rr-glow);
+}
+
+.card-warn .card-title,
+.card-danger .card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-warn .card-title .icon {
+  color: var(--rr-ice);
+}
+
+.card-danger .card-title {
+  color: var(--rr-glow);
+}
+
+.card-accent {
+  border-color: var(--rr-azure);
+}
+
+/* Credits: the whole width, one section under another. */
+.page.credits-page {
+  max-width: none;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--rr-steel);
+  letter-spacing: 0.02em;
+}
+
+/* Inputs are ink wells on navy cards: a steel edge (6.93:1 on navy, 7.52:1 on ink), glow when
+   focused. */
+.input,
+.textarea,
+.select {
+  width: 100%;
+  background: var(--rr-ink);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 11px 14px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  user-select: text;
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+  border-color: var(--rr-glow);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rr-glow) 30%, transparent);
+}
+
+.textarea {
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.input-big {
+  font-size: 18px;
+  font-weight: 600;
+  padding: 12px 16px;
+  letter-spacing: 0.01em;
+}
+
+/* Invalid: a frost edge (16.80:1) and the hint below in glow with its warning sign. */
+.input[aria-invalid="true"],
+.textarea[aria-invalid="true"] {
+  border-color: var(--rr-frost);
+  border-style: dashed;
+}
+
+.hint {
+  font-size: 12.5px;
+  color: var(--rr-steel);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 19px;
+}
+
+.hint .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.hint-ok {
+  color: var(--rr-ice);
+}
+
+.hint-bad {
+  color: var(--rr-glow);
+}
+
+.preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--rr-deep);
+  border: 1px solid var(--rr-azure);
+}
+
+.preview > .icon {
+  color: var(--rr-glow);
+}
+
+.preview-text {
+  min-width: 0;
+}
+
+.preview-name {
+  font-weight: 700;
+}
+
+.preview-host {
+  color: var(--rr-steel);
+  font-size: 12.5px;
+}
+
+/* Buttons, as on the docs site. Default: ice on navy (6.73:1) with a steel edge; hovered glow on
+   deep (9.56:1); pressed frost on azure (5.61:1). */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--rr-navy);
+  color: var(--rr-ice);
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--rr-deep);
+  border-color: var(--rr-ice);
+  color: var(--rr-glow);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  background: var(--rr-azure);
+  color: var(--rr-frost);
+}
+
+/* Disabled: still readable, steel on navy (6.93:1), inside a dashed steel edge (6.93:1) that says
+   "not now" without relying on colour. */
+.btn:disabled {
+  background: var(--rr-navy);
+  border-color: var(--edge);
+  border-style: dashed;
+  color: var(--rr-steel);
+  box-shadow: none;
+}
+
+.btn .icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* Primary: ink on ice (7.31:1), ink on glow when hovered (14.50:1), frost on azure when pressed. */
+.btn-primary {
+  background: var(--rr-ice);
+  border-color: var(--rr-ice);
+  color: var(--rr-ink);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--rr-ice) 25%, transparent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--rr-glow);
+  border-color: var(--rr-glow);
+  color: var(--rr-ink);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--rr-azure);
+  border-color: var(--rr-azure);
+  color: var(--rr-frost);
+}
+
+/* Risky (log out, accept a changed certificate): frost with a frost edge and the warning sign, so it
+   reads as serious and never as the inviting primary; hovered, ink on frost (18.23:1). */
+.btn-danger {
+  background: var(--rr-ink);
+  border-color: var(--rr-frost);
+  color: var(--rr-frost);
+}
+
+.btn-danger .icon {
+  color: var(--rr-glow);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--rr-frost);
+  border-color: var(--rr-frost);
+  color: var(--rr-ink);
+}
+
+.btn-danger:hover:not(:disabled) .icon {
+  color: var(--rr-ink);
+}
+
+.btn-danger:active:not(:disabled) .icon {
+  color: var(--rr-frost);
+}
+
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: var(--rr-ice);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--rr-ice) 55%, transparent);
+  text-underline-offset: 3px;
+}
+
+.link-btn:hover:not(:disabled) {
+  color: var(--rr-glow);
+  text-decoration-color: var(--rr-glow);
+}
+
+.link-btn .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.link-btn:disabled {
+  color: var(--rr-steel);
+  text-decoration-color: transparent;
+}
+
+.steps-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 10px;
+}
+
+.steps-list li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.steps-list li::before {
+  content: counter(step);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  background: var(--rr-deep);
+  color: var(--rr-glow);
+  border: 1px solid var(--rr-azure);
+}
+
+.check-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.check-list li {
+  display: flex;
+  gap: 8px;
+  color: var(--rr-frost);
+}
+
+.check-list li::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--rr-ice);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--rr-ink);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 11.5px;
+  color: var(--rr-steel);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.stat-value {
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-value.small {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid var(--rr-deep);
+  border-top-color: var(--rr-glow);
+  animation: spin 0.9s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.news-teaser {
+  display: grid;
+  gap: 4px;
+}
+
+.news-teaser-date {
+  font-size: 11.5px;
+  color: var(--rr-ice);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ banners */
+
+/* In the page flow (first child of the stage), so the view below shrinks instead of being covered. */
+.banners {
+  position: relative;
+  z-index: 4;
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 16px 40px 0;
+}
+
+.banners:empty {
+  display: none;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--glass-strong);
+  border: 1px solid var(--rr-azure);
+  box-shadow: 0 10px 30px var(--shadow);
+  animation: drop 0.25s ease-out;
+}
+
+.banner-text {
+  flex: 1;
+}
+
+.banner-error {
+  border-color: var(--rr-glow);
+  box-shadow: inset 3px 0 0 var(--rr-glow), 0 10px 30px var(--shadow);
+}
+
+.banner-error > .icon {
+  color: var(--rr-glow);
+}
+
+.banner-notice > .icon {
+  color: var(--rr-ice);
+}
+
+.banner-update {
+  border-color: var(--rr-ice);
+}
+
+.banner-update > .icon {
+  color: var(--rr-ice);
+}
+
+@keyframes drop {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ action bar */
+
+.actionbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 28px;
+  padding: 18px 40px 22px;
+  min-height: 104px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rr-ink) 55%, transparent), color-mix(in srgb, var(--rr-ink) 88%, transparent));
+  border-top: 1px solid var(--line);
+}
+
+/* Never drawn over the big button, whatever the language and window width. The clip margin keeps
+   focus outlines visible. */
+.action-info {
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+
+/* The big button is the primary button, larger: ink on ice to glow (7.31:1 at worst), ink on glow
+   when hovered, frost on azure when pressed. */
+.big-button {
+  position: relative;
+  min-width: 250px;
+  height: 64px;
+  padding: 0 34px;
+  border: 0;
+  border-radius: 14px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 23px;
+  letter-spacing: 0.14em;
+  color: var(--rr-ink);
+  background: linear-gradient(180deg, var(--rr-glow) 0%, var(--rr-ice) 55%, var(--rr-ice) 100%);
+  box-shadow:
+    0 10px 30px color-mix(in srgb, var(--rr-ice) 32%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rr-frost) 55%, transparent),
+    inset 0 -2px 0 color-mix(in srgb, var(--rr-azure) 70%, transparent);
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.big-button:hover:not(:disabled) {
+  background: var(--rr-glow);
+  box-shadow:
+    0 12px 36px color-mix(in srgb, var(--rr-glow) 40%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--rr-frost) 60%, transparent),
+    inset 0 -2px 0 color-mix(in srgb, var(--rr-ice) 70%, transparent);
+}
+
+.big-button:active:not(:disabled) {
+  transform: translateY(2px);
+  background: var(--rr-azure);
+  color: var(--rr-frost);
+}
+
+/* Disabled: steel on deep (4.96:1) inside an azure edge (3.25:1 against the ink bar). */
+.big-button:disabled {
+  background: var(--rr-deep);
+  color: var(--rr-steel);
+  box-shadow: inset 0 0 0 1px var(--rr-azure);
+}
+
+/* The game is running: glow on navy (13.36:1) with a glow edge. */
+.big-button.is-running,
+.big-button.is-running:disabled {
+  background: var(--rr-navy);
+  color: var(--rr-glow);
+  box-shadow: inset 0 0 0 1.5px var(--rr-glow), 0 0 26px color-mix(in srgb, var(--rr-glow) 20%, transparent);
+}
+
+.big-button.is-pause {
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.big-button.is-pause:hover:not(:disabled) {
+  background: var(--rr-azure);
+  color: var(--rr-frost);
+}
+
+.big-button.is-ready::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rr-glow) 60%, transparent);
+  animation: pulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rr-steel);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.step-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--edge);
+  font-size: 12px;
+  flex: none;
+}
+
+.step-dot .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.step.done {
+  color: var(--rr-steel);
+}
+
+.step.done .step-dot {
+  background: var(--rr-deep);
+  border-color: var(--rr-ice);
+  color: var(--rr-glow);
+}
+
+.step.current {
+  color: var(--rr-frost);
+}
+
+.step.current .step-dot {
+  background: var(--rr-ice);
+  border-color: var(--rr-ice);
+  color: var(--rr-ink);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--rr-ice) 60%, transparent);
+}
+
+.step-line {
+  width: 34px;
+  height: 1.5px;
+  margin: 0 10px;
+  background: var(--rr-deep);
+}
+
+.step-line.done {
+  background: var(--rr-ice);
+}
+
+.action-hint {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--rr-steel);
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.progress-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.progress-title {
+  font-weight: 700;
+  font-size: 15px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-percent {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--rr-glow);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* The fill against its track: ice on deep is 4.82:1. */
+.bar {
+  position: relative;
+  height: 8px;
+  border-radius: 8px;
+  background: var(--rr-deep);
+  overflow: hidden;
+}
+
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--rr-ice), var(--rr-ice) 60%, var(--rr-glow));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--rr-ice) 60%, transparent);
+  transition: width 0.3s ease;
+}
+
+.bar-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--rr-frost) 40%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* Paused: steel on deep (4.96:1). */
+.bar.paused .bar-fill {
+  background: var(--rr-steel);
+  box-shadow: none;
+}
+
+.bar.paused .bar-fill::after,
+.bar.indeterminate .bar-fill::after {
+  display: none;
+}
+
+.bar.indeterminate .bar-fill {
+  width: 35% !important;
+  animation: slide 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes slide {
+  from {
+    left: -35%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.progress-meta {
+  display: flex;
+  gap: 2px 16px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--rr-steel);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-head .link-btn {
+  font-size: 12.5px;
+  margin-left: 4px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.progress-file {
+  font-size: 12px;
+  color: var(--rr-steel);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 18px;
+}
+
+/* Five steps do not fit next to the big button at the default 1280 px width: below 1440 px only
+   the current step keeps its visible label (the others stay readable for screen readers, and a
+   done step still shows its check mark). */
+@media (max-width: 1440px) {
+  .step:not(.current) .step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .step-line {
+    width: 22px;
+    margin: 0 6px;
+  }
+}
+
+/* Narrow windows (the minimum is 1024 px): a smaller big button, and only the current step keeps
+   its visible label (the others stay readable for screen readers). */
+@media (max-width: 1180px) {
+  .actionbar {
+    gap: 18px;
+    padding: 16px 28px 18px;
+  }
+
+  .big-button {
+    min-width: 200px;
+    padding: 0 24px;
+    font-size: 21px;
+    letter-spacing: 0.1em;
+  }
+
+
+  .progress-head {
+    gap: 8px;
+  }
+
+  .progress-title {
+    font-size: 14px;
+  }
+
+  .tile-emblem {
+    width: 84px;
+    height: 84px;
+  }
+}
+
+/* ------------------------------------------------------------------ server panel */
+
+.server-panel {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: linear-gradient(180deg, var(--glass), var(--glass-strong));
+  border-left: 1px solid var(--line);
+  padding: 22px 20px 18px;
+  gap: 18px;
+}
+
+.sp-head {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.sp-head::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 56px;
+  height: 2px;
+  background: var(--host-accent);
+  border-radius: 2px;
+}
+
+.sp-kicker {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rr-steel);
+}
+
+.sp-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.sp-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--rr-steel);
+  flex-wrap: wrap;
+}
+
+/* Online: a lit glow dot. Offline: an empty steel ring. The words next to it say which. */
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rr-steel);
+  flex: none;
+}
+
+.dot.online {
+  background: var(--rr-glow);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rr-glow) 20%, transparent), 0 0 10px color-mix(in srgb, var(--rr-glow) 80%, transparent);
+}
+
+.dot.offline {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--rr-steel);
+}
+
+.sp-section {
+  display: grid;
+  gap: 10px;
+}
+
+.sp-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rr-steel);
+}
+
+.sp-count {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sp-count-num {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--rr-frost);
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-count-label {
+  color: var(--rr-steel);
+}
+
+.players {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.player:hover {
+  background: color-mix(in srgb, var(--rr-deep) 55%, transparent);
+}
+
+.player-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 12px;
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+  flex: none;
+}
+
+.player-text {
+  min-width: 0;
+  display: grid;
+}
+
+.player-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-where {
+  font-size: 12px;
+  color: var(--rr-steel);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Where a player is, and the kind of a world: the icon or initial on deep, in one of four palette
+   colours (glow 9.56:1, frost 12.02:1, ice 4.82:1, steel 4.96:1 on deep). */
+.w-hunt .player-avatar,
+.k-hunt .instance-icon {
+  color: var(--rr-glow);
+}
+
+.w-city .player-avatar,
+.k-city .instance-icon {
+  color: var(--rr-ice);
+}
+
+.w-dojo .player-avatar,
+.k-dojo .instance-icon {
+  color: var(--rr-frost);
+}
+
+.w-tutorial .player-avatar,
+.k-tutorial .instance-icon {
+  color: var(--rr-steel);
+}
+
+.instances {
+  display: grid;
+  gap: 8px;
+}
+
+.instance {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 4px 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--rr-ink);
+  border: 1px solid var(--line);
+}
+
+.instance-icon {
+  grid-row: span 3;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--rr-deep);
+}
+
+.instance-title {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.instance-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--rr-steel);
+  font-variant-numeric: tabular-nums;
+}
+
+.instance-bar {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--rr-deep);
+  overflow: hidden;
+}
+
+.instance-bar > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--rr-ice);
+  border-radius: 4px;
+}
+
+.k-hunt .instance-bar > span {
+  background: var(--rr-glow);
+}
+
+.sp-empty {
+  color: var(--rr-steel);
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--rr-azure);
+}
+
+.sp-empty.sp-problem {
+  color: var(--rr-glow);
+  border-style: solid;
+  border-color: var(--rr-glow);
+}
+
+.sp-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--rr-steel);
+}
+
+.sp-foot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sp-foot-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sp-foot-row .link-btn {
+  max-width: 100%;
+  text-align: left;
+  white-space: normal;
+}
+
+/* ------------------------------------------------------------------ news, server, settings pages */
+
+.page {
+  max-width: 820px;
+  display: grid;
+  gap: 16px;
+}
+
+.page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-stretch: condensed;
+  font-size: 36px;
+  line-height: 1.05;
+  text-shadow: 0 2px 14px var(--shadow);
+}
+
+.page-sub {
+  margin: -8px 0 0;
+  color: var(--rr-steel);
+  text-shadow: 0 1px 6px var(--rr-ink);
+}
+
+.news-item {
+  display: grid;
+  gap: 6px;
+}
+
+.news-date {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--rr-ice);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.news-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.news-body {
+  margin: 0;
+  color: var(--rr-frost);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  gap: 10px 18px;
+  margin: 0;
+}
+
+.kv dt {
+  color: var(--rr-steel);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.fingerprint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--rr-ice);
+  letter-spacing: 0.04em;
+  word-spacing: 0.3em;
+  line-height: 1.7;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* The Server page uses the whole width: players and worlds each get a full-width card, laid out in
+   as many columns as fit, so the page needs little scrolling at any window size. */
+.page.page-server {
+  max-width: none;
+}
+
+.page-server .grid-2 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.page-server .players {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  column-gap: 8px;
+}
+
+.page-server .instances {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.settings-section {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-row:first-of-type {
+  border-top: 0;
+}
+
+.settings-row-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-row-title {
+  font-weight: 600;
+}
+
+.settings-row-sub {
+  color: var(--rr-steel);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.select {
+  width: auto;
+  min-width: 200px;
+  padding: 8px 12px;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--rr-steel) 50%), linear-gradient(135deg, var(--rr-steel) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+.select option {
+  background: var(--rr-navy);
+  color: var(--rr-frost);
+}
+
+/* The launcher's own dropdown (dropdown() in index.ts): the closed .select look on a button,
+   and a navy list with the same steel edge instead of the list Windows draws for <select>. */
+.dropdown {
+  position: relative;
+  flex: none;
+}
+
+.dropdown-button {
+  min-width: 220px;
+  color: var(--rr-frost);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dropdown-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.dropdown-button[aria-expanded="true"] {
+  border-color: var(--rr-glow);
+}
+
+.dropdown-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  /* As wide as the longest option (never a horizontal scroll), at least as wide as the button,
+     growing to the left: the dropdowns sit at the right edge of their rows. */
+  width: max-content;
+  min-width: 100%;
+  max-width: 420px;
+  max-height: min(360px, 60vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--glass-strong);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px var(--shadow);
+  backdrop-filter: blur(12px);
+  outline: none;
+}
+
+/* No white square where two scrollbars would meet. */
+.dropdown-list::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.dropdown-up .dropdown-list {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.dropdown-option {
+  padding: 8px 12px;
+  border-radius: 7px;
+  color: var(--rr-frost);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dropdown-option.active {
+  background: var(--rr-deep);
+}
+
+/* The chosen option: a soft glow aura, and the text in glow. */
+.dropdown-option[aria-selected="true"] {
+  color: var(--rr-glow);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--rr-glow) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rr-glow) 45%, transparent), 0 0 12px color-mix(in srgb, var(--rr-glow) 18%, transparent);
+}
+
+.dropdown-option[aria-selected="true"].active {
+  background: color-mix(in srgb, var(--rr-glow) 20%, var(--rr-deep));
+}
+
+/* Off: a steel knob in a steel-edged track. On: an ink knob on ice (7.31:1). */
+.switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: var(--rr-ink);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--rr-steel);
+  transition: transform 0.22s cubic-bezier(0.3, 1.4, 0.5, 1), background 0.15s;
+}
+
+.switch:hover {
+  border-color: var(--rr-glow);
+}
+
+.switch[aria-checked="true"] {
+  background: var(--rr-ice);
+  border-color: var(--rr-ice);
+}
+
+.switch[aria-checked="true"]::after {
+  transform: translateX(20px);
+  background: var(--rr-ink);
+}
+
+.about-text {
+  color: var(--rr-frost);
+  margin: 0;
+}
+
+.small-print {
+  font-size: 12px;
+  color: var(--rr-steel);
+  margin: 0;
+}
+
+/* Credits page */
+.credit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.credit {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.credit-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+}
+
+.credit-avatar.role-maintainer,
+.credit-avatar.role-creator,
+.credit-avatar.role-patron {
+  color: var(--rr-ink);
+  background: linear-gradient(160deg, var(--rr-glow), var(--rr-ice));
+}
+
+.credit-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.credit-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.credit-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.credit-handle {
+  color: var(--rr-steel);
+  font-size: 12.5px;
+}
+
+.credit-role.role-maintainer,
+.credit-role.role-creator,
+.credit-role.role-patron {
+  color: var(--rr-glow);
+}
+
+.credit-note {
+  margin: 0;
+  color: var(--rr-steel);
+  font-size: 13px;
+}
+
+.software {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.software:first-child {
+  border-top: 0;
+}
+
+.software-license {
+  color: var(--rr-ice);
+}
+
+/* ------------------------------------------------------------------ modal */
+
+.modal-root {
+  position: fixed;
+  inset: var(--title-h) 0 0 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--rr-ink) 78%, transparent);
+  animation: fade 0.18s ease-out;
+}
+
+.modal {
+  width: min(480px, calc(100vw - 48px));
+  background: var(--rr-navy);
+  border: 1px solid var(--rr-azure);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 30px 80px var(--shadow);
+  display: grid;
+  gap: 12px;
+  animation: modal-enter 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.975);
+  }
+}
+
+.modal-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.modal-text {
+  margin: 0;
+  color: var(--rr-frost);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.modal-text.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.modal-danger {
+  width: min(560px, calc(100vw - 48px));
+  border-color: var(--rr-glow);
+  box-shadow: inset 0 3px 0 var(--rr-glow), 0 30px 80px var(--shadow);
+}
+
+.modal-danger .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--rr-glow);
+}
+
+.modal-warn {
+  display: flex;
+  gap: 8px;
+  color: var(--rr-frost);
+}
+
+.modal-warn .icon {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--rr-glow);
+}
+
+.fp-compare {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--rr-ink);
+  border: 1px solid var(--line);
+}
+
+.fp-compare dt {
+  color: var(--rr-steel);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.fp-compare dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.fp-compare .fp-new {
+  color: var(--rr-glow);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ motion preferences */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  /* The background stands still, as drawn. */
+  .scene * {
+    animation: none !important;
+  }
+
+  .spinner {
+    animation: spin 2.4s linear infinite !important;
+  }
+
+  .bar.indeterminate .bar-fill {
+    animation: none !important;
+    left: 0;
+    width: 100% !important;
+    opacity: 0.7;
+  }
+}
+
+/* ------------------------------------------------------------------ Dauntless Reforged Revival additions */
+
+/* Embers from the forge: warm sparks drifting up from the valley (scene.ts), under the forest. */
+.embers {
+  inset: auto 0;
+  top: 0;
+  height: 200%;
+  opacity: 0.6;
+  animation: rise 46s linear infinite;
+}
+
+.embers svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.sparks {
+  fill: var(--rr-ember);
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+.hero.game-running .embers,
+.hero.has-art .embers {
+  animation-play-state: paused !important;
+}
+
+.motif {
+  opacity: 0.08;
+}
+
+/* An ember badge: the forge's own warm accent, for host-side things. */
+.badge-ember {
+  color: var(--rr-ember);
+  border-color: color-mix(in srgb, var(--rr-ember) 55%, var(--rr-azure));
+}
+
+/* Store installs found on this PC, and the server's runtime files. */
+.choice-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--rr-ink) 55%, transparent);
+}
+
+.choice-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.choice-title {
+  font-weight: 700;
+}
+
+.choice-sub {
+  font-size: 12.5px;
+  color: var(--rr-steel);
+  overflow-wrap: anywhere;
+}
+
+.choice-ok {
+  color: var(--rr-glow);
+}
+
+.file-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.file-list li {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--rr-ink) 60%, transparent);
+  border: 1px solid var(--line);
+}
+
+.file-name {
+  font-weight: 600;
+}
+
+.file-hash {
+  font-family: var(--font-mono);
+  color: var(--rr-steel);
+}
+
+/* The Host page: one card per step, numbered, with a state chip. */
+.host-steps {
+  display: grid;
+  gap: 14px;
+}
+
+.host-step-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.host-step-num {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--rr-ink);
+  background: var(--rr-ice);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--rr-ice) 45%, transparent);
+}
+
+.host-step.is-done .host-step-num {
+  background: var(--rr-deep);
+  color: var(--rr-glow);
+  box-shadow: inset 0 0 0 1.5px var(--rr-ice);
+}
+
+.host-step-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--rr-azure);
+  background: var(--rr-ink);
+  color: var(--rr-steel);
+  white-space: nowrap;
+}
+
+.chip .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.chip-ok {
+  color: var(--rr-glow);
+  border-color: var(--rr-ice);
+}
+
+.chip-warn {
+  color: var(--rr-ember);
+  border-color: color-mix(in srgb, var(--rr-ember) 60%, var(--rr-azure));
+}
+
+.chip-todo {
+  color: var(--rr-frost);
+}
+
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--rr-ink);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--rr-glow);
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.cmd .icon {
+  color: var(--rr-steel);
+}
+
+.host-job {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.host-job.failed {
+  color: var(--rr-ember);
+}
+
+.host-teaser {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--rr-deep) 80%, transparent), var(--glass) 55%);
+  box-shadow: inset 3px 0 0 var(--rr-ember), 0 18px 40px var(--shadow);
+}
+
+.host-teaser .card-title .icon {
+  color: var(--rr-ember);
+}
+
+.card-row + .card-row {
+  margin-top: 8px;
+}
+
+.stack {
+  display: grid;
+  gap: 10px;
+}

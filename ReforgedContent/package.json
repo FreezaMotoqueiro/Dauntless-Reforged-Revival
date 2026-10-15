@@ -1,0 +1,23 @@
+{
+  "name": "dauntless-reforged-revival-content",
+  "version": "0.1.0",
+  "description": "Content server for Dauntless Reforged Revival: hands the host-built 1.14.7 game runtime to registered players, plus the host's news and art pack",
+  "license": "AGPL-3.0-only",
+  "author": "Dauntless Reforged Revival contributors",
+  "contributors": [
+    "mixutin and the Dauntless Revived contributors (UndauntedContent, which this is based on)"
+  ],
+  "private": true,
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "test": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test \"build/test/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "26.0.0",
+    "typescript": "6.0.3"
+  }
+}

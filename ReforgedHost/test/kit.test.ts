@@ -1,0 +1,172 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { describe, it } from "node:test";
+import { firewallScript, hostConfigFromArgs, parseArgs } from "../src/cli";
+import { BACKEND_GAME_DATA, gameDataState, gameDataSteps, useExamples } from "../src/gamedata";
+import { DEFAULT_MONGO_URI, type HostConfig } from "../src/hostconfig";
+import { createInviteCode, formatInvite, inviteFor } from "../src/invite";
+import { directUri, mongodArgs } from "../src/mongo";
+import { paths } from "../src/paths";
+import { installServerRuntime, publishRuntime, sha256File } from "../src/publish";
+import { serviceEnvironment, Supervisor } from "../src/services";
+import { parseInvite } from "../../ReforgedLauncher/src/shared/invite";
+import { ParseRuntimeIndex } from "../../ReforgedContent/src/runtime";
+import { tempDir, write } from "./helpers";
+
+const detect = { tailscale: () => "100.101.102.103", mongod: () => "C:\\Program Files\\MongoDB\\Server\\8.0\\bin\\mongod.exe" };
+
+describe("command line", () => {
+    it("parses --key value, --key=value and flags", () => {
+        assert.deepEqual(parseArgs(["setup", "--mode", "private", "--name=Friday Hunts", "--skip-install", "--uses", "3"]), { _: ["setup"], mode: "private", name: "Friday Hunts", "skip-install": true, uses: "3" });
+    });
+
+    it("builds host.json from the arguments, the old host.json and what it finds on this PC", () => {
+        const c = hostConfigFromArgs(parseArgs(["--mode", "private", "--name", "Friday"]), null, detect);
+        assert.equal(c.host, "100.101.102.103", "private: this PC's Tailscale address");
+        assert.equal(c.gameAddress, "100.101.102.103");
+        assert.equal(c.mongo.uri, DEFAULT_MONGO_URI);
+        assert.equal(c.mongo.manage, true);
+        assert.equal(c.mongo.mongod, detect.mongod());
+        const pub = hostConfigFromArgs(parseArgs(["--mode", "public", "--host", "203.0.113.7"]), c, detect);
+        assert.equal(pub.gameAddress, "203.0.113.7");
+        assert.equal(pub.name, "Friday", "kept from the old host.json");
+        assert.throws(() => hostConfigFromArgs(parseArgs(["--mode", "public", "--host", "hunts.example.net"]), null, detect), /game-address/);
+        assert.equal(hostConfigFromArgs(parseArgs(["--mode", "public", "--host", "hunts.example.net", "--game-address", "203.0.113.7"]), null, detect).gameAddress, "203.0.113.7");
+        assert.throws(() => hostConfigFromArgs(parseArgs([]), null, detect), /--mode/);
+        assert.throws(() => hostConfigFromArgs(parseArgs(["--mode", "private"]), null, { ...detect, tailscale: () => null }), /Tailscale/);
+        assert.equal(hostConfigFromArgs(parseArgs(["--mode", "private", "--mongo-uri", "mongodb://db.local:27017/?replicaSet=rs0"]), null, detect).mongo.manage, false);
+    });
+
+    it("writes firewall rules: Tailscale-only in private mode, 443 and a closed allowlist rule in public mode", () => {
+        const base = hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "D:\\Games\\Dauntless"]), null, detect);
+        const priv = firewallScript(base, "C:\\node\\node.exe");
+        assert.match(priv, /100\.64\.0\.0\/10/);
+        assert.match(priv, /LocalPort|'61000'/);
+        assert.doesNotMatch(priv, /'443'/);
+        const pub = firewallScript({ ...base, mode: "public", host: "203.0.113.7", gameAddress: "203.0.113.7" }, "C:\\node\\node.exe");
+        assert.match(pub, /'443'/);
+        assert.match(pub, /ReforgedRevival-GamePorts-Allowlist/);
+        assert.match(pub, /'False'/);
+    });
+});
+
+describe("invites", () => {
+    const config: HostConfig = { version: 1, mode: "private", host: "100.101.102.103", gameAddress: "100.101.102.103", name: "Friday Hunts & Co", gameDir: null, registration: "INVITECODE", shareUrl: "https://login.tailscale.com/admin/invite/abcDEF123", mongo: { uri: DEFAULT_MONGO_URI, manage: true, mongod: null }, maxHuntServers: 3 };
+
+    it("are links the launcher accepts, private and public", () => {
+        const priv = parseInvite(inviteFor(config, "ABCD-EFGH-JKMN", null));
+        assert.ok(priv.ok);
+        if (priv.ok) assert.deepEqual(priv.invite, { mode: "private", host: "100.101.102.103", port: 61000, code: "ABCD-EFGH-JKMN", name: "Friday Hunts & Co", share: config.shareUrl, fp: null });
+        const fp = "ab".repeat(32);
+        const pub = parseInvite(inviteFor({ ...config, mode: "public", host: "hunts.example.net", gameAddress: "203.0.113.7", shareUrl: null }, "ABCD-EFGH-JKMN", fp));
+        assert.ok(pub.ok);
+        if (pub.ok) assert.deepEqual(pub.invite, { mode: "public", host: "hunts.example.net", port: 443, code: "ABCD-EFGH-JKMN", name: "Friday Hunts & Co", share: null, fp });
+        assert.throws(() => formatInvite({ mode: "public", host: "x.example", port: 443, code: "ABCD", name: "x", fp: null, share: null }), /fingerprint/);
+    });
+
+    it("get their code from the backend's local admin route with the admin key", async () => {
+        let seen: { key: unknown; body: string } | null = null;
+        const server = http.createServer((req, res) => {
+            let body = "";
+            req.on("data", (c) => (body += c));
+            req.on("end", () => {
+                seen = { key: req.headers["x-reforged-admin-key"], body };
+                if (req.headers["x-reforged-admin-key"] !== "k".repeat(64)) return void res.writeHead(403).end();
+                res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ code: "WXYZ-2345-6789" }));
+            });
+        });
+        await new Promise<void>((r) => server.listen(62060, "127.0.0.1", r));
+        try {
+            assert.equal(await createInviteCode("k".repeat(64), { uses: 2, note: "Alex" }, 62060), "WXYZ-2345-6789");
+            assert.deepEqual(JSON.parse((seen as unknown as { body: string }).body), { uses: 2, infinite: false, name: "Alex" });
+            await assert.rejects(createInviteCode("wrong".repeat(10), { uses: 1 }, 62060), /admin key/);
+            await assert.rejects(createInviteCode("k".repeat(64), { uses: 1 }, 62069), /not running/);
+        } finally {
+            server.close();
+        }
+    });
+});
+
+describe("runtime publishing", () => {
+    it("writes the files and a runtime.json the content server accepts, then installs them for the game servers", () => {
+        const p = paths(tempDir("publish"));
+        write(p.runtimeDll, Buffer.alloc(6000, 3));
+        write(p.loaderDll, Buffer.alloc(2000, 4));
+        const r = publishRuntime(p, new Date("2026-10-15T00:00:00Z"));
+        assert.match(r.version, /^20261015-[0-9a-f]{8}$/);
+        const index = ParseRuntimeIndex(JSON.parse(fs.readFileSync(path.join(p.runtimePublish, "runtime.json"), "utf8")));
+        assert.equal(index.files.find((f) => f.name === "winmm.dll")?.sha256, sha256File(p.loaderDll));
+        const win64 = tempDir("win64");
+        assert.deepEqual(installServerRuntime(p, win64).installed, ["MysticParadox.dll", "winmm.dll"]);
+        assert.deepEqual(installServerRuntime(p, win64).unchanged, ["MysticParadox.dll", "winmm.dll"]);
+    });
+
+    it("refuses before anything is built", () => {
+        assert.throws(() => publishRuntime(paths(tempDir("nopublish"))), /not built/);
+    });
+});
+
+describe("game data", () => {
+    it("tells real from example data and never overwrites a file", () => {
+        const dir = tempDir("gamedata");
+        assert.equal(gameDataState(dir, BACKEND_GAME_DATA).state, "missing");
+        for (const f of BACKEND_GAME_DATA) write(path.join(dir, f.replace(/\.json$/, ".example.json")), `{"example":"${f}"}`);
+        assert.equal(useExamples(dir, BACKEND_GAME_DATA).length, BACKEND_GAME_DATA.length);
+        const synthetic = gameDataState(dir, BACKEND_GAME_DATA);
+        assert.equal(synthetic.state, "synthetic");
+        assert.equal(synthetic.synthetic.length, BACKEND_GAME_DATA.length);
+        for (const f of BACKEND_GAME_DATA) write(path.join(dir, f), `{"real":"${f}"}`);
+        assert.equal(useExamples(dir, BACKEND_GAME_DATA).length, 0);
+        assert.equal(gameDataState(dir, BACKEND_GAME_DATA).state, "real");
+    });
+
+    it("skips the steps whose export or supplied source is not there", () => {
+        const p = paths(tempDir("steps"));
+        const steps = gameDataSteps(p, { examplesForMissing: false });
+        assert.equal(steps.length, 7);
+        assert.ok(steps.every((s) => s.skipIf?.() !== null), "nothing exported yet: every step is skipped with a reason");
+        write(path.join(p.exports, "hunts_1_14_7", "player_hunts.jsonl"), "{}\n");
+        assert.equal(steps[0].skipIf?.(), null, "the hunt tables run once the hunts are exported");
+    });
+});
+
+describe("services", () => {
+    it("get only the system's variables from the shell, never an old server setting", () => {
+        const env = serviceEnvironment({ PATH: "/bin", SystemRoot: "C:\\Windows", REFORGED_BACKEND_URL: "http://evil", MYSTPAX_X: "1", MONGODB_URI: "mongodb://elsewhere", NODE_ENV: "development", GATEWAY_SECRET: "old" }, { MONGODB_URI: "mongodb://127.0.0.1:27017/?replicaSet=rs0", NODE_ENV: "production" });
+        assert.deepEqual(env, { PATH: "/bin", SystemRoot: "C:\\Windows", MONGODB_URI: "mongodb://127.0.0.1:27017/?replicaSet=rs0", NODE_ENV: "production" });
+    });
+
+    it("start a process, wait until it answers, restart it when it dies, and stop it", async () => {
+        const dir = tempDir("svc");
+        const script = path.join(dir, "svc.js");
+        const counter = path.join(dir, "starts.txt");
+        write(script, `
+            const fs = require("fs");
+            fs.appendFileSync(${JSON.stringify(counter)}, "x");
+            const starts = fs.readFileSync(${JSON.stringify(counter)}, "utf8").length;
+            const server = require("http").createServer((q, s) => s.end(process.env.GREETING || "none")).listen(62061, "127.0.0.1", () => console.log("listening " + starts));
+            if (starts === 1) setTimeout(() => process.exit(3), 300);
+        `);
+        const lines: string[] = [];
+        const sup = new Supervisor(path.join(dir, "logs"), (name, line) => lines.push(`${name}: ${line}`));
+        const ok = await sup.start({ name: "svc", cwd: dir, command: process.execPath, args: [script], envFile: null, extraEnv: { GREETING: "hello" }, ready: { port: 62061, path: "/" } }, 10000);
+        assert.equal(ok, true);
+        // It exits once; the supervisor starts it again after its backoff.
+        const until = Date.now() + 10000;
+        while (fs.readFileSync(counter, "utf8").length < 2 && Date.now() < until) await new Promise((r) => setTimeout(r, 100));
+        assert.equal(fs.readFileSync(counter, "utf8").length, 2);
+        await sup.stopAll();
+        assert.ok(lines.some((l) => l.includes("restarting")));
+        assert.ok(fs.readFileSync(path.join(dir, "logs", "svc.log"), "utf8").includes("listening 1"));
+    });
+});
+
+describe("MongoDB", () => {
+    it("runs as a one-member replica set on loopback, and is first reached directly", () => {
+        const args = mongodArgs("D:\\rr\\.workspace\\mongodb", "D:\\rr\\.workspace\\logs\\mongod.log", 27017);
+        assert.deepEqual(args.slice(0, 6), ["--replSet", "rs0", "--bind_ip", "127.0.0.1", "--port", "27017"]);
+        assert.equal(directUri("mongodb://127.0.0.1:27017/?replicaSet=rs0"), "mongodb://127.0.0.1:27017/?directConnection=true");
+    });
+});

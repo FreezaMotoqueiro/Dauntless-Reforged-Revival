@@ -1,0 +1,7 @@
+node_modules/
+.vite/
+out/
+.test-build/
+.preview-build/
+release/
+*.log

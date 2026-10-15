@@ -1,0 +1,13 @@
+{
+  "name": "Mystic Paradox",
+  "repository": "https://github.com/pranav158/Mystic-Paradox",
+  "commit": "00d3be8aa812e334aaa26e5149d2607acb744360",
+  "archive": "https://codeload.github.com/pranav158/Mystic-Paradox/tar.gz/00d3be8aa812e334aaa26e5149d2607acb744360",
+  "license": "AGPL-3.0-only",
+  "additionalTerms": "ADDITIONAL_TERMS.md",
+  "patches": [
+    "patches/0001-runtime-backend-url-from-environment.patch",
+    "patches/0002-backend-reforged-launcher-api.patch",
+    "patches/0003-director-bind-host-and-instances.patch"
+  ]
+}
