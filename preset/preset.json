@@ -1,0 +1,88 @@
+{
+  "_comment": [
+    "Server preset \"Freeza\": the game data every server set up from this project starts from (ReforgedHost/src/preset.ts).",
+    "Read from an installed Dauntless 1.14.7 (647472) client for interoperability: identifiers and tuning values (item catalogue, store, progression and hunt tables), no game assets.",
+    "Sources: CatalogExporter's export from the running game, converted by Mystic Paradox's game-data generators and the host kit (npm run gamedata).",
+    "Game executable SHA-256 f3f95fbf22709ef077a11632ed95d675b7209b7e0172d9ecb9ba7d02a1fbb66b.",
+    "Lady Luck's Store and the platinum store are not in it: npm run gamedata builds them on each server from the live store captures (upstream/store-captures.json).",
+    "A host's own generated game data takes precedence over this preset. Regenerate it with npm run preset -- --create; do not edit the files by hand."
+  ],
+  "format": "dauntless-reforged-revival-preset",
+  "version": 1,
+  "name": "Freeza",
+  "game": "1.14.7 (647472)",
+  "executableSha256": "f3f95fbf22709ef077a11632ed95d675b7209b7e0172d9ecb9ba7d02a1fbb66b",
+  "created": "2026-10-15T14:52:05.055Z",
+  "sources": [
+    "CatalogExporter (tools/CatalogExporter in Mystic Paradox)",
+    "Mystic Paradox game-data generators",
+    "Dauntless Reforged Revival host kit"
+  ],
+  "files": [
+    {
+      "path": "backend/progression_config.json",
+      "sha256": "1be495d7ad94ea390422ded5fb8884dace0e32d343cd466e88045bf90afd1fae",
+      "bytes": 200260
+    },
+    {
+      "path": "backend/slayers_path.json",
+      "sha256": "0dc99cdc7d92eceb68cb0f8e9c5f0502fd3c420b30edde034c114e27a49522b5",
+      "bytes": 68750
+    },
+    {
+      "path": "backend/slayers_path_definitions.json",
+      "sha256": "2f3e2ffe1da71168824a58db9c179d3b3ad375ad111496158d6e16e32b3204f7",
+      "bytes": 88653
+    },
+    {
+      "path": "backend/reward_cache_store.json",
+      "sha256": "7750301e62a605e612d02bdbd694898ea5378caad1e252783b52995795a96a29",
+      "bytes": 159633
+    },
+    {
+      "path": "backend/inventory_storage_policy.json",
+      "sha256": "28cd97f70c1452125d72d07dacf146b9c28a7b3c339f75854c88ff9e97c8f528",
+      "bytes": 118436
+    },
+    {
+      "path": "director/player_hunts_table.json",
+      "sha256": "f24be9a5f4410c80c9414879292888bb800bb56f1e0e782f354c0248f470bac8",
+      "bytes": 302583
+    },
+    {
+      "path": "director/matchmaker_hunts_table.json",
+      "sha256": "7d0dbc08c74a82a857cb09e67619c921050d4595c3706d3b2e50b18fec0af58c",
+      "bytes": 334627
+    },
+    {
+      "path": "director/arena_easy_matchmaker_hunts.json",
+      "sha256": "9238ccb4979ed49b76aaf05b87ecc018cb1c2f010026bad1c0d17105fbe216ff",
+      "bytes": 45874
+    },
+    {
+      "path": "director/arena_hard_matchmaker_hunts.json",
+      "sha256": "3a0e560100c6b9fa2414f4c4ba58606c9f8cf2b700291d965d8152820fb3b58d",
+      "bytes": 324971
+    },
+    {
+      "path": "director/arena_elite_matchmaker_hunts.json",
+      "sha256": "0520887c897ade7fb06c83719db6548237c7ee0e1b66e4ebbf5763dc42695a8b",
+      "bytes": 340975
+    },
+    {
+      "path": "director/arena_hard_matchmaker_hunts_new.json",
+      "sha256": "0329201dc37407fe06ca6e5b69718b9cbfa288e54bf79a97049b857a04808e15",
+      "bytes": 36904
+    },
+    {
+      "path": "director/arena_elite_matchmaker_hunts_new.json",
+      "sha256": "05c82c7a61ea2b7d2a2281c39abacd75546d8e00c9d8268f1661d72763b34b85",
+      "bytes": 38316
+    },
+    {
+      "path": "backend/raw/progression_config.source.json",
+      "sha256": "5b1cf68aa1a76a31b79beb0cd7ae79b397a8f3f305c69cbfc13e094eec941c63",
+      "bytes": 200363
+    }
+  ]
+}

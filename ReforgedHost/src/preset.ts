@@ -11,7 +11,9 @@
 // - `npm run setup` applies it, and so does `npm run preset -- --apply`: a game-data file that is missing,
 //   or still the shipped example, is taken from the preset. A host's own generated data is never replaced
 //   (that is the override, as in Dauntless Revived) unless `--force`, which keeps the old file as .bak.
-// The files are the same set a game data pack holds (gamepack.ts).
+// The files are the same set a game data pack holds (gamepack.ts), less the two stores built from the
+// live store captures (captures.ts): those carry the captures' content and no license allows copying it
+// into the project, so every server builds them itself with npm run gamedata.
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -21,6 +23,7 @@ import type { Paths } from "./paths";
 
 export const PRESET_FORMAT = "dauntless-reforged-revival-preset";
 export const PRESET_MANIFEST = "preset.json";
+export const PRESET_EXCLUDED = ["backend/ladyluck_store.json", "backend/platinum_store.json"];
 
 export interface PresetManifest {
     _comment: string[];
@@ -51,12 +54,13 @@ export function readPresetManifest(p: Paths): PresetManifest | null {
 
 // Writes preset/ from the workspace's generated game data (the examples are left out). Files of an older
 // preset that the new one does not hold are removed, so the folder is exactly the manifest.
-export function createPreset(p: Paths, opts: { name: string; executable: string | null; now?: Date }): { manifest: PresetManifest; left: string[] } {
+export function createPreset(p: Paths, opts: { name: string; executable: string | null; executableSha256?: string; now?: Date }): { manifest: PresetManifest; left: string[]; excluded: string[] } {
     const now = opts.now ?? new Date();
     const files: PresetManifest["files"] = [];
     const left: string[] = [];
     const contents = new Map<string, string>();
     for (const [packPath, file] of packEntries(p)) {
+        if (PRESET_EXCLUDED.includes(packPath)) continue;
         if (!fs.existsSync(file)) {
             left.push(packPath);
             continue;
@@ -71,13 +75,15 @@ export function createPreset(p: Paths, opts: { name: string; executable: string 
         contents.set(packPath, data);
     }
     if (files.length === 0) throw new Error("no generated game data to make a preset from yet (npm run gamedata first, or pass --generate)");
-    const executableSha256 = opts.executable && fs.existsSync(opts.executable) ? sha256(fs.readFileSync(opts.executable)) : null;
+    // The executable's hash, read from it, or given (a preset made on another machine than the game's).
+    const executableSha256 = opts.executable && fs.existsSync(opts.executable) ? sha256(fs.readFileSync(opts.executable)) : opts.executableSha256 ?? null;
     const manifest: PresetManifest = {
         _comment: [
             `Server preset "${opts.name}": the game data every server set up from this project starts from (ReforgedHost/src/preset.ts).`,
             `Read from an installed Dauntless ${PACK_GAME} client for interoperability: identifiers and tuning values (item catalogue, store, progression and hunt tables), no game assets.`,
             "Sources: CatalogExporter's export from the running game, converted by Mystic Paradox's game-data generators and the host kit (npm run gamedata).",
             executableSha256 ? `Game executable SHA-256 ${executableSha256}.` : "Game executable SHA-256 not recorded (no game folder in host.json).",
+            "Lady Luck's Store and the platinum store are not in it: npm run gamedata builds them on each server from the live store captures (upstream/store-captures.json).",
             "A host's own generated game data takes precedence over this preset. Regenerate it with npm run preset -- --create; do not edit the files by hand.",
         ],
         format: PRESET_FORMAT,
@@ -103,7 +109,7 @@ export function createPreset(p: Paths, opts: { name: string; executable: string 
     }
     fs.mkdirSync(p.preset, { recursive: true });
     fs.writeFileSync(path.join(p.preset, PRESET_MANIFEST), JSON.stringify(manifest, null, 2) + "\n");
-    return { manifest, left };
+    return { manifest, left, excluded: PRESET_EXCLUDED };
 }
 
 function walk(dir: string): string[] {
@@ -133,6 +139,7 @@ export function applyPreset(p: Paths, opts: { force?: boolean; now?: Date } = {}
     const data = new Map<string, string>();
     for (const f of manifest.files) {
         if (!entries.has(f.path)) throw new Error(`the preset lists an unknown file: ${f.path}`);
+        if (PRESET_EXCLUDED.includes(f.path)) throw new Error(`the preset lists ${f.path}, which each server builds from the store captures instead`);
         const file = path.join(p.preset, ...f.path.split("/"));
         if (!fs.existsSync(file)) throw new Error(`the preset is incomplete: ${f.path} is missing`);
         const text = fs.readFileSync(file, "utf8");

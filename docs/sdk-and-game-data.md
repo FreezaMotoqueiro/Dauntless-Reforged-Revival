@@ -199,6 +199,9 @@ already generated). The files go to `preset/` with `preset.json`: the preset's n
 server's), the Dauntless build, the SHA-256 of your game executable, the tools, and each file's SHA-256.
 `npm run preset` lists it.
 
+Lady Luck's Store and the platinum store are left out: they are built from the store captures (above),
+which the project does not copy, so each server builds them with `npm run gamedata`.
+
 From then on `npm run setup` copies the preset into the game data wherever a file is missing or still the
 example, on this PC and in every other checkout that has `preset/` (commit it to ship it with the project).
 A host's own generated game data takes precedence and is never replaced, unless
