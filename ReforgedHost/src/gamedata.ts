@@ -84,15 +84,16 @@ export function gameDataSteps(p: Paths, opts: { examplesForMissing: boolean }): 
     const has = (file: string) => fs.existsSync(file);
     const exportMissing = (sub: string) => (has(path.join(p.exports, sub)) ? null : `no ${sub} in ${p.exports} yet (run the CatalogExporter, then copy Items_Analysis)`);
     const raw = (target: string) => path.join(p.rawGameData, SUPPLIED_SOURCES[target]);
+    // The progression config first: without it nobody loads into Ramsgate.
     return [
-        { title: "Director hunt tables", cwd: "director", command: "npm", args: ["run", "generate:hunt-tables", "--", "--apply"], skipIf: () => exportMissing("hunts_1_14_7") },
-        { title: "Slayer's Path graph", cwd: "backend", command: "npm", args: ["run", "generate:slayers-path", "--", "--apply"], skipIf: () => exportMissing(path.join("slayers_path_1_14_7", "player_journey_nodes.jsonl")) },
-        { title: "Slayer's Path definitions", cwd: "backend", command: "node", args: ["scripts/generate_slayers_path_definitions.cjs", "--apply"], skipIf: () => exportMissing(path.join("slayers_path_1_14_7", "player_journey_nodes.jsonl")) },
-        { title: "Reward Cache store", cwd: "backend", command: "npm", args: ["run", "reward-cache:generate"], skipIf: () => exportMissing("catalog_1_14_7.jsonl") },
         {
             title: "Progression config", cwd: "backend", command: "npm", args: ["run", "generate:progression-config", "--", "--apply"],
             skipIf: () => (has(raw("progression_config.json")) ? null : `no ${PROGRESSION_EXPORT_DIR} export in ${p.exports} and no ${SUPPLIED_SOURCES["progression_config.json"]} in ${p.rawGameData}${opts.examplesForMissing ? " (the example is used, and players cannot load into Ramsgate with it)" : ""}`),
         },
+        { title: "Director hunt tables", cwd: "director", command: "npm", args: ["run", "generate:hunt-tables", "--", "--apply"], skipIf: () => exportMissing("hunts_1_14_7") },
+        { title: "Slayer's Path graph", cwd: "backend", command: "npm", args: ["run", "generate:slayers-path", "--", "--apply"], skipIf: () => exportMissing(path.join("slayers_path_1_14_7", "player_journey_nodes.jsonl")) },
+        { title: "Slayer's Path definitions", cwd: "backend", command: "node", args: ["scripts/generate_slayers_path_definitions.cjs", "--apply"], skipIf: () => exportMissing(path.join("slayers_path_1_14_7", "player_journey_nodes.jsonl")) },
+        { title: "Reward Cache store", cwd: "backend", command: "npm", args: ["run", "reward-cache:generate"], skipIf: () => exportMissing("catalog_1_14_7.jsonl") },
         {
             title: "Lady Luck store (from a response you supply)", cwd: "backend", command: "npm", args: ["run", "generate:ladyluck-store", "--", "--apply"],
             skipIf: () => (has(raw("ladyluck_store.json")) ? null : `no ${SUPPLIED_SOURCES["ladyluck_store.json"]} in ${p.rawGameData}${opts.examplesForMissing ? " (the example is used)" : ""}`),
@@ -104,7 +105,9 @@ export function gameDataSteps(p: Paths, opts: { examplesForMissing: boolean }): 
     ];
 }
 
-export async function generateGameData(p: Paths, opts: { examplesForMissing: boolean; logFile: string; print: (line: string) => void }): Promise<{ ok: boolean; failed: string | null }> {
+// Runs every step it can: one that fails does not stop the others (each writes its own file), and the
+// failed ones are listed at the end.
+export async function generateGameData(p: Paths, opts: { examplesForMissing: boolean; logFile: string; print: (line: string) => void }): Promise<{ ok: boolean; failed: string[] }> {
     // The graph generator fills an existing slayers_path.json, so the example goes first.
     if (!fs.existsSync(path.join(p.backendGameData, "slayers_path.json")) && fs.existsSync(path.join(p.backendGameData, "slayers_path.example.json"))) {
         fs.copyFileSync(path.join(p.backendGameData, "slayers_path.example.json"), path.join(p.backendGameData, "slayers_path.json"));
@@ -122,6 +125,7 @@ export async function generateGameData(p: Paths, opts: { examplesForMissing: boo
             if (!fs.existsSync(path.join(p.rawGameData, SUPPLIED_SOURCES[target]))) useExamples(p.backendGameData, [target]);
         }
     }
+    const failed: string[] = [];
     for (const step of gameDataSteps(p, opts)) {
         const skip = step.skipIf?.() ?? null;
         if (skip) {
@@ -132,9 +136,11 @@ export async function generateGameData(p: Paths, opts: { examplesForMissing: boo
         const r = await run(step.command, step.args, { cwd: step.cwd === "backend" ? p.backendDir : p.directorDir, logFile: opts.logFile, quiet: true });
         if (r.code !== 0) {
             opts.print(`  failed: ${r.lastLine ?? `exit ${r.code}`} (full output in ${opts.logFile})`);
-            return { ok: false, failed: step.title };
+            failed.push(step.title);
+            continue;
         }
         opts.print("  done");
     }
-    return { ok: true, failed: null };
+    if (failed.length) opts.print(`Failed: ${failed.join(", ")}. The other steps ran; the full output is in ${opts.logFile}.`);
+    return { ok: failed.length === 0, failed };
 }

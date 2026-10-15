@@ -104,10 +104,11 @@ players that the server runs on example data.
    npm run gamedata
    ```
 
-   This runs, in order: the Director's hunt tables, the Slayer's Path graph and definitions, the
-   Reward Cache store, the progression config (from the progression export, below), the Lady Luck
-   store (when you supply its source, below), and the Platinum store with the storage policy. Each step that cannot run yet
-   says why. The output is in `.workspace\logs\gamedata.log`.
+   This runs, in order: the progression config (from the progression export, below), the Director's
+   hunt tables, the Slayer's Path graph and definitions, the Reward Cache store, the Lady Luck store
+   (when you supply its source, below), and the Platinum store with the storage policy. Each step that
+   cannot run yet says why. A step that fails does not stop the others: the failed ones are listed at
+   the end, with the error, and the full output is in `.workspace\logs\gamedata.log`.
 
 ### The progression config
 

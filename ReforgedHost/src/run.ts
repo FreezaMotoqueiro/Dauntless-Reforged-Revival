@@ -30,6 +30,12 @@ function resolveCommand(command: string, args: string[]): { file: string; args: 
     return { file: command, args, shell: false };
 }
 
+// The line that names a failure: the thrown error ("Error: Catalog item not found: x", "TypeError: ..."),
+// which comes before its stack and Node's "Node.js v24.x" trailer.
+export function isErrorLine(line: string): boolean {
+    return /^(Uncaught )?\w*Error\b/.test(line);
+}
+
 export function run(command: string, args: string[], opts: RunOptions): Promise<RunResult> {
     const resolved = resolveCommand(command, args);
     return new Promise((resolve) => {
@@ -38,14 +44,17 @@ export function run(command: string, args: string[], opts: RunOptions): Promise<
         log?.write(`\n$ ${command} ${args.join(" ")}  (in ${opts.cwd})\n`);
         let output = "";
         let lastLine: string | null = null;
+        let errorLine: string | null = null;
         const child = spawn(resolved.file, resolved.args, { cwd: opts.cwd, env: opts.env ?? process.env, shell: resolved.shell, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
         const onData = (chunk: Buffer) => {
             const text = chunk.toString("utf8");
             output = (output + text).slice(-64 * 1024);
             log?.write(text);
             if (!opts.quiet) process.stdout.write(text);
-            const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+            // Node's crash output ends with "Node.js v24.x": the error's own line says more.
+            const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !/^Node\.js v\d/.test(l));
             if (lines.length) lastLine = lines[lines.length - 1].slice(0, 300);
+            errorLine ??= lines.find(isErrorLine)?.slice(0, 300) ?? null;
         };
         child.stdout.on("data", onData);
         child.stderr.on("data", onData);
@@ -54,8 +63,9 @@ export function run(command: string, args: string[], opts: RunOptions): Promise<
             resolve({ code: -1, lastLine: e.message, output });
         });
         child.on("close", (code) => {
-            log?.end(() => resolve({ code: code ?? -1, lastLine, output }));
-            if (!log) resolve({ code: code ?? -1, lastLine, output });
+            const result = { code: code ?? -1, lastLine: code !== 0 && errorLine ? errorLine : lastLine, output };
+            log?.end(() => resolve(result));
+            if (!log) resolve(result);
         });
     });
 }
