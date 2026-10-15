@@ -1,0 +1,295 @@
+# Builds the Windows launcher for a GitHub release and attaches it to that release:
+#  - ReforgedRevivalLauncher-Setup.exe (the installer), ReforgedRevivalLauncher-<version>-win32-x64.zip
+#    (portable), the Squirrel update files (RELEASES and the -full.nupkg) and SHA256SUMS.txt;
+#  - then brings the rolling "launcher-updates" release up to it: installed launchers read that release
+#    to update themselves (UPDATE_FEED_URL in ReforgedLauncher/src/main/constants.ts).
+#
+# Three ways in:
+#  - Publishing a release (Releases > Draft a new release > Publish). The tag is the launcher version:
+#    0.2, 0.2.0, v0.2.0 or launcher-v0.2.0 build version 0.2.0; 0.3.0-beta.1 is a test version. The
+#    release must be made from a commit that has this file (the workflow of the tagged commit runs).
+#  - Run workflow (workflow_dispatch) with the tag of a published release: builds that tag with this
+#    workflow and attaches the files. For a release made before this file existed, or to repair one.
+#  - A push to any branch but main that changes this file: builds and collects the files without
+#    publishing anything, to check the workflow itself.
+#
+# The tagged commit is what is built. Files already on the release are replaced only when they have
+# these names. Prereleases and versions older than the one the feed offers never reach the feed.
+name: Launcher release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag of the published release to build and attach the launcher to (for example 0.1)
+        type: string
+        required: true
+  push:
+    branches-ignore: [main]
+    paths: [.github/workflows/launcher-release.yml]
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Version and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      ref: ${{ steps.plan.outputs.ref }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - name: Work out the tag, the version and what to build
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          case "$EVENT" in
+            release) tag="$EVENT_TAG" ;;
+            workflow_dispatch) tag="$(printf '%s' "$INPUT_TAG" | tr -d '[:space:]')" ;;
+            push) tag="" ;;
+            *) fail "unexpected trigger $EVENT" ;;
+          esac
+
+          if [ -z "$tag" ]; then
+            # A check of this workflow: the package.json version at this commit, nothing published.
+            {
+              echo "tag="
+              echo "version="
+              echo "prerelease=false"
+              echo "ref=$SHA"
+              echo "publish=false"
+            } >> "$GITHUB_OUTPUT"
+            echo "workflow check at ${SHA:0:12}: nothing is published"
+            exit 0
+          fi
+
+          [ "$tag" != launcher-updates ] || { echo "::notice::launcher-updates is the self-update feed, not a launcher release"; echo "publish=skip" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          # The release must exist and be published (a draft has no tag yet).
+          release="$(gh release view "$tag" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"' 2>&1)" ||
+            fail "there is no release with the tag \"$tag\" (publish it first, then run this again): $release"
+          read -r draft prerelease <<<"$release"
+          [ "$draft" = false ] || fail "the release $tag is a draft: publish it first"
+
+          # The launcher version from the tag: 0.1 -> 0.1.0; v1.2.3 and launcher-v1.2.3 -> 1.2.3.
+          version="${tag#launcher-}"
+          version="${version#v}"
+          version="${version#V}"
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] ||
+            fail "the tag \"$tag\" is not a launcher version: name it like 0.2, 0.2.0, v0.2.0 or 0.3.0-beta.1"
+          if [ -z "${BASH_REMATCH[3]}" ]; then
+            version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0${BASH_REMATCH[5]}"
+          fi
+          # A version with a prerelease part is a test version, whatever the release says.
+          case "$version" in *-*) prerelease=true ;; esac
+
+          # The commit the tag points to (through an annotated tag object, if it is one).
+          read -r type sha < <(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha') ||
+            fail "could not read the tag $tag"
+          if [ "$type" = tag ]; then
+            sha="$(gh api "repos/$GH_REPO/git/tags/$sha" --jq .object.sha)" || fail "could not read the tag object of $tag"
+          fi
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "ref=$sha"
+            echo "publish=true"
+          } >> "$GITHUB_OUTPUT"
+          echo "release $tag: launcher $version from ${sha:0:12} (test version: $prerelease)"
+
+  build:
+    name: Build the installer (Windows)
+    needs: prepare
+    if: needs.prepare.outputs.publish != 'skip'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ReforgedLauncher
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ReforgedLauncher/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # After npm ci, so the lock file still matches. Forge, Squirrel and app.getVersion() read it.
+      # A workflow check keeps the package.json version.
+      - name: Set the launcher version
+        run: |
+          set -euo pipefail
+          if [ -n "$RELEASE_VERSION" ]; then npm pkg set "version=$RELEASE_VERSION"; fi
+          version="$(node -p 'require("./package.json").version')"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "launcher $version"
+
+      - run: npm run make
+
+      - name: Collect the release files and their SHA-256 sums
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          shopt -s nullglob
+          # pick <dir> <pattern> <name>: copies the only file matching <pattern> in <dir> to release/<name>.
+          pick() {
+            # shellcheck disable=SC2206 # $2 is a pattern
+            local found=("$1"/$2)
+            [ "${#found[@]}" -eq 1 ] && [ -f "${found[0]}" ] || fail "expected one $2 in $1, found: ${found[*]:-none}"
+            cp "${found[0]}" "release/$3"
+          }
+          squirrel=out/make/squirrel.windows/x64
+          nuget="$(node -p 'require("electron-winstaller").convertVersion(process.argv[1])' "$VERSION")"
+          rm -rf release && mkdir release
+          pick "$squirrel" ReforgedRevivalLauncher-Setup.exe ReforgedRevivalLauncher-Setup.exe
+          pick "$squirrel" RELEASES RELEASES
+          pick "$squirrel" "ReforgedRevivalLauncher-$nuget-full.nupkg" "ReforgedRevivalLauncher-$nuget-full.nupkg"
+          pick out/make/zip/win32/x64 "*-win32-x64-$VERSION.zip" "ReforgedRevivalLauncher-$VERSION-win32-x64.zip"
+          cd release
+          sha256sum -- * | sed 's/ \*/  /' > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-release
+          path: ReforgedLauncher/release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attach the files to the release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    concurrency:
+      group: launcher-release
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-release
+          path: release
+
+      - name: Check the files
+        working-directory: release
+        run: |
+          set -euo pipefail
+          tr -d '\r' < SHA256SUMS.txt > sums && mv sums SHA256SUMS.txt
+          sha256sum --check --strict SHA256SUMS.txt
+          listed="$(awk 'NF { print $2 }' SHA256SUMS.txt | sort)"
+          present="$(find . -mindepth 1 -maxdepth 1 ! -name SHA256SUMS.txt -printf '%f\n' | sort)"
+          [ "$listed" = "$present" ] || { echo "::error::SHA256SUMS.txt does not list exactly the release files"; exit 1; }
+          [ "$(echo "$present" | wc -l)" -eq 4 ] || { echo "::error::expected 4 release files, found: $present"; exit 1; }
+
+      - name: Upload them to the release
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" release/* --clobber
+          echo "::notice::launcher $VERSION attached to the release $TAG: $(gh release view "$TAG" --json url --jq .url)"
+
+  feed:
+    name: Update the self-update feed
+    needs: [prepare, publish]
+    if: needs.prepare.outputs.publish == 'true' && needs.prepare.outputs.prerelease != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: launcher-feed
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      FEED: launcher-updates
+    steps:
+      # Filled from the published release, never from local files, so the feed offers exactly what the
+      # release holds. Safe to run again.
+      - name: Point the feed at this version
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          pkg="ReforgedRevivalLauncher-$VERSION-full.nupkg"
+          mkdir -p new current
+          gh release download "$TAG" --pattern RELEASES --pattern "$pkg" --dir new --clobber
+          [ -f "new/$pkg" ] || fail "the release $TAG has no $pkg"
+          # RELEASES must name exactly this package with its SHA-1 and size: Squirrel checks both.
+          expected="$(sha1sum "new/$pkg" | cut -d' ' -f1) $pkg $(stat -c %s "new/$pkg")"
+          actual="$(sed '1s/^\xEF\xBB\xBF//' new/RELEASES | tr -d '\r' | grep -v '^$')"
+          [ "${actual,,}" = "${expected,,}" ] || fail "the RELEASES file of $TAG does not describe $pkg"
+
+          if gh release view "$FEED" --json assets --jq '.assets[].name' > feed-assets.txt 2> feed-error.txt; then
+            if grep -qx RELEASES feed-assets.txt; then
+              gh release download "$FEED" --pattern RELEASES --dir current --clobber
+              offered="$(sed '1s/^\xEF\xBB\xBF//' current/RELEASES | tr -d '\r' | awk 'NF { print $2; exit }')"
+              offered="${offered#ReforgedRevivalLauncher-}"
+              offered="${offered%-full.nupkg}"
+              # Never move installed launchers back to an older version.
+              newer="$(printf '%s\n%s\n' "$offered" "$VERSION" | sort -V | tail -n1)"
+              if [ "$offered" != "$VERSION" ] && [ "$newer" = "$offered" ]; then
+                echo "::notice::the feed offers launcher $offered, newer than $VERSION: left as it is"
+                exit 0
+              fi
+              if cmp -s new/RELEASES current/RELEASES && grep -qxF "$pkg" feed-assets.txt; then
+                echo "the feed offers launcher $VERSION already"
+                exit 0
+              fi
+            fi
+          elif grep -qi 'release not found' feed-error.txt; then
+            gh release create "$FEED" --prerelease --latest=false --title "Launcher update feed" \
+              --notes "Installed launchers read this release to update themselves. To install the launcher, download ReforgedRevivalLauncher-Setup.exe from the latest release instead."
+          else
+            fail "could not read the $FEED release: $(cat feed-error.txt)"
+          fi
+          # The new package first, then RELEASES, so the feed never names a missing file.
+          gh release upload "$FEED" "new/$pkg" --clobber
+          gh release upload "$FEED" new/RELEASES --clobber
+          gh release view "$FEED" --json assets --jq '.assets[].name' | while read -r asset; do
+            if [ "$asset" != RELEASES ] && [ "$asset" != "$pkg" ]; then
+              gh release delete-asset "$FEED" "$asset" --yes
+            fi
+          done
+          echo "::notice::the self-update feed offers launcher $VERSION"
