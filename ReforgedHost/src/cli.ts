@@ -84,10 +84,13 @@ function isWindowsAdmin(): boolean {
 export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null }): HostConfig {
     const mode = (str(args, "mode") ?? existing?.mode) as HostConfig["mode"] | undefined;
     if (mode !== "private" && mode !== "public") throw new Error("say which kind of server: --mode private (friends over Tailscale) or --mode public (a server on the internet)");
-    let host = str(args, "host") ?? (existing?.mode === mode ? existing.host : undefined);
+    // A private server follows this PC's Tailscale address, which changes with the Tailscale account:
+    // setup without --host takes the current one, and only falls back to the old one when Tailscale is
+    // not running.
+    const current = mode === "private" ? detect.tailscale() : null;
+    const host = str(args, "host") ?? current ?? (existing?.mode === mode ? existing.host : undefined);
     if (!host && mode === "private") {
-        host = detect.tailscale() ?? undefined;
-        if (!host) throw new Error("Tailscale is not running here, so this PC's Tailscale address is unknown. Start Tailscale, or pass --host <your Tailscale IP>");
+        throw new Error("Tailscale is not running here, so this PC's Tailscale address is unknown. Start Tailscale, or pass --host <your Tailscale IP>");
     }
     if (!host) throw new Error("a public server needs --host <its public IPv4 address or DNS name>");
     let gameAddress = str(args, "game-address") ?? (existing?.mode === mode && existing.host === host ? existing.gameAddress : undefined);
@@ -283,6 +286,14 @@ async function start(p: Paths): Promise<void> {
     }
     if (config.mode === "public" && !isWindowsAdmin()) {
         fail("a public server changes Windows Firewall rules (the allowlist helper) and listens on port 443: run this terminal as administrator");
+    }
+    // The gateway and the game servers listen on the Tailscale address: one that changed (another
+    // Tailscale account) would only fail later, with a bind error.
+    if (config.mode === "private") {
+        const now = tailscaleIPv4();
+        if (now && now !== config.gameAddress) {
+            fail(`this PC's Tailscale address changed from ${config.gameAddress} to ${now} (a new Tailscale account?). Run setup again (the launcher: Host > Server > Update server; a terminal: npm run setup), then make new invites: the old ones name the old address`);
+        }
     }
     const gd = [gameDataState(p.backendGameData, BACKEND_GAME_DATA), gameDataState(p.directorGameData, DIRECTOR_GAME_DATA)];
     if (gd.some((g) => g.state === "missing")) fail("game data is missing: npm run gamedata (or npm run gamedata -- --examples for a start-up test only)");
