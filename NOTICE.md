@@ -46,7 +46,8 @@ Undaunted or any other project named here, and none of them endorses it.
   the runtime reads its backend address from `REFORGED_BACKEND_URL`; the backend gains the
   `/reforged/api` launcher API and an HTTP-only mode behind the gateway; the Director binds to one
   address and lists its instances; a hub is not torn down when its own phantom player's data cannot
-  load; the backend stores the XP and objectives the game server reports.
+  load; the backend stores the XP and objectives the game server reports; a client no longer crashes
+  travelling out of a hunt (a fix ported from Mystic Paradox's later runtime).
   [upstream/README.md](upstream/README.md) describes each patch.
 - The runtime's loader (`tools/RuntimeLoader` upstream) is derived from
   [coldloader-proxy](https://github.com/denuvosanctuary/coldloader-proxy); Mystic Paradox's
