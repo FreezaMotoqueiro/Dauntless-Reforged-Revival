@@ -48,6 +48,8 @@ export interface Paths {
     directorGameData: string;
     rawGameData: string;
     exports: string;
+    storeCaptures: string;
+    capturesPin: string;
     runtimePublish: string;
     config: string;
     hostJson: string;
@@ -93,6 +95,8 @@ export function paths(root: string): Paths {
         directorGameData: path.join(upstream, "ParadoxDirector", "game-data"),
         rawGameData: path.join(upstream, "ParadoxBackend", "game-data", "raw"),
         exports: path.join(upstream, "Items_Analysis"),
+        storeCaptures: path.join(upstream, "DauntlessEndpointDocumentation"),
+        capturesPin: path.join(root, "upstream", "store-captures.json"),
         runtimePublish: path.join(workspace, "runtime"),
         config,
         hostJson: path.join(config, "host.json"),

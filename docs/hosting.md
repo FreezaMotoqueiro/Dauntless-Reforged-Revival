@@ -131,8 +131,10 @@ button for it.
 
 - First version: the server side was tested end to end, but not yet with the real 1.14.7 client
   and real game servers. Expect to look at logs on the first evenings.
-- The Lady Luck store (`ladyluck_store.json`) cannot be generated from the game; Mystic Paradox
-  needs a captured server response for it. Without one, the example is used: no Lady Luck offers.
+- Lady Luck's Store and the platinum store's rank skips, passes and captured prices come from captures
+  of the live store service, which `npm run gamedata` downloads (see
+  [sdk-and-game-data.md](sdk-and-game-data.md#the-store-captures)). Without them, Lady Luck has no
+  offers and the platinum store only reconstructed ones.
 - The progression config is built from the game's own progression tables (see
   [sdk-and-game-data.md](sdk-and-game-data.md#the-progression-config)); the Hunt Pass has ranks but
   no rewards.

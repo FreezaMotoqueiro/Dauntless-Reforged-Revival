@@ -11,11 +11,20 @@ file as `.bak`).
 | File | What |
 |---|---|
 | `preset.json` | the manifest: the preset's name, the Dauntless build, the SHA-256 of the game executable the data was read from, the tools, and the SHA-256 of every file (a file that no longer matches is refused) |
-| `backend/*.json` | the backend's game data (progression config, Slayer's Path, stores, storage policy) |
-| `backend/raw/*.json` | the sources the backend's generators read (the progression config's, a Lady Luck capture) |
+| `backend/*.json` | the backend's game data (progression config, Slayer's Path, Reward Cache, storage policy) |
+| `backend/raw/*.json` | the sources the backend's generators read (the progression config's) |
 | `director/*.json` | the Director's hunt and matchmaker tables |
 
-Only this README is here until a preset is made. Make or refresh one from your own game:
+The preset here is "Freeza", read from the Dauntless 1.14.7 client whose executable's SHA-256 is in
+`preset.json`.
+
+Lady Luck's Store and the platinum store are never in a preset: they are built from captures of the
+live store service that no license lets this project copy (see
+[`upstream/store-captures.json`](../upstream/store-captures.json)), so `npm run gamedata` builds them
+on each server, which needs the CatalogExporter export there. `npm run preset -- --create` leaves them
+out, and a preset that lists them is refused.
+
+Make or refresh the preset from your own game:
 
 1. Play on your own server, inject CatalogExporter in Ramsgate and **Copy export** (launcher, Host page).
 2. `cd ReforgedHost` and `npm run preset -- --create --generate` (the generators run on the export, then

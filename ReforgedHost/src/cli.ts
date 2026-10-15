@@ -443,6 +443,7 @@ async function preset(p: Paths, args: Args): Promise<void> {
         say(`Server preset "${name}" written to ${p.preset}: ${r.manifest.files.length} files`);
         for (const f of r.manifest.files) say(`  ${f.path}  ${f.bytes} bytes`);
         if (r.left.length) say(`  not in it (missing, or still the example): ${r.left.join(", ")}`);
+        say(`  never in a preset (built from the store captures on each server): ${r.excluded.join(", ")}`);
         say(r.manifest.executableSha256 ? `  read from the game executable ${r.manifest.executableSha256}` : "  ! no game folder in host.json, so the executable's SHA-256 was not recorded");
         say("Every server set up from this checkout now starts from it (npm run setup applies it). To ship it with the project, commit preset/.");
         say("It is data read from Phoenix Labs' game: committing it to a public repository publishes it (see docs/sdk-and-game-data.md).");

@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { run } from "./run";
+import { ensureCaptures, missingCaptures, readCapturePin } from "./captures";
 import { PROGRESSION_EXPORT_DIR, writeProgressionSource } from "./progression";
 import type { Paths } from "./paths";
 
@@ -30,7 +31,8 @@ export const DIRECTOR_GAME_DATA = [
 
 // The sources of the two files no CatalogExporter catalog export produces, in game-data/raw/: the
 // progression config's is written from the progression export (progression.ts) unless the host supplies
-// a captured response; the Lady Luck store's only comes from a captured response.
+// a captured response; the Lady Luck store's, when the host supplies one, is used instead of the live
+// rotation in the pinned store captures (captures.ts).
 export const SUPPLIED_SOURCES: Record<string, string> = {
     "progression_config.json": "progression_config.source.json",
     "ladyluck_store.json": "ladyluck_store.source.json",
@@ -78,12 +80,22 @@ export interface Step {
     args: string[];
     // Skip the step (with this reason) when it returns a string.
     skipIf?: () => string | null;
+    // Run just before the step (after skipIf).
+    prepare?: () => void;
 }
 
 export function gameDataSteps(p: Paths, opts: { examplesForMissing: boolean }): Step[] {
     const has = (file: string) => fs.existsSync(file);
     const exportMissing = (sub: string) => (has(path.join(p.exports, sub)) ? null : `no ${sub} in ${p.exports} yet (run the CatalogExporter, then copy Items_Analysis)`);
     const raw = (target: string) => path.join(p.rawGameData, SUPPLIED_SOURCES[target]);
+    const capturesMissing = () => {
+        try {
+            return missingCaptures(p, readCapturePin(p.capturesPin)).length ? "the store captures are not there (they are fetched at the start of npm run gamedata)" : null;
+        } catch (e) {
+            return e instanceof Error ? e.message : String(e);
+        }
+    };
+    const suppliedLadyLuck = has(raw("ladyluck_store.json"));
     // The progression config first: without it nobody loads into Ramsgate.
     return [
         {
@@ -94,10 +106,16 @@ export function gameDataSteps(p: Paths, opts: { examplesForMissing: boolean }): 
         { title: "Slayer's Path graph", cwd: "backend", command: "npm", args: ["run", "generate:slayers-path", "--", "--apply"], skipIf: () => exportMissing(path.join("slayers_path_1_14_7", "player_journey_nodes.jsonl")) },
         { title: "Slayer's Path definitions", cwd: "backend", command: "node", args: ["scripts/generate_slayers_path_definitions.cjs", "--apply"], skipIf: () => exportMissing(path.join("slayers_path_1_14_7", "player_journey_nodes.jsonl")) },
         { title: "Reward Cache store", cwd: "backend", command: "npm", args: ["run", "reward-cache:generate"], skipIf: () => exportMissing("catalog_1_14_7.jsonl") },
-        {
-            title: "Lady Luck store (from a response you supply)", cwd: "backend", command: "npm", args: ["run", "generate:ladyluck-store", "--", "--apply"],
-            skipIf: () => (has(raw("ladyluck_store.json")) ? null : `no ${SUPPLIED_SOURCES["ladyluck_store.json"]} in ${p.rawGameData}${opts.examplesForMissing ? " (the example is used)" : ""}`),
-        },
+        // A response the host supplies wins; otherwise the live rotation from the store captures, kept to
+        // the items the host's own catalogue has.
+        suppliedLadyLuck
+            ? { title: "Lady Luck store", cwd: "backend", command: "npm", args: ["run", "generate:ladyluck-store", "--", "--apply"] }
+            : {
+                  title: "Lady Luck store", cwd: "backend", command: "npm", args: ["run", "ladyluck:enrich"],
+                  skipIf: () => exportMissing("catalog_1_14_7.jsonl") ?? capturesMissing(),
+                  // The enrichment rewrites an existing ladyluck_store.json.
+                  prepare: () => void useExamples(p.backendGameData, ["ladyluck_store.json"]),
+              },
         {
             title: "Platinum store and storage policy", cwd: "backend", command: "npm", args: ["run", "platinum:generate"],
             skipIf: () => exportMissing("store_item_images_1_14_7.jsonl") ?? (has(path.join(p.backendGameData, "ladyluck_store.json")) && has(path.join(p.backendGameData, "reward_cache_store.json")) ? null : "needs ladyluck_store.json and reward_cache_store.json first"),
@@ -107,11 +125,21 @@ export function gameDataSteps(p: Paths, opts: { examplesForMissing: boolean }): 
 
 // Runs every step it can: one that fails does not stop the others (each writes its own file), and the
 // failed ones are listed at the end.
-export async function generateGameData(p: Paths, opts: { examplesForMissing: boolean; logFile: string; print: (line: string) => void; only?: string[] }): Promise<{ ok: boolean; failed: string[] }> {
-    // The graph generator fills an existing slayers_path.json, so the example goes first.
-    if (!fs.existsSync(path.join(p.backendGameData, "slayers_path.json")) && fs.existsSync(path.join(p.backendGameData, "slayers_path.example.json"))) {
-        fs.copyFileSync(path.join(p.backendGameData, "slayers_path.example.json"), path.join(p.backendGameData, "slayers_path.json"));
+export async function generateGameData(p: Paths, opts: { examplesForMissing: boolean; logFile: string; print: (line: string) => void; only?: string[]; fetchCaptures?: typeof ensureCaptures }): Promise<{ ok: boolean; failed: string[] }> {
+    const wanted = (title: string) => !opts.only || opts.only.includes(title);
+    // The live store captures Lady Luck's and the platinum store's generators read (captures.ts). Without
+    // them those two stores are built without the live data, so a failed fetch is reported, not fatal.
+    if (wanted("Lady Luck store") || wanted("Platinum store and storage policy")) {
+        try {
+            const pin = readCapturePin(p.capturesPin);
+            const r = await (opts.fetchCaptures ?? ensureCaptures)(p, pin, opts.logFile);
+            opts.print(`- Store captures (${pin.name} at ${pin.commit.slice(0, 12)}): ${r === "fetched" ? "fetched" : "already there"}`);
+        } catch (e) {
+            opts.print(`- Store captures: not fetched, ${e instanceof Error ? e.message : String(e)}`);
+        }
     }
+    // The graph generator fills an existing slayers_path.json, so the example goes first.
+    useExamples(p.backendGameData, ["slayers_path.json"]);
     // The progression config's source, from the host's own progression export when no captured
     // response was supplied (see progression.ts).
     try {
@@ -126,13 +154,14 @@ export async function generateGameData(p: Paths, opts: { examplesForMissing: boo
         }
     }
     const failed: string[] = [];
-    for (const step of gameDataSteps(p, opts).filter((s) => !opts.only || opts.only.includes(s.title))) {
+    for (const step of gameDataSteps(p, opts).filter((s) => wanted(s.title))) {
         const skip = step.skipIf?.() ?? null;
         if (skip) {
             opts.print(`- ${step.title}: skipped, ${skip}`);
             continue;
         }
         opts.print(`- ${step.title}...`);
+        step.prepare?.();
         const r = await run(step.command, step.args, { cwd: step.cwd === "backend" ? p.backendDir : p.directorDir, logFile: opts.logFile, quiet: true });
         if (r.code !== 0) {
             opts.print(`  failed: ${r.lastLine ?? `exit ${r.code}`} (full output in ${opts.logFile})`);

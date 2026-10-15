@@ -46,7 +46,8 @@ Undaunted or any other project named here, and none of them endorses it.
   the runtime reads its backend address from `REFORGED_BACKEND_URL`; the backend gains the
   `/reforged/api` launcher API and an HTTP-only mode behind the gateway; the Director binds to one
   address and lists its instances; a hub is not torn down when its own phantom player's data cannot
-  load. [upstream/README.md](upstream/README.md) describes each patch.
+  load; the backend stores the XP and objectives the game server reports.
+  [upstream/README.md](upstream/README.md) describes each patch.
 - The runtime's loader (`tools/RuntimeLoader` upstream) is derived from
   [coldloader-proxy](https://github.com/denuvosanctuary/coldloader-proxy); Mystic Paradox's
   README, NOTICE.md and Cargo.toml give its license as Apache-2.0, while the LICENSE file in that
@@ -67,6 +68,16 @@ Undaunted or any other project named here, and none of them endorses it.
   remain under Mystic Paradox's terms), `brand/` (the emblem and icons, made for this project),
   `docs/` and the new parts of the components above, by the Dauntless Reforged Revival
   contributors, AGPL-3.0-only.
+
+### Store captures
+
+- Captures of the live Dauntless store service by EisigesEis:
+  [github.com/EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation),
+  published for academic and informational purposes, with no license. Mystic Paradox's store
+  generators read five of its files (Lady Luck's rotation, the platinum webstore and dyes, the Hunt
+  Pass rank skips and passes). They are **not** copied into this repository:
+  [upstream/store-captures.json](upstream/store-captures.json) names the commit and each file's
+  SHA-256, and `npm run gamedata` fetches them on the host's own machine.
 
 ### Other material
 

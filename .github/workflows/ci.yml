@@ -104,3 +104,17 @@ jobs:
           name: ReforgedRevivalLauncher-windows
           path: ReforgedLauncher/out/make/**
           if-no-files-found: error
+
+  # As in Dauntless Revived: once every check passed on main, a new ReforgedLauncher/package.json version
+  # is released and installed launchers update to it (launcher-release.yml). A version that has a
+  # release already publishes nothing. Set the repository variable LAUNCHER_AUTO_RELEASE to false to
+  # turn it off and only release by hand.
+  release:
+    name: Launcher release
+    needs: [launcher, services, upstream, launcher-windows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.LAUNCHER_AUTO_RELEASE != 'false'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/launcher-release.yml
+    with:
+      auto: true
