@@ -61,7 +61,7 @@ import { HashCache } from "./verify";
 import { checkRuntime, installLocalRuntime, installRuntime, isCompleteRuntimeDir, RuntimeError, runtimeSetId } from "./runtime-files";
 import { applyGameConfig } from "./engineini";
 import { detectStoreInstalls, locateExistingGame, readGameVersion, hasGameExe } from "./game-folder";
-import { buildLaunchArgs, describeLaunch, GameProcess, gameExitDetail, gameLocale, launchEnvironment, type SpawnFn } from "./launch";
+import { buildLaunchArgs, describeLaunch, GameProcess, gameExitDetail, gameLocale, launchEnvironment, STATUS_CONTROL_C_EXIT, type SpawnFn } from "./launch";
 import { backupFileText, KeyStore, KeyStoreError, serverId, type Encryptor, type KeySlot } from "./keystore";
 import { SettingsStore, type StoredServer, type StoredSettings } from "./settings";
 import { missingVcRuntime } from "./system";
@@ -175,6 +175,9 @@ export class Controller {
   private hostJob: HostJob | null = null;
   // While a Dumper-7 session runs: the runtime loader set aside so the game starts without it.
   private dumpRestore: { from: string; to: string } | null = null;
+  // A game started for Dumper-7, with or without a loader to put back. Its exit code is not a
+  // failed launch: Dumper-7's console window ends the game with 0xC000013A when it is closed.
+  private dumping = false;
 
   constructor(private readonly p: Platform) {
     this.settings = new SettingsStore(p.userDataDir, p.defaultLanguage, p.hostPlatform ?? process.platform);
@@ -184,7 +187,9 @@ export class Controller {
     this.game.onChange((running, code) => {
       log.info(running ? "game started" : `game exited (code ${code ?? "none"})`);
       if (!running) {
-        if (code !== null && code !== 0 && !this.dumpRestore) this.lastError = { code: "launch_failed", detail: gameExitDetail(code) };
+        const dumped = this.dumping;
+        this.dumping = false;
+        if (code !== null && code !== 0 && !dumped && (code >>> 0) !== STATUS_CONTROL_C_EXIT) this.lastError = { code: "launch_failed", detail: gameExitDetail(code) };
         void this.restoreAfterDump()
           .then(() => this.stopRelay())
           .then(() => this.inspectRuntime())
@@ -1433,11 +1438,13 @@ export class Controller {
       this.dumpRestore = { from: aside, to: loader };
     }
     this.setJob({ kind: "inject", state: "running", message: "Dumper-7", logFile: null });
+    this.dumping = true;
     const env = { ...(this.p.env ?? process.env) };
     for (const k of Object.keys(env)) if (/^(REFORGED_|MYSTICPARADOX_)/i.test(k)) delete env[k];
     try {
       await this.game.start(dir, ["-NoEAC", "-EpicPortal", "-DisableEOS"], env);
     } catch (e) {
+      this.dumping = false;
       await this.restoreAfterDump();
       return this.finishJob("inject", false, describeError(e));
     }
