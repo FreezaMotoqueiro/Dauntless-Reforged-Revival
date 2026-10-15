@@ -171,9 +171,31 @@ or **Import game data pack** on the launcher's Host page (step 4). The pack is c
 Dauntless build it is for and each file's hash); a file it replaces is kept beside it as
 `<name>.<time>.bak`. You still build the runtime from an SDK, since the runtime is compiled from it.
 
+### The project's server preset
+
+Like Dauntless Revived's bundled `vendor/*.json`, the project can carry the game data its servers start
+from, in [`preset/`](../preset) at the repository root. Make it from your own game:
+
+```powershell
+npm run preset -- --create --generate
+```
+
+`--generate` runs the generators on your CatalogExporter export first (leave it out to take the game data
+already generated). The files go to `preset/` with `preset.json`: the preset's name (`--name`, default your
+server's), the Dauntless build, the SHA-256 of your game executable, the tools, and each file's SHA-256.
+`npm run preset` lists it.
+
+From then on `npm run setup` copies the preset into the game data wherever a file is missing or still the
+example, on this PC and in every other checkout that has `preset/` (commit it to ship it with the project).
+A host's own generated game data takes precedence and is never replaced, unless
+`npm run preset -- --apply --force` (the replaced file is kept as `.bak`). A preset file that no longer
+matches its hash is refused. See [`preset/README.md`](../preset/README.md) for what committing it to a
+public repository means.
+
 ## Keep it to yourself
 
 The SDK, the exports and the game data are derived from Phoenix Labs' game. Do not commit, upload
 or share them; this repository's `.gitignore` and Mystic Paradox's keep them out of Git. Share only
 your server, through invites. The same goes for a game data pack: keep it with your own backups (an
-external drive, a private folder), not in a public repository or release.
+external drive, a private folder), not in a public repository or release. A server preset you commit
+is published with the repository; that is a choice for the project's owner (see the preset's README).
