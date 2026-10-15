@@ -82,6 +82,20 @@ achievement objectives) from a game server are now stored with the repository's 
 (`setObjectiveIfGreater`), so a stale report never lowers one; a player's own reports stay
 diagnostics-only. The backend log shows `mode=gameserver authoritativeMutation=<n>` for them.
 
+### 0006: a client no longer crashes travelling out of a hunt
+
+`ParadoxRuntime/dllmain.cpp`, client only. Leaving a hunt (back to Ramsgate, or into a second hunt) crashed
+the player's game in `UEngine::LoadMap` (`0x04271370`, at `0x04272D28`): "EXCEPTION_ACCESS_VIOLATION reading
+address 0x20" in `0x0285E6F0`, the new world's `PersistentLevel` read through `GetOutermost` while it is null.
+The fix is ported from Mystic Paradox's own (10 October 2026, upstream commit `c7869b6`): a map's previous
+`UWorld` survives the trip because one pending-kill input component keeps the GUObjectArray `Async` item flag,
+a garbage-collection keep flag, and with it its whole world. GC destroys the level but not the world, and when
+the client travels to that map again `LoadMap` finds the world in memory and reuses it. A hook on `LoadMap`'s
+entry now clears that stale `Async` bit on the pending-kill objects inside leftover worlds (pending-kill
+`UWorld`s other than `GWorld`; never RootSet or AsyncLoading objects), before `LoadMap`'s own full purge, so the
+purge frees them and the map loads fresh. The game's log says `[ZombieWorld] LoadMap: ...` when it does.
+`KEEP_STUCK_ASYNC_FLAGS.flag` beside the game executable turns it into a report only.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
