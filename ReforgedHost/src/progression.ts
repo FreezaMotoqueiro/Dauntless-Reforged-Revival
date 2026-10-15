@@ -17,7 +17,10 @@
 // Each experience track names its prestige track (PrestigeTrack_Weapon_Sword for the sword, ...), and the
 // client asks for those too ("Track PrestigeTrack_Weapon_Sword not found in the cached progression
 // configs"). The export has no rank table for them, so a prestige track the export does not hold gets the
-// ranks of the track that names it, and no rewards.
+// ranks of the track that names it, and no rewards. Every weapon gets one whether or not its row names it
+// (PrestigeTrack_Weapon_<weapon> for ExperienceTrack_Weapon_<weapon>): the Slayer level badge
+// (USlayerLevelWidget) picks its frame by the weapon's prestige level, which is -1 when the track is not in
+// the config, and indexes its frame list with it - the client crashes on entering Ramsgate.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -35,6 +38,8 @@ const TRACK_END = "2099-01-01T14:00:00+00:00";
 const HUNT_PASS_RANKS = 50;
 const HUNT_PASS_XP_PER_RANK = 100;
 const REQUIRED_TRACKS = ["ExperienceTrack_PlayerLevel"];
+const WEAPON_EXPERIENCE_PREFIX = "ExperienceTrack_Weapon_";
+const WEAPON_PRESTIGE_PREFIX = "PrestigeTrack_Weapon_";
 
 interface ExportedReward {
     rankId?: number;
@@ -122,6 +127,9 @@ export function buildProgressionConfig(exportsDir: string, activeHuntPass = ACTI
                 .sort((a, b) => a.rank_id - b.rank_id);
             const named = text(row.prestigeTrack);
             if (named && named !== "None" && requirements.length > 0) prestige.push({ id: named, requirements });
+            if (id.startsWith(WEAPON_EXPERIENCE_PREFIX) && requirements.length > 0) {
+                prestige.push({ id: WEAPON_PRESTIGE_PREFIX + id.slice(WEAPON_EXPERIENCE_PREFIX.length), requirements });
+            }
             if (requirements.length === 0) {
                 skipped.push(id);
                 continue;
