@@ -1290,7 +1290,7 @@ function renderHost(): void {
           "ol",
           { class: "steps-list" },
           h("li", {}, h("div", {}, h("div", {}, t("host_data_step_synthetic")), h("div", { class: "card-row" }, button(t("host_data_synthetic"), () => hostAct("synthetic_data"), { icon: "database", fk: "host-synthetic", disabled: running || !k.upstream.present })))),
-          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_export")), h("div", { class: "card-row" }, button(t("host_data_inject"), () => hostAct("inject_exporter"), { cls: "btn-primary", icon: "syringe", fk: "host-exporter", disabled: running || !windows || !k.builds.exporter || !snap.running.game })), snap.running.game ? null : h("p", { class: "small-print" }, t("host_data_need_game")))),
+          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_export")), h("div", { class: "card-row" }, button(t("host_data_inject"), () => hostAct("inject_exporter"), { cls: "btn-primary", icon: "syringe", fk: "host-exporter", disabled: running || !windows || !k.builds.exporter || !snap.running.game })), !k.builds.exporter ? h("p", { class: "small-print" }, t("host_data_need_exporter")) : snap.running.game ? null : h("p", { class: "small-print" }, t("host_data_need_game")))),
           h("li", {}, h("div", {}, h("div", {}, t("host_data_step_copy")), h("div", { class: "card-row" }, button(t("host_data_copy"), () => hostAct("copy_exports"), { icon: "copy", fk: "host-copy", disabled: running || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })))),
           h("li", {}, h("div", {}, h("div", {}, t("host_data_step_generate")), cmd("cd ReforgedHost; npm run gamedata"))),
         ),
