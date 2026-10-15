@@ -2,48 +2,48 @@
   <title>Dauntless Reforged Revival emblem: a blade reforged on an anvil, inside a shield</title>
   <defs>
     <linearGradient id="rr-rim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#7FE9F8"/>
-      <stop offset="0.45" stop-color="#1BA6DF"/>
-      <stop offset="1" stop-color="#0D5F92"/>
+      <stop offset="0" stop-color="#FBE67C"/>
+      <stop offset="0.45" stop-color="#1BDF55"/>
+      <stop offset="1" stop-color="#0D9238"/>
     </linearGradient>
     <linearGradient id="rr-face" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0B3150"/>
-      <stop offset="1" stop-color="#03111D"/>
+      <stop offset="0" stop-color="#0B5023"/>
+      <stop offset="1" stop-color="#031D0C"/>
     </linearGradient>
     <linearGradient id="rr-steel" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#9CB0C2"/>
-      <stop offset="0.48" stop-color="#F4F6F8"/>
-      <stop offset="0.52" stop-color="#C9D5E0"/>
-      <stop offset="1" stop-color="#7D92A6"/>
+      <stop offset="0" stop-color="#9CC2AA"/>
+      <stop offset="0.48" stop-color="#F4F8F5"/>
+      <stop offset="0.52" stop-color="#C9E0D1"/>
+      <stop offset="1" stop-color="#7DA68C"/>
     </linearGradient>
     <linearGradient id="rr-anvil" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#D8E2EA"/>
-      <stop offset="0.25" stop-color="#7E93A7"/>
-      <stop offset="1" stop-color="#2A3F53"/>
+      <stop offset="0" stop-color="#D8EADE"/>
+      <stop offset="0.25" stop-color="#7EA78D"/>
+      <stop offset="1" stop-color="#2A5339"/>
     </linearGradient>
     <linearGradient id="rr-hilt" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFE38A"/>
-      <stop offset="1" stop-color="#C8892A"/>
+      <stop offset="0" stop-color="#FFE78A"/>
+      <stop offset="1" stop-color="#C89B2A"/>
     </linearGradient>
     <radialGradient id="rr-ember" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#FFF1C2"/>
-      <stop offset="0.35" stop-color="#FFB24A"/>
+      <stop offset="0" stop-color="#FFF3C2"/>
+      <stop offset="0.35" stop-color="#FFC94A"/>
       <stop offset="0.7" stop-color="#FF6B1F" stop-opacity="0.55"/>
       <stop offset="1" stop-color="#FF6B1F" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <path d="M128 12 L224 50 V126 C224 182 184 223 128 244 C72 223 32 182 32 126 V50 Z" fill="url(#rr-face)" stroke="url(#rr-rim)" stroke-width="10" stroke-linejoin="round"/>
-  <path d="M128 31 L206 62 V126 C206 170 176 203 128 222 C80 203 50 170 50 126 V62 Z" fill="none" stroke="#1BA6DF" stroke-opacity="0.4" stroke-width="2"/>
+  <path d="M128 31 L206 62 V126 C206 170 176 203 128 222 C80 203 50 170 50 126 V62 Z" fill="none" stroke="#1BDF55" stroke-opacity="0.4" stroke-width="2"/>
   <circle cx="128" cy="150" r="54" fill="url(#rr-ember)" opacity="0.85"/>
   <circle cx="128" cy="34" r="8" fill="url(#rr-hilt)"/>
-  <rect x="122" y="38" width="12" height="22" rx="3" fill="#7A4E12"/>
-  <path d="M122 42h12M122 48h12M122 54h12" stroke="#C8892A" stroke-width="2"/>
+  <rect x="122" y="38" width="12" height="22" rx="3" fill="#7A5B12"/>
+  <path d="M122 42h12M122 48h12M122 54h12" stroke="#C89B2A" stroke-width="2"/>
   <path d="M94 60 H162 L168 66 L162 72 H94 L88 66 Z" fill="url(#rr-hilt)"/>
   <path d="M118 72 H138 V138 L128 156 L118 138 Z" fill="url(#rr-steel)"/>
-  <path d="M128 76 V146" stroke="#5E7488" stroke-opacity="0.55" stroke-width="2"/>
-  <path d="M58 146 C78 144 86 140 92 132 H190 V150 C176 152 168 156 164 162 C160 168 160 174 164 180 H182 V194 H74 V180 H92 C96 174 96 168 92 162 C88 157 82 154 74 154 C66 153 60 150 58 146 Z" fill="url(#rr-anvil)" stroke="#0A1E30" stroke-width="2.5" stroke-linejoin="round"/>
-  <path d="M92 132 H190 V138 H92 Z" fill="#F4F6F8" opacity="0.65"/>
-  <g fill="#FFD27A">
+  <path d="M128 76 V146" stroke="#5E886D" stroke-opacity="0.55" stroke-width="2"/>
+  <path d="M58 146 C78 144 86 140 92 132 H190 V150 C176 152 168 156 164 162 C160 168 160 174 164 180 H182 V194 H74 V180 H92 C96 174 96 168 92 162 C88 157 82 154 74 154 C66 153 60 150 58 146 Z" fill="url(#rr-anvil)" stroke="#0A3018" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M92 132 H190 V138 H92 Z" fill="#F4F8F5" opacity="0.65"/>
+  <g fill="#FFDD7A">
     <circle cx="98" cy="118" r="2.6"/>
     <circle cx="160" cy="112" r="2.2"/>
     <circle cx="172" cy="124" r="1.8"/>
@@ -51,5 +51,5 @@
     <circle cx="150" cy="98" r="1.4"/>
     <circle cx="108" cy="96" r="1.3"/>
   </g>
-  <path d="M74 206 H182" stroke="#1BA6DF" stroke-opacity="0.55" stroke-width="3" stroke-linecap="round"/>
+  <path d="M74 206 H182" stroke="#1BDF55" stroke-opacity="0.55" stroke-width="3" stroke-linecap="round"/>
 </svg>
