@@ -106,7 +106,7 @@ players that the server runs on example data.
 
    This runs, in order: the progression config (from the progression export, below), the Director's
    hunt tables, the Slayer's Path graph and definitions, the Reward Cache store, the Lady Luck store
-   (when you supply its source, below), and the Platinum store with the storage policy. Each step that
+   and the Platinum store with the storage policy (both with the store captures, below). Each step that
    cannot run yet says why. A step that fails does not stop the others: the failed ones are listed at
    the end, with the error, and the full output is in `.workspace\logs\gamedata.log`.
 
@@ -133,13 +133,27 @@ To rebuild only this file after a new progression export, without touching the o
 npm run gamedata -- --progression
 ```
 
-### The file you supply
+### The store captures
 
-`ladyluck_store.json` (the Lady Luck offers) is not in the game client, so no export can produce it.
-Mystic Paradox generates it from a captured server response that you put in
-`ParadoxBackend\game-data\raw\ladyluck_store.source.json` (an array of store entries). Without it,
-`npm run gamedata -- --example-sources` uses the example for that file (and for the progression
-config, when there is no progression export yet), so everything else is real.
+The Lady Luck offers and the platinum store's prices, Hunt Pass rank skips and passes are not in the
+game client, so no export can produce them. Mystic Paradox builds them from captures of the live store
+service, published by EisigesEis in
+[DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation).
+`npm run gamedata` downloads the five files it needs, at the commit and with the SHA-256 hashes in
+[`upstream/store-captures.json`](../upstream/store-captures.json), into
+`.workspace\Mystic-Paradox\DauntlessEndpointDocumentation\` (it needs git and the internet once). Then:
+
+- Lady Luck's Store is the live rotation, kept to the items your catalogue has (38 of its 43 offers
+  in 1.14.7: the five gold cell cores are not in the game), with their live prices in Steel and
+  Gilded Marks.
+- The platinum store gets the captured prices, the 100 Hunt Pass rank skips and the passes, besides
+  the reconstructed offers.
+
+If the download fails, the step says so and the other steps still run: Lady Luck then keeps the
+example (no offers) and the platinum store has only reconstructed offers. A captured Lady Luck response
+of your own, in `ParadoxBackend\game-data\raw\ladyluck_store.source.json` (an array of store
+entries), is always used instead of the live rotation. `npm run gamedata -- --example-sources` uses
+the examples for the files whose source is missing, so the services can start.
 
 ### Check
 

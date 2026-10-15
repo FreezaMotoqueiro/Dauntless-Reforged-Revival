@@ -69,6 +69,16 @@ Undaunted or any other project named here, and none of them endorses it.
   `docs/` and the new parts of the components above, by the Dauntless Reforged Revival
   contributors, AGPL-3.0-only.
 
+### Store captures
+
+- Captures of the live Dauntless store service by EisigesEis:
+  [github.com/EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation),
+  published for academic and informational purposes, with no license. Mystic Paradox's store
+  generators read five of its files (Lady Luck's rotation, the platinum webstore and dyes, the Hunt
+  Pass rank skips and passes). They are **not** copied into this repository:
+  [upstream/store-captures.json](upstream/store-captures.json) names the commit and each file's
+  SHA-256, and `npm run gamedata` fetches them on the host's own machine.
+
 ### Other material
 
 - The software the launcher ships, with its license texts:

@@ -82,6 +82,17 @@ achievement objectives) from a game server are now stored with the repository's 
 (`setObjectiveIfGreater`), so a stale report never lowers one; a player's own reports stay
 diagnostics-only. The backend log shows `mode=gameserver authoritativeMutation=<n>` for them.
 
+## Store captures
+
+[`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
+generators and not copied here either: five captures of the live store service from
+[EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
+(Lady Luck's rotation, the platinum webstore and dyes, the Hunt Pass rank skips and passes), with the
+commit and each file's SHA-256. `npm run gamedata` fetches that commit into `.workspace/captures/` and
+writes the files to `.workspace/Mystic-Paradox/DauntlessEndpointDocumentation/`, where
+`scripts/enrich_ladyluck_store.ts` and `scripts/generate_platinum_store.ts` look for them. A file whose
+bytes do not match its pinned hash is refused.
+
 ## Updating the pin
 
 1. Pick the new upstream commit and read its changes (the 1.14.7 runtime, the backend routes the
