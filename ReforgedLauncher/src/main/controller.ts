@@ -396,7 +396,36 @@ export class Controller {
     const parsed = parseInvite(text);
     if (!parsed.ok) return err("invite_invalid_format", parsed.error);
     const change = await this.certificateChange(parsed.invite);
-    return { ok: true, certificateChanged: change !== null, previousFingerprint: change?.fp ?? null };
+    const moved = await this.movedServer(parsed.invite);
+    return { ok: true, certificateChanged: change !== null, previousFingerprint: change?.fp ?? null, movedFrom: moved?.host ?? null };
+  }
+
+  // A private server that moved: its host changed Tailscale accounts, so the same server (same name,
+  // same port) is now at another address, where this PC has no key yet. The page offers to take the
+  // account along; its key goes to the new address only once the player confirmed.
+  private async movedServer(inv: Pick<Invite, "mode" | "host" | "port" | "name">): Promise<StoredServer | null> {
+    if (inv.mode !== "private") return null;
+    if (await this.keys.has({ host: inv.host, port: inv.port, mode: "private", fp: null })) return null;
+    const name = inv.name.trim();
+    const candidates = [this.s.server, ...this.s.savedServers].filter((sv): sv is StoredServer => sv !== null && sv.mode === "private" && sv.port === inv.port && sv.host !== inv.host && sv.name.trim() === name);
+    for (const sv of candidates) if (await this.keys.has({ host: sv.host, port: sv.port, mode: "private", fp: null })) return sv;
+    return null;
+  }
+
+  private async carryAccount(inv: Pick<Invite, "mode" | "host" | "port" | "name">): Promise<void> {
+    const from = await this.movedServer(inv);
+    if (!from) return;
+    const key = await this.keys.load({ host: from.host, port: from.port, mode: "private", fp: null });
+    if (!key) return;
+    await this.keys.save({ host: inv.host, port: inv.port, mode: "private", fp: null }, key);
+    const oldId = serverId(from.host, from.port, "private");
+    const newId = serverId(inv.host, inv.port, "private");
+    await this.settings.update((s) => {
+      if (s.usernames[oldId] && !s.usernames[newId]) s.usernames[newId] = s.usernames[oldId];
+      // The old address is gone: the server is listed once, at its new one.
+      s.savedServers = s.savedServers.filter((sv) => serverId(sv.host, sv.port, sv.mode) !== oldId);
+    });
+    log.info(`the account for ${inv.name} moved with its server from ${from.host}:${from.port} to ${inv.host}:${inv.port} (the player confirmed)`);
   }
 
   private async certificateChange(inv: Pick<Invite, "mode" | "host" | "port" | "fp">): Promise<{ fp: string | null } | null> {
@@ -408,7 +437,7 @@ export class Controller {
   // Joins the server from an invite. When a public invite carries another certificate than the
   // one this PC's key for that host:port belongs to, nothing is changed or sent (error
   // cert_changed, detail = the saved fingerprint) until the user confirms the new certificate.
-  async submitInvite(text: unknown, opts: { acceptNewCertificate?: boolean } = {}): Promise<ActionResult> {
+  async submitInvite(text: unknown, opts: { acceptNewCertificate?: boolean; carryAccount?: boolean } = {}): Promise<ActionResult> {
     if (this.busy || this.task) return err("busy");
     if (this.game.running) return this.fail("already_running");
     const parsed = parseInvite(text);
@@ -435,7 +464,7 @@ export class Controller {
     return OK;
   }
 
-  private async join(inv: Omit<Invite, "code"> & { code: string | null }, opts: { acceptNewCertificate?: boolean } = {}): Promise<ActionResult> {
+  private async join(inv: Omit<Invite, "code"> & { code: string | null }, opts: { acceptNewCertificate?: boolean; carryAccount?: boolean } = {}): Promise<ActionResult> {
     const change = await this.certificateChange(inv);
     if (change) {
       if (opts.acceptNewCertificate !== true) {
@@ -445,6 +474,7 @@ export class Controller {
       await this.keys.rebind({ host: inv.host, port: inv.port, mode: "public", fp: change.fp }, inv.fp as string);
       log.warn(`the user accepted a new certificate for ${inv.host}:${inv.port} (was ${change.fp ?? "not recorded"}, now ${inv.fp})`);
     }
+    if (opts.carryAccount === true) await this.carryAccount(inv);
     const current = this.s.server;
     const same = current !== null && current.mode === inv.mode && current.host === inv.host && current.port === inv.port && current.fp === inv.fp;
     const hasKeyForIt = await this.keys.has({ host: inv.host, port: inv.port, mode: inv.mode, fp: inv.fp });

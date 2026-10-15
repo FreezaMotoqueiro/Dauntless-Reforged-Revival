@@ -247,9 +247,9 @@ function registerIpc(c: Controller): void {
     const s = boundedString(text, 2048);
     return s === null ? { ok: false, error: { code: "invite_invalid_format" } } : c.checkInvite(s);
   });
-  handle(IPC.submitInvite, (_e, text, acceptNewCertificate) => {
+  handle(IPC.submitInvite, (_e, text, acceptNewCertificate, carryAccount) => {
     const s = boundedString(text, 2048);
-    return s === null ? { ok: false, error: { code: "invite_invalid_format" } } : c.submitInvite(s, { acceptNewCertificate: acceptNewCertificate === true });
+    return s === null ? { ok: false, error: { code: "invite_invalid_format" } } : c.submitInvite(s, { acceptNewCertificate: acceptNewCertificate === true, carryAccount: carryAccount === true });
   });
   handle(IPC.retryConnect, () => c.connect());
   handle(IPC.forgetServer, () => c.forgetServer());

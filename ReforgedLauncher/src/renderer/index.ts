@@ -41,6 +41,7 @@ type Modal =
   | { kind: "invite"; link: string; name: string; host: string; mode: "public" | "private"; fp: string | null }
   // A public invite whose certificate is not the one this PC's key for that server belongs to.
   | { kind: "cert_changed"; link: string; name: string; host: string; oldFp: string | null; newFp: string }
+  | { kind: "server_moved"; link: string; name: string; oldHost: string; newHost: string }
   | { kind: "trust_runtime" }
   | { kind: "logout" }
   | { kind: "leave" }
@@ -936,7 +937,7 @@ async function onPrimary(): Promise<void> {
       const text = state.inviteText.trim();
       // A changed certificate gets the warning first, never a direct join.
       const m = await inviteModal(text);
-      if (m?.kind === "cert_changed") {
+      if (m?.kind === "cert_changed" || m?.kind === "server_moved") {
         showModal(m);
         return;
       }
@@ -2165,6 +2166,21 @@ function renderModal(): void {
         return null;
       };
       break;
+    case "server_moved":
+      title = t("moved_title", { name: m.name });
+      text = [
+        h("p", { class: "modal-text" }, t("moved_text", { name: m.name, old: hideText(m.oldHost), new: hideText(m.newHost) })),
+        h("p", { class: "modal-text modal-warn" }, icon("info"), h("span", {}, t("moved_advice"))),
+      ];
+      confirmLabel = t("moved_confirm");
+      onConfirm = async () => {
+        const r = await api.submitInvite(m.link, false, true);
+        if (r.ok && state.inviteText.trim() === m.link) clearInviteInput();
+        await report(r);
+        setView("play");
+        return null;
+      };
+      break;
     case "cert_changed":
       title = t("certchg_title");
       text = [
@@ -2310,6 +2326,7 @@ async function inviteModal(link: string): Promise<Modal | null> {
   const inv = r.invite;
   const check = await api.checkInvite(link);
   if (check.ok && check.certificateChanged && inv.fp) return { kind: "cert_changed", link, name: inv.name, host: inv.host, oldFp: check.previousFingerprint, newFp: inv.fp };
+  if (check.ok && check.movedFrom) return { kind: "server_moved", link, name: inv.name, oldHost: check.movedFrom, newHost: inv.host };
   return { kind: "invite", link, name: inv.name, host: inv.host, mode: inv.mode, fp: inv.fp };
 }
 

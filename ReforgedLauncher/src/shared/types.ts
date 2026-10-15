@@ -109,7 +109,8 @@ export type ActionResult = { ok: true } | { ok: false; error: LauncherError };
 // Asked before joining from an invite. certificateChanged: this PC has a key for the invite's
 // host:port that belongs to another certificate (previousFingerprint, null if not recorded).
 export type InviteCheck =
-  | { ok: true; certificateChanged: boolean; previousFingerprint: string | null }
+  // movedFrom: a private server this PC has an account on, now at the invite's new address (its old address).
+  | { ok: true; certificateChanged: boolean; previousFingerprint: string | null; movedFrom: string | null }
   | { ok: false; error: LauncherError };
 
 export type TaskKind = "verify" | "runtime";
