@@ -5,7 +5,7 @@
 // from the invite). It can only call the small typed API in preload.ts, and every argument is
 // checked again here.
 
-import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol, safeStorage, screen, session, shell, type IpcMainInvokeEvent } from "electron";
+import { app, autoUpdater, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, protocol, safeStorage, screen, session, shell, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import { existsSync, promises as fsp } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -16,9 +16,9 @@ import { findRunningClients } from "./main/launch";
 import { injectDll } from "./main/injector";
 import { findTailscale } from "./main/system";
 import { describeError, log, logToFile } from "./main/log";
-import { boundedString, externalTarget, hostAction, hostFolder, isTrustedPageUrl, relayPortOverride, settingsPatch } from "./main/ipc-validate";
+import { boundedString, externalTarget, hostAction, hostFolder, hostSetupRequest, inviteFor, isTrustedPageUrl, relayPortOverride, settingsPatch } from "./main/ipc-validate";
 import { INVITE_SCHEME, parseInvite } from "./shared/invite";
-import { IPC, type HostKit, type Snapshot, type TaskProgress } from "./shared/types";
+import { IPC, type HostKit, type HostServerView, type Snapshot, type TaskProgress } from "./shared/types";
 import { systemLanguage, translate } from "./shared/i18n";
 import { APP_ID, SQUIRREL_NAME, UPDATE_FEED_URL } from "./main/constants";
 
@@ -297,7 +297,8 @@ function registerIpc(c: Controller): void {
   handle(IPC.openLogsFolder, () => c.openLogsFolder());
   handle(IPC.logout, () => c.logout());
   handle(IPC.installUpdate, () => c.installUpdate());
-  handle(IPC.hostGet, () => c.hostKit());
+  // The page asks when it opens, after an action and on "Check again": the requirements are looked at afresh.
+  handle(IPC.hostGet, () => c.hostKit({ fresh: true }));
   handle(IPC.hostChooseWorkspace, () => c.hostChooseWorkspace());
   handle(IPC.hostChooseDumper, () => c.hostChooseDumper());
   handle(IPC.hostImportGameData, () => c.hostImportGameData());
@@ -308,6 +309,23 @@ function registerIpc(c: Controller): void {
   handle(IPC.hostOpen, (_e, folder) => {
     const f = hostFolder(folder);
     return f === null ? { ok: false, error: { code: "unknown" } } : c.hostOpen(f);
+  });
+  handle(IPC.hostServerGet, () => c.hostServerView());
+  handle(IPC.hostServerStart, () => c.hostServerStart());
+  handle(IPC.hostServerStop, () => c.hostServerStop());
+  handle(IPC.hostSetup, (_e, req) => {
+    const r = hostSetupRequest(req);
+    return r === null ? { ok: false, error: { code: "host_failed", detail: "setup_form" } } : c.hostSetup(r);
+  });
+  handle(IPC.hostCreateInvite, (_e, forName) => {
+    const f = inviteFor(forName);
+    return f === undefined ? { ok: false, error: { code: "unknown" } } : c.hostCreateInvite(f);
+  });
+  // The page may not use the clipboard itself (every permission is refused): an invite link is copied here.
+  handle(IPC.copyText, (_e, text) => {
+    const t = boundedString(text, 4096);
+    if (t !== null) clipboard.writeText(t);
+    return t !== null;
   });
   handle(IPC.dismissNotice, () => c.dismissNotice());
   handle(IPC.dismissError, () => c.dismissError());
@@ -329,7 +347,7 @@ function registerIpc(c: Controller): void {
 // ------------------------------------------------------------------ platform for the controller
 
 function makePlatform(): Platform {
-  const send = (channel: string, payload: Snapshot | TaskProgress | HostKit) => {
+  const send = (channel: string, payload: Snapshot | TaskProgress | HostKit | HostServerView) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   };
   const relayPort = relayPortOverride(process.env.REFORGED_RELAY_PORT);
@@ -404,6 +422,7 @@ function makePlatform(): Platform {
     emitSnapshot: (s) => send(IPC.snapshot, s),
     emitProgress: (p) => send(IPC.progress, p),
     emitHostKit: (k) => send(IPC.hostKit, k),
+    emitHostServer: (v) => send(IPC.hostServer, v),
     findTailscale: () => findTailscale(process.env, existsSync, process.platform),
     findRunningClients: () => findRunningClients(process.platform),
     inject: (opts) => injectDll(opts),

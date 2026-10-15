@@ -5,6 +5,8 @@
 import type { ExternalTarget } from "../shared/types";
 import {
   DUMPER7_URL,
+  DUMPER7_ZIP_URL,
+  GIT_URL,
   INSTALLING_GUIDE_URL,
   LEGENDARY_URL,
   MONGODB_URL,
@@ -17,10 +19,12 @@ import {
   PROJECT_LICENSE_URL,
   PROJECT_URL,
   REVIVED_URL,
+  RUST_INSTALLER_URL,
   RUST_URL,
   TAILSCALE_DOWNLOAD_URL,
   UNDAUNTED_URL,
   VC_REDIST_URL,
+  VISUAL_STUDIO_INSTALLER_URL,
   VISUAL_STUDIO_URL,
 } from "./constants";
 
@@ -44,6 +48,10 @@ export const FIXED_LINKS: Readonly<Record<FixedTarget, string>> = Object.freeze(
   rust: RUST_URL,
   nodejs: NODEJS_URL,
   mongodb: MONGODB_URL,
+  git: GIT_URL,
+  visual_studio_installer: VISUAL_STUDIO_INSTALLER_URL,
+  rust_installer: RUST_INSTALLER_URL,
+  dumper7_zip: DUMPER7_ZIP_URL,
   revived_source: REVIVED_URL,
   mystic_source: MYSTIC_URL,
   undaunted_source: UNDAUNTED_URL,

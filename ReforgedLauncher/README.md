@@ -27,9 +27,13 @@ Players: see [docs/players.md](../docs/players.md). Hosts: see [docs/hosting.md]
    command line (`-AUTH_TYPE=exchangecode -AUTH_PASSWORD=<key> ...`) and
    `REFORGED_BACKEND_URL=http://127.0.0.1:61100` for the runtime.
 
-The **Host** page (Settings > Advanced > Host tools) walks a host through generating the SDK with
-Dumper-7, building the runtime, preparing the game data and publishing the runtime. See
-[docs/sdk-and-game-data.md](../docs/sdk-and-game-data.md).
+The **Host** page (Settings > Advanced > Host tools) does a host's work without a terminal, in four
+tabs: **Server** (prepare it with `npm run setup`, start and stop it, create invites, its output),
+**Game data** (generate it from CatalogExporter's export, save and import packs), **Build** (the SDK
+with Dumper-7, the runtime, CatalogExporter, publishing the runtime) and **Requirements** (what this
+PC needs, detected, with downloads and install steps). It runs ReforgedHost's commands with the
+host's own Node.js (`src/main/hostserver.ts`); the server stops when the launcher closes. See
+[docs/hosting.md](../docs/hosting.md) and [docs/sdk-and-game-data.md](../docs/sdk-and-game-data.md).
 
 ## Development
 
@@ -80,6 +84,7 @@ A release can also be published by hand, and then builds the launcher and attach
 | `src/main/hostapi.ts`, `runtime-files.ts` | server API calls and the runtime install |
 | `src/main/game-folder.ts`, `launch.ts`, `engineini.ts` | finding, configuring and starting the game |
 | `src/main/hostkit.ts`, `injector.ts` | the Host page's checks and actions |
+| `src/main/hostserver.ts`, `requirements.ts` | the host kit's commands and the server run from the Host page; the Requirements tab's checks |
 | `src/shared/` | code shared with the page: types, invite parser, text (`i18n.ts`), UI model |
 | `src/renderer/` | the page: plain TypeScript and CSS, Dauntless Revived's design |
 | `test/` | node:test tests |

@@ -3,7 +3,7 @@
 // of scenes through the address: ?scene=ready&lang=pt-BR&view=host. Nothing here ships.
 
 import type { LauncherApi } from "../src/preload";
-import type { HostKit, Language, NewsItem, Phase, Snapshot, TaskProgress } from "../src/shared/types";
+import type { HostKit, HostServerView, Language, NewsItem, Phase, Snapshot, TaskProgress } from "../src/shared/types";
 import type { ServerStatus } from "../src/shared/status";
 
 const params = new URLSearchParams(location.search);
@@ -124,9 +124,34 @@ const hostKit: HostKit = {
   builds: { runtime: scene !== "host-empty", loader: scene !== "host-empty", exporter: false, published: false },
   toolchain: { visualStudio: "Visual Studio Community 2022 (17.14)", msbuild: true, cargo: true },
   gameData: { backend: "synthetic", director: "synthetic" },
-  exports: { present: false },
+  exports: { present: false, inGame: scene !== "host-empty" },
+  serverConfig: scene === "host-empty" ? { configured: false, name: null, mode: null, host: null } : { configured: true, name: "Friday Night Hunts", mode: "private", host: "100.101.102.103" },
+  requirements: [
+    { id: "dauntless", state: "ok", detail: "1.14.7 (647472)", problem: null },
+    { id: "git", state: "ok", detail: "2.47.1.windows.1", problem: null },
+    { id: "node", state: scene === "host-empty" ? "missing" : "ok", detail: scene === "host-empty" ? null : "v22.11.0", problem: null },
+    { id: "mongodb", state: "problem", detail: "8.0", problem: "service_running" },
+    { id: "tailscale", state: "ok", detail: null, problem: null },
+    { id: "visual_studio", state: scene === "host-empty" ? "problem" : "ok", detail: "Visual Studio Community 2022", problem: scene === "host-empty" ? "no_cpp" : null },
+    { id: "rust", state: "missing", detail: null, problem: null },
+    { id: "dumper7", state: "ok", detail: "Dumper-7.dll", problem: null },
+    { id: "vc_redist", state: "ok", detail: null, problem: null },
+  ],
   job: scene === "host-empty" ? null : { kind: "build_loader", state: "done", message: "Finished `release` profile [optimized] target(s) in 41.2s", logFile: "C:\\Users\\host\\Dauntless-Reforged-Revival\\.workspace\\logs\\build_loader.log" },
 };
+
+// The Host page's server: Start runs it for a moment, then it is "Online"; Stop stops it.
+let hostServer: HostServerView = {
+  state: scene === "host-running" ? "running" : "stopped",
+  message: null,
+  lines: scene === "host-running" ? ["> start", "mongod   | waiting for connections on port 27017", "backend  | listening on 127.0.0.1:61000", "director | 0 instances", "content  | serving news and the runtime", "gateway  | private mode on 100.101.102.103:61000", 'Server "Friday Night Hunts" is up: http://100.101.102.103:61000 inside your tailnet'] : [],
+  invite: scene === "host-running" ? { link: "reforged-revival://join?v=1&m=private&h=100.101.102.103&p=61000&c=RR-7K2M-9QXA&n=Friday%20Night%20Hunts", for: "Alex" } : null,
+};
+const hostServerListeners: ((v: HostServerView) => void)[] = [];
+function setHostServer(patch: Partial<HostServerView>): void {
+  hostServer = { ...hostServer, ...patch };
+  for (const l of hostServerListeners) l(hostServer);
+}
 
 let snap = sceneSnapshot();
 const snapshotListeners: ((s: Snapshot) => void)[] = [];
@@ -179,6 +204,23 @@ const mock: LauncherApi = {
   hostImportGameData: ok,
   hostAction: ok,
   hostOpen: ok,
+  hostServerGet: async () => hostServer,
+  hostServerStart: async () => {
+    setHostServer({ state: "starting", lines: [...hostServer.lines, "> start", "mongod   | waiting for connections on port 27017"] });
+    setTimeout(() => setHostServer({ state: "running", lines: [...hostServer.lines, "backend  | listening on 127.0.0.1:61000", 'Server "Friday Night Hunts" is up'] }), 1200);
+    return { ok: true };
+  },
+  hostServerStop: async () => {
+    setHostServer({ state: "stopping" });
+    setTimeout(() => setHostServer({ state: "stopped", lines: [...hostServer.lines, "Stopped."] }), 800);
+    return { ok: true };
+  },
+  hostSetup: ok,
+  hostCreateInvite: async (forName) => {
+    setHostServer({ invite: { link: "reforged-revival://join?v=1&m=private&h=100.101.102.103&p=61000&c=RR-4D8F-2WJN&n=Friday%20Night%20Hunts", for: forName } });
+    return { ok: true };
+  },
+  copyText: async () => true,
   dismissNotice: async () => update({ notice: null }),
   dismissError: async () => update({ lastError: null }),
   minimize: async () => undefined,
@@ -192,6 +234,9 @@ const mock: LauncherApi = {
     if (scene === "installing") setTimeout(() => fn(progress), 50);
   },
   onHostKit: () => undefined,
+  onHostServer: (fn) => {
+    hostServerListeners.push(fn);
+  },
   onInviteLink: () => undefined,
   onWindowState: () => undefined,
 };

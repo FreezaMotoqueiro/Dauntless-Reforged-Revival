@@ -21,6 +21,12 @@ export const RUST_URL = "https://www.rust-lang.org/tools/install";
 export const NODEJS_URL = "https://nodejs.org/en/download";
 export const MONGODB_URL = "https://www.mongodb.com/try/download/community";
 export const TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download";
+// Direct downloads for the Host page's Requirements tab: each starts the official installer, or the
+// source archive (Dumper-7 is built from source).
+export const GIT_URL = "https://git-scm.com/download/win";
+export const VISUAL_STUDIO_INSTALLER_URL = "https://aka.ms/vs/17/release/vs_community.exe";
+export const RUST_INSTALLER_URL = "https://win.rustup.rs/x86_64";
+export const DUMPER7_ZIP_URL = "https://github.com/Encryqed/Dumper-7/archive/refs/heads/main.zip";
 export const VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
 // Self-update feed: a rolling GitHub release that the release workflow keeps current.
 export const UPDATE_FEED_URL = `${PROJECT_URL}/releases/download/launcher-updates`;

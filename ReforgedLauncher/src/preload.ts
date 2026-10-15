@@ -11,6 +11,8 @@ import type {
   HostAction,
   HostFolder,
   HostKit,
+  HostServerView,
+  HostSetupRequest,
   InviteCheck,
   NewsItem,
   RegisterOutcome,
@@ -69,6 +71,13 @@ const api = {
   hostImportGameData: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostImportGameData),
   hostAction: (action: HostAction): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostAction, String(action)),
   hostOpen: (folder: HostFolder): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostOpen, String(folder)),
+  hostServerGet: (): Promise<HostServerView> => ipcRenderer.invoke(IPC.hostServerGet),
+  hostServerStart: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostServerStart),
+  hostServerStop: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostServerStop),
+  hostSetup: (req: HostSetupRequest): Promise<ActionResult> =>
+    ipcRenderer.invoke(IPC.hostSetup, { name: String(req.name), mode: String(req.mode), publicHost: req.publicHost === null ? null : String(req.publicHost) }),
+  hostCreateInvite: (forName: string | null): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostCreateInvite, forName === null ? null : String(forName)),
+  copyText: (text: string): Promise<boolean> => ipcRenderer.invoke(IPC.copyText, String(text)),
   dismissNotice: (): Promise<void> => ipcRenderer.invoke(IPC.dismissNotice),
   dismissError: (): Promise<void> => ipcRenderer.invoke(IPC.dismissError),
   minimize: (): Promise<void> => ipcRenderer.invoke(IPC.windowMinimize),
@@ -83,6 +92,9 @@ const api = {
   },
   onHostKit: (fn: (k: HostKit) => void): void => {
     ipcRenderer.on(IPC.hostKit, (_e, k: HostKit) => fn(k));
+  },
+  onHostServer: (fn: (v: HostServerView) => void): void => {
+    ipcRenderer.on(IPC.hostServer, (_e, v: HostServerView) => fn(v));
   },
   onInviteLink: (fn: () => void): void => {
     ipcRenderer.on(IPC.inviteLink, () => fn());

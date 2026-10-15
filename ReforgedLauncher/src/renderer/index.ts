@@ -24,7 +24,10 @@ import {
   type HostAction,
   type HostFolder,
   type HostKit,
+  type HostServerView,
   type Language,
+  type Requirement,
+  type RequirementId,
   type LauncherError,
   type NewsItem,
   type RuntimeProfile,
@@ -57,6 +60,13 @@ const state = {
   snap: null as Snapshot | null,
   task: null as TaskProgress | null,
   host: null as HostKit | null,
+  hostServer: null as HostServerView | null,
+  hostTab: "server" as "server" | "gamedata" | "build" | "requirements",
+  consoleOpen: false,
+  setupMode: null as "private" | "public" | null,
+  copied: null as string | null,
+  reqOpen: new Set<string>(), // the Requirements tab's open and closed install guides
+  reqClosed: new Set<string>(),
   lang: "en" as Language,
   view: "play" as View,
   inviteText: "",
@@ -1167,11 +1177,17 @@ function renderServer(): void {
 
 // ------------------------------------------------------------------ host page
 
+function hostRefresh(): Promise<void> {
+  return api.hostGet().then((k) => {
+    state.host = k;
+    renderHost();
+  });
+}
+
 function hostAct(action: HostAction): void {
   void api.hostAction(action).then(async (r) => {
     await report(r);
-    state.host = await api.hostGet();
-    renderHost();
+    await hostRefresh();
   });
 }
 
@@ -1187,145 +1203,422 @@ function hostStep(n: number, title: string, stepState: StepState, chipText: stri
   return card(`host-step${stepState === "done" ? " is-done" : ""}`, h("div", { class: "host-step-head" }, h("span", { class: "host-step-num" }, stepState === "done" ? icon("check") : String(n)), h("h2", { class: "host-step-title" }, title), chip(stepState, chipText)), ...body);
 }
 
+// The Host page's tabs: the server (start, stop, setup, invites), its game data, the builds that need
+// the game (SDK, runtime, CatalogExporter) and what this PC needs installed.
+type HostTab = "server" | "gamedata" | "build" | "requirements";
+const HOST_TABS: HostTab[] = ["server", "gamedata", "build", "requirements"];
+const HOST_TAB_ICONS: Record<HostTab, IconName> = { server: "server", gamedata: "database", build: "hammer", requirements: "list" };
+
+// The server setup form and the invite note keep what was typed across renders.
+const setupNameInput = h("input", { class: "input", id: "host-setup-name", type: "text", maxlength: 60, spellcheck: "false", autocomplete: "off", "data-fk": "host-setup-name" });
+const setupHostInput = h("input", { class: "input", id: "host-setup-host", type: "text", maxlength: 253, spellcheck: "false", autocomplete: "off", placeholder: "203.0.113.7", "data-fk": "host-setup-host" });
+const inviteForInput = h("input", { class: "input", id: "host-invite-for", type: "text", maxlength: 40, spellcheck: "false", autocomplete: "off", "data-fk": "host-invite-for" });
+inviteForInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") void createInvite();
+});
+
+async function createInvite(): Promise<void> {
+  const r = await api.hostCreateInvite(inviteForInput.value.trim() || null);
+  await report(r);
+  if (r.ok) inviteForInput.value = "";
+}
+
+async function copy(text: string, key: string): Promise<void> {
+  if (await api.copyText(text)) {
+    state.copied = key;
+    renderHost();
+    window.setTimeout(() => {
+      if (state.copied === key) {
+        state.copied = null;
+        renderHost();
+      }
+    }, 2000);
+  }
+}
+
+// What each requirement links to, and how many install steps its guide has (req_<id>_s1..sN).
+const REQUIREMENTS: Record<RequirementId, { download?: ExternalTarget; page?: ExternalTarget; steps: number }> = {
+  dauntless: { page: "installing_guide", steps: 2 },
+  git: { download: "git", steps: 3 },
+  node: { page: "nodejs", steps: 3 },
+  mongodb: { page: "mongodb", steps: 5 },
+  tailscale: { page: "tailscale_download", steps: 3 },
+  visual_studio: { download: "visual_studio_installer", page: "visual_studio", steps: 4 },
+  rust: { download: "rust_installer", page: "rust", steps: 4 },
+  dumper7: { download: "dumper7_zip", page: "dumper7", steps: 3 },
+  vc_redist: { download: "vc_redist", steps: 2 },
+};
+const REQUIREMENT_GROUPS: { key: StringKey; ids: RequirementId[] }[] = [
+  { key: "hreq_group_host", ids: ["dauntless", "git", "node", "mongodb", "tailscale"] },
+  { key: "hreq_group_build", ids: ["visual_studio", "rust", "dumper7"] },
+  { key: "hreq_group_play", ids: ["vc_redist"] },
+];
+const MONGODB_SERVICE_FIX = "Stop-Service MongoDB; Set-Service MongoDB -StartupType Disabled";
+
+function requirementCard(r: Requirement): HTMLElement {
+  const info = REQUIREMENTS[r.id];
+  // The steps are open for whatever is missing, until the host closes them (a problem has its own text).
+  const open = state.reqOpen.has(r.id) || (r.state === "missing" && !state.reqClosed.has(r.id));
+  const stateChip = chip(r.state === "ok" ? "ok" : r.state === "problem" ? "warn" : "todo", `${tk(`hreq_state_${r.state}`)}${r.detail && r.state === "ok" ? ` · ${r.detail}` : ""}`);
+  const problem =
+    r.problem === "service_running"
+      ? h("div", { class: "stack" }, h("p", { class: "card-text" }, t("req_mongodb_service_running")), h("div", { class: "card-row" }, cmd(MONGODB_SERVICE_FIX), button(state.copied === "mongo-fix" ? t("hreq_copied") : t("hreq_copy"), () => void copy(MONGODB_SERVICE_FIX, "mongo-fix"), { icon: state.copied === "mongo-fix" ? "check" : "copy", fk: "req-mongo-copy" })))
+      : r.problem === "too_old"
+        ? h("p", { class: "card-text" }, t("req_node_too_old", { version: r.detail ?? "?" }))
+        : r.problem === "no_cpp"
+          ? h("p", { class: "card-text" }, t("req_visual_studio_no_cpp", { version: r.detail ?? "Visual Studio" }))
+          : null;
+  const toggle = linkButton(open ? t("hreq_hide") : t("hreq_how"), () => {
+    if (open) {
+      state.reqOpen.delete(r.id);
+      state.reqClosed.add(r.id);
+    } else {
+      state.reqOpen.add(r.id);
+      state.reqClosed.delete(r.id);
+    }
+    renderHost();
+  }, { icon: "info", fk: `req-how-${r.id}` });
+  const steps = open ? h("ol", { class: "steps-list" }, ...Array.from({ length: info.steps }, (_, i) => h("li", {}, h("div", {}, tk(`req_${r.id}_s${i + 1}`))))) : null;
+  return card(
+    `host-req${r.state === "ok" ? " is-done" : ""}`,
+    h("div", { class: "host-step-head" }, h("span", { class: "host-step-num" }, r.state === "ok" ? icon("check") : icon(r.state === "problem" ? "warning" : "download")), h("h3", { class: "host-step-title" }, tk(`req_${r.id}_name`)), stateChip),
+    h("p", { class: "card-text" }, tk(`req_${r.id}_why`)),
+    problem,
+    h(
+      "div",
+      { class: "card-row" },
+      info.download ? button(t("hreq_download"), () => open_(info.download!), { cls: r.state === "ok" ? "" : "btn-primary", icon: "download", fk: `req-dl-${r.id}` }) : null,
+      info.page ? (info.download ? linkButton(t("hreq_open_page"), () => open_(info.page!), { icon: "external", fk: `req-page-${r.id}` }) : button(t("hreq_open_page"), () => open_(info.page!), { cls: r.state === "ok" ? "" : "btn-primary", icon: "external", fk: `req-page-${r.id}` })) : null,
+      toggle,
+    ),
+    steps,
+  );
+}
+
+function open_(target: ExternalTarget): void {
+  open(target);
+}
+
+function hostTabs(): HTMLElement {
+  const tabs = h("div", { class: "settings-tabs host-tabs", role: "tablist", "aria-label": t("host_title") });
+  for (const tab of HOST_TABS) {
+    const on = state.hostTab === tab;
+    const b = h("button", { type: "button", class: "settings-tab", role: "tab", id: `host-tab-${tab}`, "aria-selected": on ? "true" : "false", "aria-controls": "host-panel", tabindex: on ? "0" : "-1", "data-fk": `host-tab-${tab}`, title: tk(`host_tab_${tab}`) }, icon(HOST_TAB_ICONS[tab]), h("span", { class: "settings-tab-label" }, tk(`host_tab_${tab}`)));
+    b.addEventListener("click", () => setHostTab(tab));
+    b.addEventListener("keydown", (e) => {
+      const i = HOST_TABS.indexOf(tab);
+      const next = e.key === "ArrowRight" ? HOST_TABS[(i + 1) % HOST_TABS.length] : e.key === "ArrowLeft" ? HOST_TABS[(i + HOST_TABS.length - 1) % HOST_TABS.length] : null;
+      if (!next) return;
+      e.preventDefault();
+      setHostTab(next);
+      document.getElementById(`host-tab-${next}`)?.focus();
+    });
+    tabs.appendChild(b);
+  }
+  return tabs;
+}
+
+function setHostTab(tab: HostTab): void {
+  state.hostTab = tab;
+  // The requirements are looked at again when their tab opens.
+  if (tab === "requirements") void hostRefresh();
+  renderHost();
+}
+
+function workspaceCard(k: HostKit, steps: ReturnType<typeof hostSteps>): HTMLElement {
+  return hostStep(
+    1,
+    t("host_ws_title"),
+    steps.workspace,
+    steps.workspace === "done" ? t("host_ws_ready") : k.workspaceOk ? t("host_ws_unpatched") : t("host_ws_missing"),
+    h("p", { class: "card-text" }, t("host_ws_text")),
+    k.workspace ? h("p", { class: "small-print selectable" }, secret(k.workspace, "host-ws")) : null,
+    h("div", { class: "card-row" }, button(t("host_ws_choose"), () => void api.hostChooseWorkspace().then(report).then(hostRefresh), { cls: k.workspaceOk ? "" : "btn-primary", icon: "folder", fk: "host-ws" }), k.workspace ? linkButton(t("host_open"), () => hostOpen("workspace"), { icon: "folder", fk: "host-ws-open" }) : null),
+    !k.workspaceOk ? cmd("git clone https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival") : null,
+  );
+}
+
+function checkRow(ok: StepState, text: string, fix: (() => void) | null): HTMLElement {
+  return h("div", { class: "host-check" }, chip(ok, ""), h("span", { class: "host-check-text" }, text), fix && ok !== "done" ? linkButton(t("hsrv_fix"), fix, { fk: `host-fix-${text.length}` }) : null);
+}
+
+function serverTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSteps>): HTMLElement[] {
+  const v = state.hostServer;
+  const st = v?.state ?? "stopped";
+  const jobRunning = k.job?.state === "running";
+  const configured = k.serverConfig.configured && k.upstream.patched;
+  const gdState: StepState = steps.gameData === "done" ? "done" : steps.gameData === "warn" ? "warn" : "todo";
+  const active = st === "starting" || st === "running" || st === "stopping";
+  const canStart = k.workspaceOk && configured && gdState !== "todo" && !jobRunning && (st === "stopped" || st === "failed");
+  const stateClass = st === "running" ? "ok" : st === "failed" ? "danger" : st === "external" ? "warn" : active ? "busy" : "idle";
+  const text = st === "failed" ? (v?.message ? t("hsrv_text_failed", { reason: v.message }) : t("hsrv_text_failed_noreason")) : tk(`hsrv_text_${st}`);
+  const parts: HTMLElement[] = [];
+  if (!k.workspaceOk) parts.push(workspaceCard(k, steps));
+
+  parts.push(
+    card(
+      `host-server host-server-${stateClass}`,
+      h("h2", { class: "card-title" }, t("hsrv_title")),
+      h("div", { class: "host-server-head" }, h("span", { class: `host-server-dot ${stateClass}` }), h("span", { class: "host-server-state" }, tk(`hsrv_state_${st}`)), st === "starting" || st === "stopping" ? h("div", { class: "spinner" }) : null),
+      h("p", { class: "card-text" }, text),
+      st === "running" && k.serverConfig.host ? h("p", { class: "small-print selectable" }, t("hsrv_address", { address: "" }), secret(k.serverConfig.host, "host-address")) : null,
+      h(
+        "div",
+        { class: "card-row" },
+        active
+          ? button(t("hsrv_stop"), () => void api.hostServerStop().then(report), { cls: "btn-danger", icon: "stop", fk: "host-stop", disabled: st === "stopping" })
+          : button(t("hsrv_start"), () => void api.hostServerStart().then(report), { cls: "btn-primary btn-big", icon: "play", fk: "host-start", disabled: !canStart }),
+      ),
+      h(
+        "div",
+        { class: "host-checks" },
+        h("div", { class: "field-label" }, t("hsrv_checks")),
+        checkRow(k.workspaceOk ? "done" : "todo", t("hsrv_check_workspace"), null),
+        checkRow(configured ? "done" : "todo", t("hsrv_check_setup"), () => document.getElementById("host-setup-name")?.focus()),
+        checkRow(gdState, gdState === "warn" ? t("hsrv_check_gamedata_example") : t("hsrv_check_gamedata"), () => setHostTab("gamedata")),
+        checkRow(k.builds.published ? "done" : "warn", t("hsrv_check_runtime"), () => setHostTab("build")),
+      ),
+    ),
+  );
+
+  // Prepare / update (npm run setup)
+  if (!setupNameInput.value && k.serverConfig.name) setupNameInput.value = k.serverConfig.name;
+  const mode = state.setupMode ?? k.serverConfig.mode ?? "private";
+  const tailscaleMissing = mode === "private" && k.requirements.some((r) => r.id === "tailscale" && r.state !== "ok");
+  const modeOption = (m: "private" | "public") => {
+    const input = h("input", { type: "radio", name: "host-setup-mode", value: m, id: `host-mode-${m}`, "data-fk": `host-mode-${m}` });
+    input.checked = mode === m;
+    input.addEventListener("change", () => {
+      state.setupMode = m;
+      renderHost();
+    });
+    return h("label", { class: "radio-row", for: `host-mode-${m}` }, input, h("span", {}, tk(`hsrv_mode_${m}`)));
+  };
+  parts.push(
+    card(
+      "",
+      h("div", { class: "host-step-head" }, h("h2", { class: "host-step-title" }, t("hsrv_setup_title")), chip(configured ? "done" : "todo", configured ? t("hsrv_setup_done", { name: k.serverConfig.name ?? "", mode: tk(`hsrv_mode_short_${k.serverConfig.mode ?? "private"}`) }) : t("host_ws_unpatched"))),
+      h("p", { class: "card-text" }, t("hsrv_setup_text")),
+      h("div", { class: "field" }, h("label", { class: "field-label", for: "host-setup-name" }, t("hsrv_setup_name")), setupNameInput),
+      h("div", { class: "field", role: "radiogroup", "aria-label": t("hsrv_setup_mode") }, h("div", { class: "field-label" }, t("hsrv_setup_mode")), modeOption("private"), modeOption("public")),
+      mode === "public" ? h("div", { class: "field" }, h("label", { class: "field-label", for: "host-setup-host" }, t("hsrv_setup_host")), setupHostInput) : null,
+      snap.game.root ? h("p", { class: "small-print selectable" }, t("hsrv_setup_game", { folder: "" }), secret(snap.game.root, "host-setup-game")) : h("p", { class: "small-print warn-text" }, t("hsrv_setup_no_game")),
+      tailscaleMissing ? h("p", { class: "small-print warn-text" }, t("hsrv_setup_tailscale")) : null,
+      h(
+        "div",
+        { class: "card-row" },
+        button(configured ? t("hsrv_setup_update") : t("hsrv_setup_run"), () => void api.hostSetup({ name: setupNameInput.value, mode, publicHost: mode === "public" ? setupHostInput.value : null }).then(report).then(hostRefresh), {
+          cls: configured ? "" : "btn-primary",
+          icon: configured ? "refresh" : "hammer",
+          fk: "host-setup",
+          disabled: !k.workspaceOk || jobRunning || active || st === "external" || !setupNameInput.value.trim(),
+        }),
+      ),
+    ),
+  );
+
+  // Invites
+  const canInvite = st === "running" || st === "external";
+  const invite = v?.invite ?? null;
+  parts.push(
+    card(
+      "",
+      h("h2", { class: "card-title" }, t("hsrv_invite_title")),
+      h("p", { class: "card-text" }, t("hsrv_invite_text")),
+      h("div", { class: "field" }, h("label", { class: "field-label", for: "host-invite-for" }, t("hsrv_invite_for")), inviteForInput),
+      h("div", { class: "card-row" }, button(t("hsrv_invite_create"), () => void createInvite(), { cls: "btn-primary", icon: "link", fk: "host-invite", disabled: !canInvite }), canInvite ? null : h("span", { class: "small-print" }, t("hsrv_invite_need_running"))),
+      invite
+        ? h(
+            "div",
+            { class: "host-invite" },
+            h("div", { class: "field-label" }, t("hsrv_invite_ready", { for: invite.for ? ` · ${invite.for}` : "" })),
+            h("div", { class: "host-invite-link selectable" }, secret(invite.link, "host-invite-link")),
+            h("div", { class: "card-row" }, button(state.copied === "invite" ? t("hsrv_invite_copied") : t("hsrv_invite_copy"), () => void copy(invite.link, "invite"), { icon: state.copied === "invite" ? "check" : "copy", fk: "host-invite-copy" })),
+            k.serverConfig.mode === "private" ? h("p", { class: "small-print" }, t("hsrv_invite_tailscale")) : null,
+          )
+        : null,
+    ),
+  );
+
+  // The output of the server and of the commands started here.
+  const consoleBox = h("div", { class: "host-console-wrap", id: "host-console" });
+  parts.push(
+    card(
+      "",
+      h("div", { class: "host-step-head" }, h("h2", { class: "host-step-title" }, t("hsrv_console")), linkButton(state.consoleOpen ? t("hsrv_console_hide") : t("hsrv_console_show"), () => ((state.consoleOpen = !state.consoleOpen), renderHost()), { icon: "terminal", fk: "host-console-toggle" }), linkButton(t("host_open_logs"), () => hostOpen("host_logs"), { icon: "folder", fk: "host-console-logs" })),
+      state.consoleOpen ? consoleBox : null,
+    ),
+  );
+  return parts;
+}
+
+function renderHostConsole(): void {
+  const el = document.getElementById("host-console");
+  if (!el) return;
+  const lines = state.hostServer?.lines ?? [];
+  renderRegion(el, JSON.stringify([lines, streamer(), state.lang]), () => {
+    const pre = h("pre", { class: `host-console${streamer() ? " secret-blur" : ""}`, "aria-live": "off" }, lines.length ? lines.join("\n") : t("hsrv_console_empty"));
+    window.requestAnimationFrame(() => (pre.scrollTop = pre.scrollHeight));
+    return [pre];
+  });
+}
+
+function gameDataTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSteps>): HTMLElement[] {
+  const running = k.job?.state === "running";
+  const windows = snap.app.platform === "win32";
+  const gd = k.gameData;
+  const hasExport = k.exports.present || k.exports.inGame;
+  const done = k.job?.kind === "generate_gamedata" && k.job.state === "done";
+  return [
+    card(
+      "",
+      h("div", { class: "host-step-head" }, h("h2", { class: "host-step-title" }, t("hgd_generate_title")), chip(steps.gameData, steps.gameData === "done" ? t("gamedata_kind_real") : steps.gameData === "warn" ? t("gamedata_kind_synthetic") : t("gamedata_kind_missing"))),
+      h("p", { class: "card-text" }, t("hgd_intro")),
+      h("div", { class: "card-row" }, chip(gd.backend === "real" ? "ok" : gd.backend === "synthetic" ? "warn" : "todo", t("host_data_backend", { state: tk(`gamedata_kind_${gd.backend}`) })), chip(gd.director === "real" ? "ok" : gd.director === "synthetic" ? "warn" : "todo", t("host_data_director", { state: tk(`gamedata_kind_${gd.director}`) })), chip(hasExport ? "ok" : "todo", hasExport ? t("hgd_export_found") : t("hgd_export_none"))),
+      h("p", { class: "card-text" }, t("hgd_generate_text")),
+      h("div", { class: "card-row" }, button(t("hgd_generate"), () => hostAct("generate_gamedata"), { cls: "btn-primary btn-big", icon: "database", fk: "host-generate", disabled: running || !k.workspaceOk || !k.upstream.present || !hasExport })),
+      done && k.job?.message === "restart" ? h("p", { class: "small-print warn-text" }, t("hgd_restart")) : null,
+    ),
+    card(
+      "",
+      h("h2", { class: "card-title" }, t("hgd_export_title")),
+      h(
+        "ol",
+        { class: "steps-list" },
+        h("li", {}, h("div", {}, h("div", {}, t("hgd_step_build")), k.builds.exporter ? chip("ok", t("host_built")) : h("div", { class: "card-row" }, linkButton(t("host_tab_build"), () => setHostTab("build"), { icon: "hammer", fk: "host-gd-build" })))),
+        h("li", {}, h("div", {}, t("hgd_step_play"))),
+        h("li", {}, h("div", {}, h("div", {}, t("hgd_step_inject")), h("div", { class: "card-row" }, button(t("host_data_inject"), () => hostAct("inject_exporter"), { icon: "syringe", fk: "host-exporter", disabled: running || !windows || !k.builds.exporter || !snap.running.game })), !k.builds.exporter ? null : snap.running.game ? null : h("p", { class: "small-print" }, t("host_data_need_game")))),
+        h("li", {}, h("div", {}, t("hgd_step_generate"))),
+      ),
+    ),
+    card(
+      "",
+      h("h2", { class: "card-title" }, t("hgd_pack_title")),
+      h("p", { class: "card-text" }, t("hgd_pack_text")),
+      h(
+        "div",
+        { class: "card-row" },
+        button(t("hgd_pack_save"), () => hostAct("export_gamedata"), { icon: "upload", fk: "host-pack-save", disabled: running || steps.gameData === "todo" }),
+        button(t("host_data_import_pack"), () => void api.hostImportGameData().then(report).then(hostRefresh), { icon: "download", fk: "host-pack", disabled: running || !k.workspaceOk }),
+        linkButton(t("hgd_pack_open"), () => hostOpen("gamedata_packs"), { icon: "folder", fk: "host-pack-open" }),
+      ),
+    ),
+    card(
+      "",
+      h("h2", { class: "card-title" }, t("hgd_example_title")),
+      h("p", { class: "card-text" }, t("host_data_step_synthetic")),
+      h("div", { class: "card-row" }, button(t("host_data_synthetic"), () => hostAct("synthetic_data"), { icon: "database", fk: "host-synthetic", disabled: running || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })),
+    ),
+  ];
+}
+
+function buildTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSteps>): HTMLElement[] {
+  const running = k.job?.state === "running";
+  const windows = snap.app.platform === "win32";
+  const gameOk = snap.game.root !== null && snap.game.problem !== "not_found" && snap.game.problem !== "not_set" && snap.game.problem !== "wrong_version";
+  const tc = k.toolchain;
+  return [
+    h("p", { class: "card-text" }, t("hbuild_intro")),
+    hostStep(
+      1,
+      t("host_sdk_title"),
+      steps.sdk,
+      k.sdk.present ? t("host_sdk_ready", { n: k.sdk.functionFiles }) : t("host_sdk_missing"),
+      h("p", { class: "card-text" }, t("host_sdk_text")),
+      h(
+        "ol",
+        { class: "steps-list" },
+        h("li", {}, h("div", {}, h("div", {}, t("host_sdk_step_dumper")), h("div", { class: "card-row" }, button(t("host_sdk_choose"), () => void api.hostChooseDumper().then(report).then(hostRefresh), { icon: "folder", fk: "host-dumper" }), linkButton(t("host_sdk_get"), () => setHostTab("requirements"), { icon: "list", fk: "host-dumper-get" })), k.dumperDll ? h("p", { class: "small-print selectable" }, secret(k.dumperDll, "host-dumper-path")) : null)),
+        h("li", {}, h("div", {}, h("div", {}, t("host_sdk_step_run")), h("div", { class: "card-row" }, button(t("host_sdk_run"), () => hostAct("inject_dumper"), { cls: "btn-primary", icon: "syringe", fk: "host-dump", disabled: !windows || running || !k.dumperDll || !gameOk || snap.running.game })), gameOk ? null : h("p", { class: "small-print" }, t("host_sdk_need_game")))),
+        h(
+          "li",
+          {},
+          h(
+            "div",
+            {},
+            h("div", {}, t("host_sdk_step_import")),
+            k.dumps.length ? h("p", { class: "small-print" }, t("host_sdk_found", { name: k.dumps[0].name, date: formatDate(k.dumps[0].modified, state.lang) })) : h("p", { class: "small-print" }, t("host_sdk_none")),
+            h("div", { class: "card-row" }, button(t("host_sdk_import"), () => hostAct("import_sdk"), { icon: "download", fk: "host-import", disabled: running || !k.dumps.length || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("dumps"), { icon: "folder", fk: "host-dumps-open" })),
+            k.upstream.present ? null : h("p", { class: "small-print" }, t("host_sdk_need_setup")),
+          ),
+        ),
+      ),
+    ),
+    hostStep(
+      2,
+      t("host_build_title"),
+      steps.build,
+      steps.build === "done" ? t("host_build_ready") : t("host_build_missing"),
+      h("p", { class: "card-text" }, t("host_build_text")),
+      h("div", { class: "card-row" }, chip(tc.visualStudio ? "ok" : "todo", tc.visualStudio ?? t("host_build_no_vs")), chip(tc.cargo ? "ok" : "todo", tc.cargo ? "Rust (cargo)" : t("host_build_no_cargo"))),
+      h(
+        "div",
+        { class: "stack" },
+        h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "MysticParadox.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.runtime ? "host_built" : "host_not_built"))), button(t("host_build_runtime"), () => hostAct("build_runtime"), { icon: "cpu", fk: "host-build-runtime", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
+        h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "winmm.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.loader ? "host_built" : "host_not_built"))), button(t("host_build_loader"), () => hostAct("build_loader"), { icon: "cpu", fk: "host-build-loader", disabled: running || !windows || !tc.cargo || !k.upstream.present })),
+        h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "CatalogExporter.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.exporter ? "host_built" : "host_not_built"))), button(t("host_build_exporter"), () => hostAct("build_exporter"), { icon: "cpu", fk: "host-build-exporter", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
+      ),
+      !tc.visualStudio || !tc.cargo ? h("div", { class: "card-row" }, linkButton(t("host_tab_requirements"), () => setHostTab("requirements"), { icon: "list", fk: "host-build-reqs" })) : null,
+    ),
+    hostStep(
+      3,
+      t("host_publish_title"),
+      steps.publish,
+      steps.publish === "done" ? t("host_publish_ready") : t("host_publish_missing"),
+      h("p", { class: "card-text" }, t("host_publish_text")),
+      h("div", { class: "card-row" }, button(t("host_publish"), () => hostAct("publish_runtime"), { cls: "btn-primary", icon: "upload", fk: "host-publish", disabled: running || !k.builds.runtime || !k.builds.loader }), linkButton(t("host_open"), () => hostOpen("runtime_publish"), { icon: "folder", fk: "host-publish-open" })),
+    ),
+  ];
+}
+
+function requirementsTab(k: HostKit): HTMLElement[] {
+  const byId = new Map(k.requirements.map((r) => [r.id, r]));
+  const out: HTMLElement[] = [h("div", { class: "card-row" }, h("p", { class: "card-text" }, t("hreq_intro")), button(t("hreq_recheck"), () => void hostRefresh(), { icon: "refresh", fk: "req-recheck" }))];
+  for (const group of REQUIREMENT_GROUPS) {
+    const items = group.ids.map((id) => byId.get(id)).filter((r): r is Requirement => r !== undefined);
+    if (!items.length) continue;
+    out.push(h("h2", { class: "host-group-title" }, t(group.key)), ...items.map(requirementCard));
+  }
+  if (k.requirements.length === 0) out.push(card("", h("div", { class: "card-row" }, h("div", { class: "spinner" }), t("loading"))));
+  return out;
+}
+
 function renderHost(): void {
   const container = $("#view-host");
   const snap = state.snap;
   const k = state.host;
-  const sig = JSON.stringify([state.lang, k, snap?.game ?? null, snap?.running.game ?? false, snap?.busy ?? false, snap?.settings.streamerMode, snap?.app.platform]);
+  const v = state.hostServer;
+  const sig = JSON.stringify([state.lang, state.hostTab, k, v?.state, v?.message, v?.invite, state.consoleOpen, state.setupMode, state.copied, [...state.reqOpen], [...state.reqClosed], snap?.game ?? null, snap?.running.game ?? false, snap?.busy ?? false, snap?.settings.streamerMode, snap?.app.platform]);
   renderRegion(container, sig, () => {
     if (!snap || !k) return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "host-title" }, t("host_title")), card("", h("div", { class: "card-row" }, h("div", { class: "spinner" }), t("loading"))))];
     const steps = hostSteps(k);
-    const running = k.job?.state === "running";
     const windows = snap.app.platform === "win32";
-    const parts: HTMLElement[] = [h("h1", { class: "page-title", id: "host-title" }, t("host_title")), h("p", { class: "page-sub" }, t("host_intro"))];
-    if (!windows) parts.push(card("card-warn", h("p", { class: "card-text" }, t("host_windows_only"))));
-    if (k.job) {
-      parts.push(
+    const top: HTMLElement[] = [h("h1", { class: "page-title", id: "host-title" }, t("host_title")), h("p", { class: "page-sub" }, t("host_intro"))];
+    if (!windows) top.push(card("card-warn", h("p", { class: "card-text" }, t("host_windows_only"))));
+    if (k.job && !(k.job.kind === "create_invite")) {
+      top.push(
         card(
           k.job.state === "failed" ? "card-danger" : "card-accent",
-          h("div", { class: `host-job ${k.job.state}` }, k.job.state === "running" ? h("div", { class: "spinner" }) : icon(k.job.state === "done" ? "check" : "warning"), h("span", {}, t(`host_job_${k.job.kind}` as StringKey), " · ", tk(`host_job_state_${k.job.state}`), k.job.message ? ` · ${k.job.message}` : "")),
+          h("div", { class: `host-job ${k.job.state}` }, k.job.state === "running" ? h("div", { class: "spinner" }) : icon(k.job.state === "done" ? "check" : "warning"), h("span", {}, tk(`host_job_${k.job.kind}`), " · ", tk(`host_job_state_${k.job.state}`), k.job.message && k.job.message !== "restart" ? ` · ${k.job.message}` : "")),
           k.job.logFile ? h("div", { class: "card-row" }, linkButton(t("host_open_logs"), () => hostOpen("host_logs"), { icon: "folder", fk: "host-logs" })) : null,
         ),
       );
     }
-
-    // 1. The workspace
-    parts.push(
-      hostStep(
-        1,
-        t("host_ws_title"),
-        steps.workspace,
-        steps.workspace === "done" ? t("host_ws_ready") : k.workspaceOk ? t("host_ws_unpatched") : t("host_ws_missing"),
-        h("p", { class: "card-text" }, t("host_ws_text")),
-        k.workspace ? h("p", { class: "small-print selectable" }, secret(k.workspace, "host-ws")) : null,
-        h("div", { class: "card-row" }, button(t("host_ws_choose"), () => void api.hostChooseWorkspace().then(report).then(async () => ((state.host = await api.hostGet()), renderHost())), { icon: "folder", fk: "host-ws" }), k.workspace ? linkButton(t("host_open"), () => hostOpen("workspace"), { icon: "folder", fk: "host-ws-open" }) : null),
-        k.workspaceOk && !k.upstream.patched ? cmd("cd ReforgedHost; npm install; npm run setup -- --mode private --name \"My server\" --game \"D:\\Games\\Dauntless\"") : null,
-        !k.workspaceOk ? cmd("git clone https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival") : null,
-      ),
-    );
-
-    // 2. The SDK, with Dumper-7
-    const gameOk = snap.game.root !== null && snap.game.problem !== "not_found" && snap.game.problem !== "not_set" && snap.game.problem !== "wrong_version";
-    parts.push(
-      hostStep(
-        2,
-        t("host_sdk_title"),
-        steps.sdk,
-        k.sdk.present ? t("host_sdk_ready", { n: k.sdk.functionFiles }) : t("host_sdk_missing"),
-        h("p", { class: "card-text" }, t("host_sdk_text")),
-        h(
-          "ol",
-          { class: "steps-list" },
-          h("li", {}, h("div", {}, h("div", {}, t("host_sdk_step_dumper")), h("div", { class: "card-row" }, button(t("host_sdk_choose"), () => void api.hostChooseDumper().then(report).then(async () => ((state.host = await api.hostGet()), renderHost())), { icon: "folder", fk: "host-dumper" }), linkButton(t("host_sdk_get"), () => open("dumper7"), { icon: "external", fk: "host-dumper-get" })), k.dumperDll ? h("p", { class: "small-print selectable" }, secret(k.dumperDll, "host-dumper-path")) : null)),
-          h("li", {}, h("div", {}, h("div", {}, t("host_sdk_step_run")), h("div", { class: "card-row" }, button(t("host_sdk_run"), () => hostAct("inject_dumper"), { cls: "btn-primary", icon: "syringe", fk: "host-dump", disabled: !windows || running || !k.dumperDll || !gameOk || snap.running.game })), gameOk ? null : h("p", { class: "small-print" }, t("host_sdk_need_game")))),
-          h(
-            "li",
-            {},
-            h(
-              "div",
-              {},
-              h("div", {}, t("host_sdk_step_import")),
-              k.dumps.length ? h("p", { class: "small-print" }, t("host_sdk_found", { name: k.dumps[0].name, date: formatDate(k.dumps[0].modified, state.lang) })) : h("p", { class: "small-print" }, t("host_sdk_none")),
-              h("div", { class: "card-row" }, button(t("host_sdk_import"), () => hostAct("import_sdk"), { icon: "download", fk: "host-import", disabled: running || !k.dumps.length || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("dumps"), { icon: "folder", fk: "host-dumps-open" })),
-              k.upstream.present ? null : h("p", { class: "small-print" }, t("host_sdk_need_setup")),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    // 3. Build
-    const tc = k.toolchain;
-    parts.push(
-      hostStep(
-        3,
-        t("host_build_title"),
-        steps.build,
-        steps.build === "done" ? t("host_build_ready") : t("host_build_missing"),
-        h("p", { class: "card-text" }, t("host_build_text")),
-        h("div", { class: "card-row" }, chip(tc.visualStudio ? "ok" : "todo", tc.visualStudio ?? t("host_build_no_vs")), chip(tc.cargo ? "ok" : "todo", tc.cargo ? "Rust (cargo)" : t("host_build_no_cargo"))),
-        h(
-          "div",
-          { class: "stack" },
-          h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "MysticParadox.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.runtime ? "host_built" : "host_not_built"))), button(t("host_build_runtime"), () => hostAct("build_runtime"), { icon: "cpu", fk: "host-build-runtime", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
-          h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "winmm.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.loader ? "host_built" : "host_not_built"))), button(t("host_build_loader"), () => hostAct("build_loader"), { icon: "cpu", fk: "host-build-loader", disabled: running || !windows || !tc.cargo || !k.upstream.present })),
-          h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "CatalogExporter.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.exporter ? "host_built" : "host_not_built"))), button(t("host_build_exporter"), () => hostAct("build_exporter"), { icon: "cpu", fk: "host-build-exporter", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
-        ),
-        !tc.visualStudio ? h("div", { class: "card-row" }, linkButton(t("host_get_vs"), () => open("visual_studio"), { icon: "external", fk: "host-vs" })) : null,
-        !tc.cargo ? h("div", { class: "card-row" }, linkButton(t("host_get_rust"), () => open("rust"), { icon: "external", fk: "host-rust" })) : null,
-      ),
-    );
-
-    // 4. Game data
-    const gd = k.gameData;
-    parts.push(
-      hostStep(
-        4,
-        t("host_data_title"),
-        steps.gameData,
-        steps.gameData === "done" ? t("gamedata_kind_real") : steps.gameData === "warn" ? t("gamedata_kind_synthetic") : t("gamedata_kind_missing"),
-        h("p", { class: "card-text" }, t("host_data_text")),
-        h("div", { class: "card-row" }, chip(gd.backend === "real" ? "ok" : gd.backend === "synthetic" ? "warn" : "todo", t("host_data_backend", { state: tk(`gamedata_kind_${gd.backend}`) })), chip(gd.director === "real" ? "ok" : gd.director === "synthetic" ? "warn" : "todo", t("host_data_director", { state: tk(`gamedata_kind_${gd.director}`) }))),
-        h(
-          "ol",
-          { class: "steps-list" },
-          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_synthetic")), h("div", { class: "card-row" }, button(t("host_data_synthetic"), () => hostAct("synthetic_data"), { icon: "database", fk: "host-synthetic", disabled: running || !k.upstream.present })))),
-          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_export")), h("div", { class: "card-row" }, button(t("host_data_inject"), () => hostAct("inject_exporter"), { cls: "btn-primary", icon: "syringe", fk: "host-exporter", disabled: running || !windows || !k.builds.exporter || !snap.running.game })), !k.builds.exporter ? h("p", { class: "small-print" }, t("host_data_need_exporter")) : snap.running.game ? null : h("p", { class: "small-print" }, t("host_data_need_game")))),
-          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_copy")), h("div", { class: "card-row" }, button(t("host_data_copy"), () => hostAct("copy_exports"), { icon: "copy", fk: "host-copy", disabled: running || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })))),
-          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_generate")), cmd("cd ReforgedHost; npm run gamedata"))),
-          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_pack")), h("div", { class: "card-row" }, button(t("host_data_import_pack"), () => void api.hostImportGameData().then(report).then(async () => ((state.host = await api.hostGet()), renderHost())), { icon: "download", fk: "host-pack", disabled: running })))),
-        ),
-      ),
-    );
-
-    // 5. Publish the runtime
-    parts.push(
-      hostStep(
-        5,
-        t("host_publish_title"),
-        steps.publish,
-        steps.publish === "done" ? t("host_publish_ready") : t("host_publish_missing"),
-        h("p", { class: "card-text" }, t("host_publish_text")),
-        h("div", { class: "card-row" }, button(t("host_publish"), () => hostAct("publish_runtime"), { cls: "btn-primary", icon: "upload", fk: "host-publish", disabled: running || !k.builds.runtime || !k.builds.loader }), linkButton(t("host_open"), () => hostOpen("runtime_publish"), { icon: "folder", fk: "host-publish-open" })),
-      ),
-    );
-
-    // 6. Run the server and invite friends
-    parts.push(
-      hostStep(
-        6,
-        t("host_run_title"),
-        "todo",
-        t("host_run_chip"),
-        h("p", { class: "card-text" }, t("host_run_text")),
-        cmd("cd ReforgedHost; npm run publish-runtime"),
-        cmd("cd ReforgedHost; npm run start"),
-        cmd("cd ReforgedHost; npm run invite -- --for \"Alex\""),
-        h("div", { class: "card-row" }, linkButton(t("host_teaser_docs"), () => open("project_docs_hosting"), { icon: "external", fk: "host-docs" }), linkButton(t("host_get_mongodb"), () => open("mongodb"), { icon: "external", fk: "host-mongo" }), linkButton(t("host_get_node"), () => open("nodejs"), { icon: "external", fk: "host-node" })),
-      ),
-    );
-    return [h("div", { class: "page page-wide" }, ...parts.slice(0, 2), h("div", { class: "host-steps" }, ...parts.slice(2)))];
+    const panels: Record<HostTab, () => HTMLElement[]> = {
+      server: () => serverTab(snap, k, steps),
+      gamedata: () => [...(k.workspaceOk ? [] : [workspaceCard(k, steps)]), ...gameDataTab(snap, k, steps)],
+      build: () => [...(k.workspaceOk ? [] : [workspaceCard(k, steps)]), ...buildTab(snap, k, steps)],
+      requirements: () => requirementsTab(k),
+    };
+    const panel = h("div", { class: "host-panel", id: "host-panel", role: "tabpanel", "aria-labelledby": `host-tab-${state.hostTab}` }, ...panels[state.hostTab]());
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById("host-console");
+      if (el) forceRender(el);
+      renderHostConsole();
+    });
+    return [h("div", { class: "page page-wide" }, ...top, h("div", { class: "settings-layout" }, hostTabs(), panel))];
   });
+  renderHostConsole();
 }
 
 // ------------------------------------------------------------------ settings page
@@ -1762,7 +2055,10 @@ function setView(v: View): void {
   }
   state.view = v;
   if (v === "news") state.newsSeen = true;
-  if (v === "host") void api.hostGet().then((k) => ((state.host = k), renderHost()));
+  if (v === "host") {
+    void api.hostGet().then((k) => ((state.host = k), renderHost()));
+    void api.hostServerGet().then((sv) => ((state.hostServer = sv), renderHost()));
+  }
   for (const view of VIEWS) $(`#view-${view}`).hidden = view !== v;
   $("#actionbar").hidden = false;
   // The Server page shows everything the side panel shows, in full; the Host and Credits pages have
@@ -2156,6 +2452,13 @@ async function main(): Promise<void> {
   api.onHostKit((k) => {
     state.host = k;
     if (state.view === "host") renderHost();
+  });
+  api.onHostServer((sv) => {
+    const changed = state.hostServer?.state !== sv.state || state.hostServer?.message !== sv.message || JSON.stringify(state.hostServer?.invite) !== JSON.stringify(sv.invite);
+    state.hostServer = sv;
+    if (state.view !== "host") return;
+    if (changed) renderHost();
+    else renderHostConsole();
   });
   api.onInviteLink(() => void checkInviteLink());
   onSnapshot(await api.getSnapshot());

@@ -7,6 +7,7 @@ import {
   LANGUAGES,
   RUNTIME_PROFILES,
   type ExternalTarget,
+  type HostSetupRequest,
   type GameLanguage,
   type GraphicsPreset,
   type HostAction,
@@ -56,6 +57,10 @@ const TARGETS: Readonly<Record<ExternalTarget, true>> = {
   rust: true,
   nodejs: true,
   mongodb: true,
+  git: true,
+  visual_studio_installer: true,
+  rust_installer: true,
+  dumper7_zip: true,
   revived_source: true,
   mystic_source: true,
   undaunted_source: true,
@@ -79,6 +84,8 @@ const HOST_ACTIONS: Readonly<Record<HostAction, true>> = {
   copy_exports: true,
   synthetic_data: true,
   publish_runtime: true,
+  generate_gamedata: true,
+  export_gamedata: true,
 };
 
 export function hostAction(v: unknown): HostAction | null {
@@ -92,10 +99,38 @@ const HOST_FOLDERS: Readonly<Record<HostFolder, true>> = {
   game_data: true,
   runtime_publish: true,
   host_logs: true,
+  gamedata_packs: true,
 };
 
 export function hostFolder(v: unknown): HostFolder | null {
   return pick(HOST_FOLDERS, v);
+}
+
+// Text the host types (a server name, who an invite is for): it goes to the host kit as one argument
+// (never through a shell), so only its length and control characters matter.
+function plainText(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length <= max && !/[\u0000-\u001f\u007f]/.test(t) ? t : null;
+}
+
+export function hostSetupRequest(v: unknown): HostSetupRequest | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const name = plainText(o.name, 60);
+  if (!name) return null;
+  if (o.mode !== "private" && o.mode !== "public") return null;
+  if (o.mode === "private") return { name, mode: "private", publicHost: null };
+  const host = typeof o.publicHost === "string" ? o.publicHost.trim() : "";
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/.test(host)) return null;
+  return { name, mode: "public", publicHost: host };
+}
+
+// Who an invite is for: optional, a short note.
+export function inviteFor(v: unknown): string | null | undefined {
+  if (v === null || v === undefined || v === "") return null;
+  const t = plainText(v, 40);
+  return t === null ? undefined : t || null;
 }
 
 // Hidden override for the relay port (tests and rehearsals on a PC where 61100 is taken).

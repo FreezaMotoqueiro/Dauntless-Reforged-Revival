@@ -257,11 +257,49 @@ export interface HostKit {
     cargo: boolean;
   };
   gameData: { backend: GameDataState; director: GameDataState };
-  exports: { present: boolean }; // Items_Analysis in the workspace
+  exports: { present: boolean; inGame: boolean }; // Items_Analysis in the workspace, and beside the game (CatalogExporter's output)
+  // The server's .workspace\config\host.json (no secrets there: they are in secrets.env).
+  serverConfig: { configured: boolean; name: string | null; mode: "private" | "public" | null; host: string | null };
+  requirements: Requirement[];
   job: HostJob | null;
 }
 
-export type HostJobKind = "inject" | "build_runtime" | "build_loader" | "build_exporter" | "import_sdk" | "copy_exports" | "synthetic_data" | "import_gamedata" | "publish_runtime";
+// What the Requirements tab lists, each one detected on this PC.
+export type RequirementId = "dauntless" | "git" | "node" | "mongodb" | "tailscale" | "visual_studio" | "rust" | "dumper7" | "vc_redist";
+
+export interface Requirement {
+  id: RequirementId;
+  state: "ok" | "missing" | "problem";
+  detail: string | null; // the version or place found; never a secret
+  // What is wrong when state is "problem": node "too_old"; mongodb "service_running"; visual_studio "no_cpp".
+  problem: string | null;
+}
+
+// The server the Host page starts and stops (ReforgedHost's npm run start, run by the launcher).
+//  external: the server answers, but was started elsewhere (a terminal): the launcher cannot stop it.
+export type HostServerState = "stopped" | "starting" | "running" | "stopping" | "external" | "failed";
+
+export interface HostServerView {
+  state: HostServerState;
+  message: string | null; // the error line when it failed
+  lines: string[]; // the newest output of the server and of the host kit commands started here
+  invite: { link: string; for: string | null } | null; // the invite made last (a secret: shown blurred in streamer mode)
+}
+
+export type HostJobKind =
+  | "inject"
+  | "build_runtime"
+  | "build_loader"
+  | "build_exporter"
+  | "import_sdk"
+  | "copy_exports"
+  | "synthetic_data"
+  | "import_gamedata"
+  | "publish_runtime"
+  | "setup"
+  | "generate_gamedata"
+  | "export_gamedata"
+  | "create_invite";
 
 export interface HostJob {
   kind: HostJobKind;
@@ -290,6 +328,10 @@ export type ExternalTarget =
   | "rust"
   | "nodejs"
   | "mongodb"
+  | "git"
+  | "visual_studio_installer"
+  | "rust_installer"
+  | "dumper7_zip"
   | "revived_source"
   | "mystic_source"
   | "undaunted_source";
@@ -338,6 +380,12 @@ export const IPC = {
   hostImportGameData: "rr:host-import-gamedata",
   hostAction: "rr:host-action",
   hostOpen: "rr:host-open",
+  hostServerGet: "rr:host-server-get",
+  hostServerStart: "rr:host-server-start",
+  hostServerStop: "rr:host-server-stop",
+  hostSetup: "rr:host-setup",
+  hostCreateInvite: "rr:host-create-invite",
+  copyText: "rr:copy-text",
   windowMinimize: "rr:window-minimize",
   windowMaximize: "rr:window-maximize",
   windowClose: "rr:window-close",
@@ -349,6 +397,7 @@ export const IPC = {
   snapshot: "rr:snapshot",
   progress: "rr:progress",
   hostKit: "rr:host-kit",
+  hostServer: "rr:host-server",
   windowState: "rr:window-state",
 } as const;
 
@@ -362,6 +411,15 @@ export type HostAction =
   | "inject_exporter" // load CatalogExporter into the running game
   | "copy_exports" // copy the exporter's Items_Analysis into the workspace
   | "synthetic_data" // copy the example game data (startup tests only)
-  | "publish_runtime"; // copy the built runtime files to the content server
+  | "publish_runtime" // copy the built runtime files to the content server
+  | "generate_gamedata" // copy the game's Items_Analysis in, then npm run gamedata
+  | "export_gamedata"; // npm run gamedata -- --export (a game data pack)
 
-export type HostFolder = "workspace" | "runtime_source" | "dumps" | "game_data" | "runtime_publish" | "host_logs";
+export type HostFolder = "workspace" | "runtime_source" | "dumps" | "game_data" | "runtime_publish" | "host_logs" | "gamedata_packs";
+
+// The Host page's server setup form (npm run setup). The game folder is the launcher's own.
+export interface HostSetupRequest {
+  name: string;
+  mode: "private" | "public";
+  publicHost: string | null; // public mode: the server's public IPv4 or DNS name
+}

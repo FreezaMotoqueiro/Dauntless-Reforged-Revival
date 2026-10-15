@@ -3,7 +3,8 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { firewallScript, hostConfigFromArgs, parseArgs } from "../src/cli";
+import { firewallScript, hostConfigFromArgs, parseArgs, watchStopInput } from "../src/cli";
+import { PassThrough } from "node:stream";
 import { BACKEND_GAME_DATA, gameDataState, gameDataSteps, generateGameData, SUPPLIED_SOURCES, useExamples } from "../src/gamedata";
 import { DEFAULT_MONGO_URI, type HostConfig } from "../src/hostconfig";
 import { createInviteCode, formatInvite, inviteFor } from "../src/invite";
@@ -71,6 +72,28 @@ describe("command line", () => {
         assert.match(pub, /'443'/);
         assert.match(pub, /ReforgedRevival-GamePorts-Allowlist/);
         assert.match(pub, /'False'/);
+    });
+});
+
+describe("the launcher's control of a running server", () => {
+    it("stops on a stop line or when the launcher's pipe closes, once", async () => {
+        const viaLine = new PassThrough();
+        let stops = 0;
+        watchStopInput(viaLine, () => stops++);
+        viaLine.write("hello\nSTO");
+        assert.equal(stops, 0, "only a whole stop line");
+        viaLine.write("P\r\n");
+        viaLine.end();
+        await new Promise((r) => setImmediate(r));
+        assert.equal(stops, 1, "stopped once, not again when the pipe closed");
+
+        const viaClose = new PassThrough();
+        let closed = 0;
+        watchStopInput(viaClose, () => closed++);
+        viaClose.end();
+        viaClose.resume();
+        await new Promise((r) => setImmediate(r));
+        assert.equal(closed, 1, "the launcher quit: the pipe closed");
     });
 });
 

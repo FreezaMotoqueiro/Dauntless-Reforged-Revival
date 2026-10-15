@@ -104,6 +104,9 @@ const ICONS = {
   lock: [["path", { d: "M6.5 10.5h11v9h-11zM8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" }]],
   syringe: [["path", { d: "M14.5 4.5l5 5M17 7l-8.5 8.5-3 .5.5-3L14.5 4.5M11 9l4 4M4 20l2.5-2.5" }]],
   copy: [["path", { d: "M8.5 8.5h11v11h-11zM15.5 8.5v-4h-11v11h4" }]],
+  stop: [["path", { d: "M7 7h10v10H7z", fill: "currentColor", stroke: "none" }]],
+  list: [["path", { d: "M9 7h10.5M9 12h10.5M9 17h10.5M4.5 7h.01M4.5 12h.01M4.5 17h.01" }]],
+  link: [["path", { d: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" }]],
 } as const;
 
 export type IconName = keyof typeof ICONS;
