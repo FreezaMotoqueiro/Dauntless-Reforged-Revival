@@ -83,7 +83,7 @@ jobs:
           npm test
 
   launcher-windows:
-    name: Launcher (Windows installer)
+    name: Launcher (Windows tests and installer)
     runs-on: windows-latest
     needs: launcher
     defaults:
@@ -97,6 +97,7 @@ jobs:
           cache: npm
           cache-dependency-path: ReforgedLauncher/package-lock.json
       - run: npm ci
+      - run: npm test
       - run: npm run make
       - uses: actions/upload-artifact@v4
         with:
