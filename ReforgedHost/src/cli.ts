@@ -154,6 +154,8 @@ async function npmInstallAndBuild(dir: string, logFile: string, label: string): 
 
 async function setup(p: Paths, args: Args): Promise<void> {
     if (!gitAvailable()) fail("git is needed (it downloads Mystic Paradox at the pinned commit): install Git for Windows from https://git-scm.com");
+    // A value with spaces that was not quoted arrives in pieces (--game D:\Games\My, then Dauntless).
+    if (args._.length > 1) fail(`unexpected "${args._.slice(1).join(" ")}": put a value with spaces in quotes, for example --game "D:\\Games\\Dauntless 1.14.7\\Dauntless"`);
     const logFile = path.join(p.logs, "setup.log");
     fs.mkdirSync(p.logs, { recursive: true });
 
@@ -213,6 +215,7 @@ async function setup(p: Paths, args: Args): Promise<void> {
 
     if (config.mongo.manage && !config.mongo.mongod) say("\n! MongoDB was not found. Install MongoDB Community Server (https://www.mongodb.com/try/download/community), then run setup again, or pass --mongod <path to mongod.exe>.");
     if (!config.gameDir) say("\n! No game folder yet: pass --game \"<your Dauntless 1.14.7 folder>\" (the game servers run from it).");
+    else if (!fs.existsSync(path.join(config.gameDir, GAME_EXE_RELATIVE))) say(`\n! No ${GAME_EXE_RELATIVE} in ${config.gameDir}: pass --game "<the Dauntless folder that holds Archon>" (the game servers run from it).`);
 
     say("\nSetup done. Next:");
     say("  1. The SDK, the runtime and the game data, from your own game: docs/sdk-and-game-data.md");

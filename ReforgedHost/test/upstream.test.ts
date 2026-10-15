@@ -81,6 +81,40 @@ describe("the pinned upstream", () => {
         assert.equal(upstreamState(dir, marker, newer, patches), "ready");
     });
 
+    it("the committed patches have LF line endings only, so reading them back to LF is exact", () => {
+        const dir = path.resolve(__dirname, "..", "..", "..", "..", "upstream", "patches");
+        const names = fs.readdirSync(dir).filter((n) => n.endsWith(".patch"));
+        assert.equal(names.length, 3);
+        for (const name of names) assert.ok(!fs.readFileSync(path.join(dir, name)).includes(0x0d), `${name} has a CR byte`);
+    });
+
+    it("applies patches checked out with CRLF line endings, as Git for Windows does by default", async () => {
+        const { origin, first, patches } = makeOrigin();
+        const file = path.join(patches, "patches", "0001-test.patch");
+        const lf = fs.readFileSync(file, "utf8");
+        fs.writeFileSync(file, lf.replace(/\n/g, "\r\n"));
+        const dir = path.join(tempDir("crlf"), "Mystic-Paradox");
+        const marker = path.join(dir, ".reforged-patches.json");
+        const pin: UpstreamPin = { name: "test", repository: origin, commit: first, patches: ["patches/0001-test.patch"] };
+        // core.autocrlf=true for the kit's git commands: upstream's files are checked out with CRLF too.
+        const saved = { count: process.env.GIT_CONFIG_COUNT, key: process.env.GIT_CONFIG_KEY_0, value: process.env.GIT_CONFIG_VALUE_0 };
+        Object.assign(process.env, { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.autocrlf", GIT_CONFIG_VALUE_0: "true" });
+        try {
+            assert.equal(await ensureUpstream({ dir, markerFile: marker, pin, patchesRoot: patches }), "fetched");
+        } finally {
+            for (const [name, value] of [["GIT_CONFIG_COUNT", saved.count], ["GIT_CONFIG_KEY_0", saved.key], ["GIT_CONFIG_VALUE_0", saved.value]] as const) {
+                if (value === undefined) delete process.env[name];
+                else process.env[name] = value;
+            }
+        }
+        assert.equal(fs.readFileSync(path.join(dir, "ParadoxRuntime", "dllmain.cpp"), "utf8"), "int main() { return 42; }\r\n");
+        assert.ok(fs.existsSync(path.join(dir, "ParadoxBackend", "src", "reforgedApi.ts")));
+        assert.ok(!fs.existsSync(path.join(dir, ".git", "reforged-apply.patch")), "no leftover");
+        // The same patch with LF line endings is the same patch: still ready, nothing to redo.
+        fs.writeFileSync(file, lf);
+        assert.equal(upstreamState(dir, marker, pin, patches), "ready");
+    });
+
     it("refuses a folder that is not a git checkout, and reports a patch that does not apply", async () => {
         const { origin, first, patches } = makeOrigin();
         const notGit = path.join(tempDir("notgit"), "Mystic-Paradox");

@@ -33,15 +33,23 @@ export function readPin(file: string): UpstreamPin {
     return { name: raw.name ?? "Mystic Paradox", repository: raw.repository, commit: raw.commit, patches: raw.patches as string[] };
 }
 
-function sha256(file: string): string {
-    return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+// A patch as git must read it. Git for Windows checks text files out with CRLF line endings by
+// default (core.autocrlf=true), and a patch whose lines end in CRLF does not match the files it
+// changes. The patches are committed with LF line endings only (a test checks that), so turning
+// CRLF back into LF gives exactly the committed patch, however the repository was checked out.
+export function patchBytes(file: string): Buffer {
+    return Buffer.from(fs.readFileSync(file).toString("latin1").replace(/\r\n/g, "\n"), "latin1");
+}
+
+function sha256(data: Buffer): string {
+    return createHash("sha256").update(data).digest("hex");
 }
 
 export function expectedMarker(pin: UpstreamPin, patchesRoot: string): Omit<PatchMarker, "appliedAt"> {
     return {
         repository: pin.repository,
         commit: pin.commit,
-        patches: pin.patches.map((p) => ({ name: path.basename(p), sha256: sha256(path.join(patchesRoot, p)) })),
+        patches: pin.patches.map((p) => ({ name: path.basename(p), sha256: sha256(patchBytes(path.join(patchesRoot, p))) })),
     };
 }
 
@@ -102,11 +110,17 @@ export async function ensureUpstream(opts: { dir: string; markerFile: string; pi
     } catch {
         /* none */
     }
-    for (const patch of pin.patches) {
-        const file = path.join(opts.patchesRoot, patch);
-        await git(["apply", "--index", "--whitespace=nowarn", file], dir, opts.logFile).catch((e: Error) => {
-            throw new Error(`${path.basename(file)} does not apply to ${pin.commit.slice(0, 12)}: ${e.message}`);
-        });
+    const applying = path.join(dir, ".git", "reforged-apply.patch");
+    try {
+        for (const patch of pin.patches) {
+            const file = path.join(opts.patchesRoot, patch);
+            fs.writeFileSync(applying, patchBytes(file));
+            await git(["apply", "--index", "--whitespace=nowarn", applying], dir, opts.logFile).catch((e: Error) => {
+                throw new Error(`${path.basename(file)} does not apply to ${pin.commit.slice(0, 12)}: ${e.message}`);
+            });
+        }
+    } finally {
+        fs.rmSync(applying, { force: true });
     }
     const marker: PatchMarker = { ...expectedMarker(pin, opts.patchesRoot), appliedAt: new Date().toISOString() };
     fs.writeFileSync(opts.markerFile, JSON.stringify(marker, null, 2) + "\n");
