@@ -48,7 +48,14 @@ the list is at the top of `scripts/preview.mjs`.
 
 ## Releases
 
-Publishing a GitHub release builds the launcher and attaches it to that release
+As in Dauntless Revived, a launcher update ships by raising `version` in `package.json` (and
+`package-lock.json`: `npm version 1.0.2 --no-git-tag-version`) in a pull request. Once it is merged
+and every CI check passed on `main`, CI publishes the release `1.0.2` (tag and release created at that
+commit, with generated notes) and installed launchers update to it. A version that has a release
+already, or is not newer than every release, publishes nothing. The repository variable
+`LAUNCHER_AUTO_RELEASE=false` (Settings > Secrets and variables > Actions > Variables) turns this off.
+
+A release can also be published by hand, and then builds the launcher and attaches it to that release
 ([`.github/workflows/launcher-release.yml`](../.github/workflows/launcher-release.yml)):
 `ReforgedRevivalLauncher-Setup.exe`, a portable ZIP, the Squirrel update files (`RELEASES`, the
 `-full.nupkg`) and `SHA256SUMS.txt`. The run takes about 15 minutes (see the Actions tab).
