@@ -119,6 +119,7 @@ async function harness(chooseFolder: Platform["chooseFolder"] = async () => null
     chooseDll: async () => null,
     chooseSaveFile: async () => null,
     chooseOpenFile: async () => null,
+    choosePack: async () => null,
     openExternal: async () => undefined,
     openPath: async () => undefined,
     emitSnapshot: (s) => {

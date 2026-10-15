@@ -18,6 +18,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { createWriteStream, existsSync, promises as fsp } from "node:fs";
 import path from "node:path";
 import { hashFile } from "./verify";
@@ -297,6 +298,62 @@ export async function importSdk(dumpDir: string, runtimeSource: string): Promise
 
 // The shipped examples as the game data, only where a file is missing: enough to start the services
 // and test the setup, never to play. Real data is never overwritten.
+// A game data pack (ReforgedHost's `npm run gamedata -- --export`, src/gamepack.ts there): gzip-compressed
+// JSON { format, version, game, created, files: [{ path, sha256, data }] } holding the game data that host
+// generated once. Only the known game-data files can come out of it. It is the host's own data from
+// their own game, for their own servers.
+export const GAMEDATA_PACK_FORMAT = "dauntless-reforged-revival-gamedata";
+export const GAMEDATA_PACK_GAME = `1.14.7 (${GAME_CHANGELIST})`;
+const SUPPLIED_SOURCE_FILES = ["progression_config.source.json", "ladyluck_store.source.json"];
+
+export function gameDataPackEntries(w: WorkspacePaths): Map<string, string> {
+  const entries = new Map<string, string>();
+  for (const name of BACKEND_GAME_DATA) entries.set(`backend/${name}`, path.join(w.backendGameData, name));
+  for (const name of DIRECTOR_GAME_DATA) entries.set(`director/${name}`, path.join(w.directorGameData, name));
+  for (const name of SUPPLIED_SOURCE_FILES) entries.set(`backend/raw/${name}`, path.join(w.backendGameData, "raw", name));
+  return entries;
+}
+
+// Checks the whole pack before writing anything; a file that is there and different is kept as <name>.<time>.bak.
+export async function importGameDataPack(w: WorkspacePaths, file: string, now = new Date()): Promise<{ written: number; unchanged: number }> {
+  let pack: { format?: unknown; version?: unknown; game?: unknown; files?: unknown };
+  try {
+    pack = JSON.parse(gunzipSync(await fsp.readFile(file)).toString("utf8"));
+  } catch {
+    throw new Error("pack_invalid");
+  }
+  if (pack?.format !== GAMEDATA_PACK_FORMAT || pack.version !== 1 || !Array.isArray(pack.files)) throw new Error("pack_invalid");
+  if (pack.game !== GAMEDATA_PACK_GAME) throw new Error("pack_game");
+  const entries = gameDataPackEntries(w);
+  const files = pack.files as { path?: unknown; sha256?: unknown; data?: unknown }[];
+  for (const f of files) {
+    if (typeof f?.path !== "string" || typeof f.data !== "string" || !entries.has(f.path)) throw new Error("pack_invalid");
+    if (createHash("sha256").update(f.data, "utf8").digest("hex") !== f.sha256) throw new Error("pack_damaged");
+    try {
+      JSON.parse(f.data);
+    } catch {
+      throw new Error("pack_damaged");
+    }
+  }
+  const stamp = now.toISOString().replace(/[:.]/g, "-");
+  let written = 0;
+  let unchanged = 0;
+  for (const f of files) {
+    const target = entries.get(f.path as string)!;
+    if (await isFile(target)) {
+      if ((await fsp.readFile(target, "utf8")) === f.data) {
+        unchanged++;
+        continue;
+      }
+      await fsp.rename(target, `${target}.${stamp}.bak`);
+    }
+    await fsp.mkdir(path.dirname(target), { recursive: true });
+    await fsp.writeFile(target, f.data as string);
+    written++;
+  }
+  return { written, unchanged };
+}
+
 export async function useSyntheticData(dir: string, files: readonly string[]): Promise<number> {
   let copied = 0;
   for (const name of files) {

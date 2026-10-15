@@ -1293,6 +1293,7 @@ function renderHost(): void {
           h("li", {}, h("div", {}, h("div", {}, t("host_data_step_export")), h("div", { class: "card-row" }, button(t("host_data_inject"), () => hostAct("inject_exporter"), { cls: "btn-primary", icon: "syringe", fk: "host-exporter", disabled: running || !windows || !k.builds.exporter || !snap.running.game })), !k.builds.exporter ? h("p", { class: "small-print" }, t("host_data_need_exporter")) : snap.running.game ? null : h("p", { class: "small-print" }, t("host_data_need_game")))),
           h("li", {}, h("div", {}, h("div", {}, t("host_data_step_copy")), h("div", { class: "card-row" }, button(t("host_data_copy"), () => hostAct("copy_exports"), { icon: "copy", fk: "host-copy", disabled: running || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })))),
           h("li", {}, h("div", {}, h("div", {}, t("host_data_step_generate")), cmd("cd ReforgedHost; npm run gamedata"))),
+          h("li", {}, h("div", {}, h("div", {}, t("host_data_step_pack")), h("div", { class: "card-row" }, button(t("host_data_import_pack"), () => void api.hostImportGameData().then(report).then(async () => ((state.host = await api.hostGet()), renderHost())), { icon: "download", fk: "host-pack", disabled: running })))),
         ),
       ),
     );

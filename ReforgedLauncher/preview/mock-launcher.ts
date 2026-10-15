@@ -176,6 +176,7 @@ const mock: LauncherApi = {
   hostGet: async () => hostKit,
   hostChooseWorkspace: ok,
   hostChooseDumper: ok,
+  hostImportGameData: ok,
   hostAction: ok,
   hostOpen: ok,
   dismissNotice: async () => update({ notice: null }),

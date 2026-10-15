@@ -78,6 +78,7 @@ import {
   detectHostKit,
   findDumps,
   findToolchain,
+  importGameDataPack,
   importSdk,
   msbuildArgs,
   platformToolset,
@@ -115,6 +116,8 @@ export interface Platform {
   chooseDll(defaultPath: string): Promise<string | null>;
   chooseSaveFile(defaultName: string): Promise<string | null>;
   chooseOpenFile(): Promise<string | null>;
+  // A game data pack (.json.gz) for the Host page's import.
+  choosePack(): Promise<string | null>;
   openExternal(url: string): Promise<void>;
   openPath(dir: string): Promise<void>;
   emitSnapshot(s: Snapshot): void;
@@ -1321,6 +1324,27 @@ export class Controller {
     });
     await this.emitHostKit();
     return OK;
+  }
+
+  // A game data pack the host exported earlier (npm run gamedata -- --export): the generated game data
+  // back in place without the SDK, CatalogExporter or the generators.
+  async hostImportGameData(): Promise<ActionResult> {
+    if (this.hostJob?.state === "running") return err("busy");
+    const ws = this.s.hostWorkspace;
+    if (!ws || !existsSync(path.join(ws, "ReforgedHost", "package.json"))) return this.fail("host_failed", "workspace");
+    const file = await this.p.choosePack();
+    if (!file) return err("cancelled");
+    this.setJob({ kind: "import_gamedata", state: "running", message: path.basename(file), logFile: null });
+    try {
+      const r = await importGameDataPack(workspacePaths(ws), file);
+      log.info(`host: game data pack ${path.basename(file)} imported (${r.written} written, ${r.unchanged} unchanged)`);
+      const done = await this.finishJob("import_gamedata", true, `${r.written + r.unchanged} files`);
+      await this.emitHostKit();
+      return done;
+    } catch (e) {
+      const code = e instanceof Error && /^pack_/.test(e.message) ? e.message : describeError(e);
+      return this.finishJob("import_gamedata", false, code);
+    }
   }
 
   async hostOpen(folder: HostFolder): Promise<ActionResult> {

@@ -261,7 +261,7 @@ export interface HostKit {
   job: HostJob | null;
 }
 
-export type HostJobKind = "inject" | "build_runtime" | "build_loader" | "build_exporter" | "import_sdk" | "copy_exports" | "synthetic_data" | "publish_runtime";
+export type HostJobKind = "inject" | "build_runtime" | "build_loader" | "build_exporter" | "import_sdk" | "copy_exports" | "synthetic_data" | "import_gamedata" | "publish_runtime";
 
 export interface HostJob {
   kind: HostJobKind;
@@ -335,6 +335,7 @@ export const IPC = {
   hostGet: "rr:host-get",
   hostChooseWorkspace: "rr:host-choose-workspace",
   hostChooseDumper: "rr:host-choose-dumper",
+  hostImportGameData: "rr:host-import-gamedata",
   hostAction: "rr:host-action",
   hostOpen: "rr:host-open",
   windowMinimize: "rr:window-minimize",

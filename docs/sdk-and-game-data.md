@@ -150,8 +150,30 @@ npm run doctor
 shows the state of both folders (real, example or missing). Restart the server after generating:
 the services read the data at start-up.
 
+### Save it once: the game data pack
+
+Once the server plays well, save everything `npm run gamedata` made into one file:
+
+```powershell
+npm run gamedata -- --export
+```
+
+It writes `.workspace\gamedata-packs\reforged-gamedata-1.14.7-<date>.json.gz` (or pass a path:
+`-- --export D:\Backups\gamedata.json.gz`): the backend's and the Director's game data and the
+sources in `game-data\raw`, without the examples. On your next setup, a new PC or a clean
+workspace, put it back instead of dumping the SDK, exporting with CatalogExporter and generating:
+
+```powershell
+npm run gamedata -- --import D:\Backups\gamedata.json.gz
+```
+
+or **Import game data pack** on the launcher's Host page (step 4). The pack is checked first (the
+Dauntless build it is for and each file's hash); a file it replaces is kept beside it as
+`<name>.<time>.bak`. You still build the runtime from an SDK, since the runtime is compiled from it.
+
 ## Keep it to yourself
 
 The SDK, the exports and the game data are derived from Phoenix Labs' game. Do not commit, upload
 or share them; this repository's `.gitignore` and Mystic Paradox's keep them out of Git. Share only
-your server, through invites.
+your server, through invites. The same goes for a game data pack: keep it with your own backups (an
+external drive, a private folder), not in a public repository or release.

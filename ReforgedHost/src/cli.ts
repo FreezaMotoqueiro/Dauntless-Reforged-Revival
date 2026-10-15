@@ -5,7 +5,7 @@
 //   npm run start
 //   npm run invite -- [--uses 1] [--for "Alex"] [--unlimited] [--list]
 //   npm run doctor
-//   npm run gamedata [-- --examples | --example-sources | --progression]
+//   npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]
 //   npm run publish-runtime
 
 import fs from "node:fs";
@@ -13,6 +13,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { portInUse, printChecks, runDoctor, tailscaleIPv4 } from "./doctor";
 import { BACKEND_GAME_DATA, DIRECTOR_GAME_DATA, gameDataState, generateGameData, useExamples } from "./gamedata";
+import { defaultPackFile, exportGameDataPack, importGameDataPack } from "./gamepack";
 import {
     DEFAULT_MONGO_URI,
     buildEnvFiles,
@@ -365,6 +366,36 @@ async function invite(p: Paths, args: Args): Promise<void> {
 
 async function gamedata(p: Paths, args: Args): Promise<void> {
     if (!fs.existsSync(p.backendDir)) fail("not set up yet: run npm run setup first");
+    if (args.export !== undefined) {
+        // Relative to where npm was run from (INIT_CWD), not ReforgedHost.
+        const out = typeof args.export === "string" ? path.resolve(process.env.INIT_CWD ?? process.cwd(), args.export) : defaultPackFile(p);
+        let r;
+        try {
+            r = exportGameDataPack(p, out);
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+        say(`Game data pack written: ${r.file}`);
+        say(`  ${r.included.length} files${r.left.length ? `; not in it (missing, or still the example): ${r.left.join(", ")}` : ""}`);
+        say("Keep it for your own servers: it is Phoenix Labs' game data from your game, not for publishing.");
+        say("On a new setup: npm run gamedata -- --import <this file>");
+        return;
+    }
+    if (args.import !== undefined) {
+        if (typeof args.import !== "string") fail("--import needs the pack file: npm run gamedata -- --import <file>");
+        let r;
+        try {
+            r = importGameDataPack(p, path.resolve(process.env.INIT_CWD ?? process.cwd(), args.import));
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+        say(`Game data pack imported: ${r.written.length} files written, ${r.unchanged.length} already the same${r.backups.length ? ` (${r.backups.length} replaced files kept as .bak)` : ""}`);
+        for (const [label, dir, files] of [["backend", p.backendGameData, BACKEND_GAME_DATA], ["Director", p.directorGameData, DIRECTOR_GAME_DATA]] as const) {
+            const g = gameDataState(dir, files);
+            say(`${label}: ${g.state}${g.missing.length ? ` (missing ${g.missing.join(", ")})` : ""}${g.synthetic.length ? ` (example data in ${g.synthetic.join(", ")})` : ""}`);
+        }
+        return;
+    }
     if (args.examples === true) {
         const copied = [...useExamples(p.backendGameData, BACKEND_GAME_DATA), ...useExamples(p.directorGameData, DIRECTOR_GAME_DATA)];
         say(copied.length ? `Copied the example data for ${copied.join(", ")}.` : "Nothing was missing.");
@@ -430,7 +461,7 @@ async function main(): Promise<void> {
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list]");
             say("  npm run doctor [-- --no-hash]");
-            say("  npm run gamedata [-- --examples | --example-sources | --progression]");
+            say("  npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]");
             say("  npm run publish-runtime");
             say("See README.md and ../docs/hosting.md.");
     }
