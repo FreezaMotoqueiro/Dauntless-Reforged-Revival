@@ -1219,7 +1219,7 @@ function renderHost(): void {
         h("p", { class: "card-text" }, t("host_ws_text")),
         k.workspace ? h("p", { class: "small-print selectable" }, secret(k.workspace, "host-ws")) : null,
         h("div", { class: "card-row" }, button(t("host_ws_choose"), () => void api.hostChooseWorkspace().then(report).then(async () => ((state.host = await api.hostGet()), renderHost())), { icon: "folder", fk: "host-ws" }), k.workspace ? linkButton(t("host_open"), () => hostOpen("workspace"), { icon: "folder", fk: "host-ws-open" }) : null),
-        k.workspaceOk && !k.upstream.patched ? cmd("cd ReforgedHost; npm install; npm run setup") : null,
+        k.workspaceOk && !k.upstream.patched ? cmd("cd ReforgedHost; npm install; npm run setup -- --mode private --name \"My server\" --game \"D:\\Games\\Dauntless\"") : null,
         !k.workspaceOk ? cmd("git clone https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival") : null,
       ),
     );
@@ -1316,8 +1316,9 @@ function renderHost(): void {
         "todo",
         t("host_run_chip"),
         h("p", { class: "card-text" }, t("host_run_text")),
+        cmd("cd ReforgedHost; npm run publish-runtime"),
         cmd("cd ReforgedHost; npm run start"),
-        cmd("cd ReforgedHost; npm run invite -- --uses 1 --name \"Alex\""),
+        cmd("cd ReforgedHost; npm run invite -- --for \"Alex\""),
         h("div", { class: "card-row" }, linkButton(t("host_teaser_docs"), () => open("project_docs_hosting"), { icon: "external", fk: "host-docs" }), linkButton(t("host_get_mongodb"), () => open("mongodb"), { icon: "external", fk: "host-mongo" }), linkButton(t("host_get_node"), () => open("nodejs"), { icon: "external", fk: "host-node" })),
       ),
     );
