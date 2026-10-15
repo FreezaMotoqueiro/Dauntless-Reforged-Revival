@@ -81,6 +81,9 @@ cd ReforgedContent  && npm ci && npm test
 cd ReforgedHost     && npm ci && npm test
 ```
 
+Publishing a GitHub release builds the launcher installer and attaches it to the release; see
+[ReforgedLauncher/README.md](ReforgedLauncher/README.md#releases).
+
 ## Credits and license
 
 Dauntless Reforged Revival stands on the work of

@@ -54,10 +54,10 @@ test("gameRootCandidates: the root, a Dauntless subfolder, Archon's parent, thre
 test("locateExistingGame finds the game from any of the layouts", async () => {
   const root = fakeGame();
   for (const input of [root, path.dirname(root), path.join(root, "Archon"), path.join(root, "Archon", "Binaries", "Win64")]) {
-    assert.deepEqual(await locateExistingGame(input, "linux"), { ok: true, root }, input);
+    assert.deepEqual(await locateExistingGame(input, process.platform), { ok: true, root }, input);
   }
-  assert.deepEqual(await locateExistingGame(path.join(root, "nothing-here"), "linux"), { ok: false, reason: "not_found" });
-  assert.deepEqual(await locateExistingGame("not absolute", "linux"), { ok: false, reason: "invalid_path" });
+  assert.deepEqual(await locateExistingGame(path.join(root, "nothing-here"), process.platform), { ok: false, reason: "not_found" });
+  assert.deepEqual(await locateExistingGame("not absolute", process.platform), { ok: false, reason: "invalid_path" });
 });
 
 test("Version.txt: 1.14.7 (CL 647472) is accepted, other builds are not", async () => {

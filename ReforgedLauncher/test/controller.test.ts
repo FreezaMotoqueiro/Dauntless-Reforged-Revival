@@ -100,7 +100,7 @@ async function harness(chooseFolder: Platform["chooseFolder"] = async () => null
   const p: Platform = {
     userDataDir: temp("rr-ctl-user-"),
     resourcesDir: temp("rr-ctl-res-"),
-    hostPlatform: "linux",
+    hostPlatform: process.platform, // the temporary folders are real paths of this OS
     env: { PATH: "/usr/bin", REFORGED_BACKEND_URL: "https://should-be-replaced.invalid" },
     appVersion: "0.0.0-test",
     packaged: false,

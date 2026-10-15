@@ -46,6 +46,22 @@ Node.js 20.19 or newer.
 `trust`, `noruntime`, `installing`, `ready`, `running`, ...), `&lang=pt-BR`, `&view=host` and so on;
 the list is at the top of `scripts/preview.mjs`.
 
+## Releases
+
+Publishing a GitHub release builds the launcher and attaches it to that release
+([`.github/workflows/launcher-release.yml`](../.github/workflows/launcher-release.yml)):
+`ReforgedRevivalLauncher-Setup.exe`, a portable ZIP, the Squirrel update files (`RELEASES`, the
+`-full.nupkg`) and `SHA256SUMS.txt`. The run takes about 15 minutes (see the Actions tab).
+
+- The tag is the launcher version: `0.2`, `0.2.0` or `v0.2.0` all build 0.2.0. A version with a
+  prerelease part (`0.3.0-beta.1`), or a release marked as a prerelease, is a test version.
+- Every other release then updates the rolling `launcher-updates` release, which installed
+  launchers read (`UPDATE_FEED_URL` in `src/main/constants.ts`) to update themselves within an
+  hour. Test versions and versions older than the one it offers never reach it. Each new release
+  needs a higher version than the last, or installed launchers do not update.
+- The release must be made from a commit that has the workflow. For an older release, or one whose
+  run failed: Actions > Launcher release > Run workflow, with the release's tag.
+
 ## Layout
 
 | Path | What |
