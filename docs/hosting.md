@@ -133,6 +133,11 @@ button for it.
 - The progression config is built from the game's own progression tables (see
   [sdk-and-game-data.md](sdk-and-game-data.md#the-progression-config)); the Hunt Pass has ranks but
   no rewards.
+- A 1.14.7 hub (Ramsgate, the Training Grounds) never asks for the progression config on its own,
+  and every player then drops after a minute ("Loading PlayerData Failed" in its log). `npm run start`
+  therefore creates `CALL_HUNTPASS_QUERY.flag` beside the game executable, one of Mystic Paradox's
+  runtime switches: it makes the hub query the Hunt Pass season, which fetches the config. It acts on
+  game servers only, not on your own game client. Delete the file to turn it off.
 - One PC for everything: the services, the database and the game servers. Each hunt is a whole game
   process (about 1 GB of RAM); `--max-hunts` caps them (default 3).
 - Windows only for the server and the launcher, like the game and the runtime.

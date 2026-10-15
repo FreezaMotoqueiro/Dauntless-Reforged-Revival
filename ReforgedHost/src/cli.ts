@@ -28,7 +28,7 @@ import {
 import { certificateFingerprint, createInviteCode, inviteFor, listInviteCodes } from "./invite";
 import { ensureReplicaSet, findMongod, mongodArgs } from "./mongo";
 import { findRepoRoot, GAME_EXE_RELATIVE, paths, PORTS, type Paths } from "./paths";
-import { installServerRuntime, publishRuntime } from "./publish";
+import { ensureServerFlags, installServerRuntime, publishRuntime } from "./publish";
 import { capture, run } from "./run";
 import { Supervisor, type ServiceSpec } from "./services";
 import { ensureUpstream, gitAvailable, readPin } from "./upstream";
@@ -252,6 +252,11 @@ async function start(p: Paths): Promise<void> {
     if (gd.some((g) => g.state === "missing")) fail("game data is missing: npm run gamedata (or npm run gamedata -- --examples for a start-up test only)");
     if (gd.some((g) => g.state === "synthetic")) say("! This server runs on example game data: it starts, but it is not playable. The launcher tells players so.");
     if (!fs.existsSync(path.join(p.runtimePublish, "runtime.json"))) say("! No runtime published yet: players can join but not play. Build it and run npm run publish-runtime.");
+    const win64 = config.gameDir ? path.dirname(path.join(config.gameDir, GAME_EXE_RELATIVE)) : null;
+    if (win64 && fs.existsSync(win64)) {
+        const flags = ensureServerFlags(win64);
+        if (flags.length) say(`Turned on for the game servers: ${flags.join(", ")} (in ${win64})`);
+    }
 
     const width = 9;
     const supervisor = new Supervisor(p.logs, (name, line) => process.stdout.write(`${name.padEnd(width)}| ${line}\n`));
@@ -391,6 +396,7 @@ function publish(p: Paths): void {
         const r = installServerRuntime(p, win64);
         if (r.installed.length) say(`Installed for the game servers in ${win64}: ${r.installed.join(", ")}`);
         if (r.failed.length) say(`! Could not replace ${r.failed.map((f) => f.name).join(", ")} in ${win64} (a game server still running? stop the server and run this again): ${r.failed[0].error}`);
+        ensureServerFlags(win64);
     }
 }
 

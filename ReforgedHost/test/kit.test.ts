@@ -9,7 +9,7 @@ import { DEFAULT_MONGO_URI, type HostConfig } from "../src/hostconfig";
 import { createInviteCode, formatInvite, inviteFor } from "../src/invite";
 import { directUri, mongodArgs } from "../src/mongo";
 import { paths } from "../src/paths";
-import { installServerRuntime, publishRuntime, sha256File } from "../src/publish";
+import { ensureServerFlags, installServerRuntime, publishRuntime, SERVER_RUNTIME_FLAGS, sha256File } from "../src/publish";
 import { serviceEnvironment, Supervisor } from "../src/services";
 import { parseInvite } from "../../ReforgedLauncher/src/shared/invite";
 import { ParseRuntimeIndex } from "../../ReforgedContent/src/runtime";
@@ -123,6 +123,9 @@ describe("runtime publishing", () => {
         const win64 = tempDir("win64");
         assert.deepEqual(installServerRuntime(p, win64).installed, ["MysticParadox.dll", "winmm.dll"]);
         assert.deepEqual(installServerRuntime(p, win64).unchanged, ["MysticParadox.dll", "winmm.dll"]);
+        assert.deepEqual(ensureServerFlags(win64), ["CALL_HUNTPASS_QUERY.flag"], "the hub's progression query is switched on");
+        assert.deepEqual(ensureServerFlags(win64), [], "and left alone once it is there");
+        assert.ok(SERVER_RUNTIME_FLAGS.every((f) => fs.existsSync(path.join(win64, f))));
     });
 
     it("refuses before anything is built", () => {
