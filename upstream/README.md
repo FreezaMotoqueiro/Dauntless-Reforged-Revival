@@ -58,6 +58,17 @@ the Director's game servers inherit `REFORGED_BACKEND_URL=http://127.0.0.1:61000
 `ParadoxDirector`. `BIND_HOST` (default `127.0.0.1`, so only the backend on the same machine can
 ask it for game servers) and `GET /api/instances` (the running hubs and hunts, for ServerStatus).
 
+### 0004: a hub stays up when its phantom player's data cannot load
+
+`ParadoxRuntime/dllmain.cpp`, the player-data `LoadFailed` hook. A 1.14.7 hub boots in listen-server
+mode and spawns a local "phantom" player whose PlayerState has no net id, so its progression component
+never loads ("the player state does not have a valid ID"). After the 60-second timeout and one retry the
+game's terminal handler reloads the hub's map ("LoadMap: failed to Listen"), which disconnects every real
+player about two minutes after each hub start, although their own loads all completed. On the server, a
+load failure whose owner has no net id is now logged (`[PhantomLoadFailure]`) and dropped; real players
+always carry one. `KEEP_PHANTOM_LOAD_FAILURE.flag` beside the game executable restores the original
+handling.
+
 ## Updating the pin
 
 1. Pick the new upstream commit and read its changes (the 1.14.7 runtime, the backend routes the
