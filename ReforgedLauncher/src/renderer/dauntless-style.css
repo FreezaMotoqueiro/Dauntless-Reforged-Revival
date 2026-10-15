@@ -1,44 +1,44 @@
 /* Dauntless look: the launcher's layout, dressed like the game's own menus. Everything is drawn with
-   CSS (no game images): deep blue bevelled bars, a bright blue bar for the current choice, brushed
+   CSS (no game images): deep green bevelled bars, a bright green bar for the current choice, brushed
    steel frames, white labels, metal-knob switches and a gold PLAY. It keeps the launcher's fonts.
    It sits on top of styles.css and is scoped to <html data-style="dauntless">, so its rules win
    without !important; taking the attribute off shows the previous look. The colours it adds to the
-   brand palette (steel, gold, the game's blues) are defined once below as --dl-* tokens. */
+   brand palette (steel, gold, the bar greens) are defined once below as --dl-* tokens. */
 
 :root[data-style="dauntless"] {
-  --dl-bar-top: #1d4f78;
-  --dl-bar-bottom: #11334f;
-  --dl-bar-edge: #3f6d94;
-  --dl-sel-top: #2e6c9f;
-  --dl-sel-bottom: #1b4a73;
-  --dl-sel-edge: #6f9cc4;
-  --dl-silver-hi: #8ea3b7;
-  --dl-silver-mid: #4d6277;
-  --dl-silver-lo: #26384a;
-  --dl-panel: color-mix(in srgb, #071f36 88%, transparent);
-  --dl-cyan: #6fd2df;
-  --dl-gold-hi: #ffe58a;
-  --dl-gold: #e2b440;
-  --dl-gold-lo: #a8741a;
+  --dl-bar-top: #1d783d;
+  --dl-bar-bottom: #114f27;
+  --dl-bar-edge: #3f945d;
+  --dl-sel-top: #2e9f56;
+  --dl-sel-bottom: #1b733a;
+  --dl-sel-edge: #6fc48d;
+  --dl-silver-hi: #8eb79d;
+  --dl-silver-mid: #4d775c;
+  --dl-silver-lo: #264a33;
+  --dl-panel: color-mix(in srgb, #073618 88%, transparent);
+  --dl-cyan: #e2ce6c;
+  --dl-gold-hi: #ffe88a;
+  --dl-gold: #e2be40;
+  --dl-gold-lo: #a8821a;
   --silver-line: linear-gradient(90deg, transparent, var(--dl-silver-mid) 12%, var(--dl-silver-hi) 50%, var(--dl-silver-mid) 88%, transparent);
 }
 
 /* ------------------------------------------------------------------ frame: title bar, rail, footer */
 
 :root[data-style="dauntless"] .titlebar {
-  background: linear-gradient(180deg, #0b2c4b, #061a2e);
+  background: linear-gradient(180deg, #0b4b22, #062e15);
   border-bottom: 0;
   box-shadow: inset 0 -2px 0 var(--dl-silver-lo), inset 0 -3px 0 var(--dl-silver-hi);
 }
 
 :root[data-style="dauntless"] .rail {
-  background: linear-gradient(180deg, #0a2a48, #051628);
+  background: linear-gradient(180deg, #0a4820, #052812);
   border-right: 0;
   box-shadow: inset -2px 0 0 var(--dl-silver-lo), inset -3px 0 0 color-mix(in srgb, var(--dl-silver-hi) 55%, transparent);
 }
 
 :root[data-style="dauntless"] .actionbar {
-  background: linear-gradient(180deg, #0c2034, #050d17);
+  background: linear-gradient(180deg, #0c341b, #05170c);
   border-top: 0;
   box-shadow: inset 0 3px 0 var(--dl-silver-lo), inset 0 2px 0 var(--dl-silver-hi);
 }
@@ -59,29 +59,29 @@
   height: 48px;
   border: 0;
   border-radius: 0;
-  color: #e9eef2;
-  text-shadow: 0 1px 2px #000;
+  color: #e9f2ec;
+  text-shadow: 0 1px 2px #000000;
   background:
     linear-gradient(90deg, transparent, rgb(0 0 0 / 0.55) 12%, rgb(0 0 0 / 0.55) 80%, transparent) left calc(100% - 1px) / 100% 1px no-repeat,
-    linear-gradient(90deg, transparent, rgb(160 180 200 / 0.3) 12%, rgb(160 180 200 / 0.12) 80%, transparent) left bottom / 100% 1px no-repeat;
+    linear-gradient(90deg, transparent, rgb(160 200 175 / 0.3) 12%, rgb(160 200 175 / 0.12) 80%, transparent) left bottom / 100% 1px no-repeat;
   box-shadow: none;
 }
 
 :root[data-style="dauntless"] .nav-item:hover {
-  color: #fff;
+  color: #ffffff;
   background:
-    linear-gradient(90deg, rgb(47 120 189 / 0.35), rgb(47 120 189 / 0.12) 70%, transparent),
+    linear-gradient(90deg, rgb(47 189 98 / 0.35), rgb(47 189 98 / 0.12) 70%, transparent),
     linear-gradient(90deg, transparent, rgb(0 0 0 / 0.55) 12%, rgb(0 0 0 / 0.55) 80%, transparent) left calc(100% - 1px) / 100% 1px no-repeat,
-    linear-gradient(90deg, transparent, rgb(160 180 200 / 0.3) 12%, rgb(160 180 200 / 0.12) 80%, transparent) left bottom / 100% 1px no-repeat;
+    linear-gradient(90deg, transparent, rgb(160 200 175 / 0.3) 12%, rgb(160 200 175 / 0.12) 80%, transparent) left bottom / 100% 1px no-repeat;
 }
 
-/* The current page: a stroke of blue paint with a torn right end (brand/dl-nav-active.svg). */
+/* The current page: a stroke of green paint with a torn right end (brand/dl-nav-active.svg). */
 :root[data-style="dauntless"] .nav-item[aria-current="page"] {
   /* Out to the window's left edge (the rail's 14px padding), like paint brushed in from the side. */
   margin-left: -14px;
   width: calc(100% + 18px);
   padding-left: 28px;
-  color: #fff;
+  color: #ffffff;
   font-weight: 700;
   background: url("./brand/dl-nav-active.svg") center / 100% 100% no-repeat;
   box-shadow: none;
@@ -97,18 +97,18 @@
 :root[data-style="dauntless"] .nav-item .icon {
   width: 22px;
   height: 22px;
-  color: #c3ccd5;
-  filter: drop-shadow(0 1px 1px #000);
+  color: #c3d5ca;
+  filter: drop-shadow(0 1px 1px #000000);
 }
 
 :root[data-style="dauntless"] .nav-item[aria-current="page"] .icon {
-  color: #fff;
-  filter: drop-shadow(0 0 4px rgb(160 210 255 / 0.7)) drop-shadow(0 1px 1px #000);
+  color: #ffffff;
+  filter: drop-shadow(0 0 4px rgb(160 255 194 / 0.7)) drop-shadow(0 1px 1px #000000);
 }
 
 /* ------------------------------------------------------------------ panels */
 
-/* A brushed steel frame around a deep blue glass panel. */
+/* A brushed steel frame around a deep green glass panel. */
 :root[data-style="dauntless"] .card {
   border: 2px solid transparent;
   border-radius: 4px;
@@ -136,15 +136,15 @@
   border-radius: 3px;
   border: 1px solid var(--dl-bar-edge);
   background: linear-gradient(180deg, var(--dl-bar-top), var(--dl-bar-bottom));
-  color: #fff;
-  text-shadow: 0 1px 2px #000;
+  color: #ffffff;
+  text-shadow: 0 1px 2px #000000;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), inset 0 -2px 5px rgb(0 0 0 / 0.35);
 }
 
 :root[data-style="dauntless"] .btn:hover:not(:disabled) {
   border-color: var(--dl-sel-edge);
   background: linear-gradient(180deg, var(--dl-sel-top), var(--dl-sel-bottom));
-  color: #fff;
+  color: #ffffff;
 }
 
 :root[data-style="dauntless"] .btn:active:not(:disabled) {
@@ -152,7 +152,7 @@
 }
 
 :root[data-style="dauntless"] .btn:disabled {
-  background: #0b2238;
+  background: #0b381b;
   border-color: var(--dl-silver-lo);
   color: var(--dl-silver-mid);
   text-shadow: none;
@@ -168,17 +168,17 @@
    around a gold fill (::before), glossy top half, engraved letters, angled ends. The fill colour is
    --dl-fill, so each state only swaps the variable. */
 :root[data-style="dauntless"] .big-button {
-  --dl-fill: linear-gradient(180deg, #fff3b4 0%, #f6d266 46%, #dca535 54%, #b97d1d 100%);
-  --dl-rim: linear-gradient(180deg, #8a5a12, #4a2e05);
+  --dl-fill: linear-gradient(180deg, #fff3b4 0%, #f6d866 46%, #dcb335 54%, #b98e1d 100%);
+  --dl-rim: linear-gradient(180deg, #8a6812, #4a3605);
   isolation: isolate;
   border-radius: 0;
   clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 18px 100%, 0 50%);
   letter-spacing: 0.14em;
-  color: #3a2503;
-  text-shadow: 0 1px 0 rgb(255 240 200 / 0.65);
+  color: #3a2b03;
+  text-shadow: 0 1px 0 rgb(255 243 200 / 0.65);
   background: var(--dl-rim);
   box-shadow: none;
-  filter: drop-shadow(0 6px 16px rgb(226 180 64 / 0.3));
+  filter: drop-shadow(0 6px 16px rgb(226 190 64 / 0.3));
 }
 
 :root[data-style="dauntless"] .big-button::before {
@@ -195,7 +195,7 @@
 :root[data-style="dauntless"] .big-button:hover:not(:disabled) {
   background: var(--dl-rim);
   box-shadow: none;
-  filter: drop-shadow(0 6px 22px rgb(255 205 90 / 0.55));
+  filter: drop-shadow(0 6px 22px rgb(255 216 90 / 0.55));
 }
 
 :root[data-style="dauntless"] .big-button:hover:not(:disabled)::before {
@@ -203,37 +203,37 @@
 }
 
 :root[data-style="dauntless"] .big-button:active:not(:disabled) {
-  --dl-fill: linear-gradient(180deg, #dca535, #b97d1d);
+  --dl-fill: linear-gradient(180deg, #dcb335, #b98e1d);
   background: var(--dl-rim);
-  color: #2a1a02;
+  color: #2a1f02;
 }
 
 :root[data-style="dauntless"] .big-button:disabled {
-  --dl-fill: linear-gradient(180deg, #3a4652, #222b34);
-  --dl-rim: linear-gradient(180deg, #4d5966, #1a2229);
+  --dl-fill: linear-gradient(180deg, #3a5243, #223429);
+  --dl-rim: linear-gradient(180deg, #4d6656, #1a291f);
   background: var(--dl-rim);
   color: var(--dl-silver-hi);
-  text-shadow: 0 1px 2px #000;
+  text-shadow: 0 1px 2px #000000;
   box-shadow: none;
   filter: none;
 }
 
 :root[data-style="dauntless"] .big-button.is-running,
 :root[data-style="dauntless"] .big-button.is-running:disabled {
-  --dl-fill: linear-gradient(180deg, #4c86b8 0%, var(--dl-sel-top) 46%, #22578a 54%, var(--dl-sel-bottom) 100%);
-  --dl-rim: linear-gradient(180deg, #6f9cc4, #0c2840);
+  --dl-fill: linear-gradient(180deg, #4cb872 0%, var(--dl-sel-top) 46%, #228a48 54%, var(--dl-sel-bottom) 100%);
+  --dl-rim: linear-gradient(180deg, #6fc48d, #0c401e);
   background: var(--dl-rim);
-  color: #fff;
-  text-shadow: 0 1px 2px #000;
+  color: #ffffff;
+  text-shadow: 0 1px 2px #000000;
   box-shadow: none;
 }
 
 :root[data-style="dauntless"] .big-button.is-pause {
   --dl-fill: linear-gradient(180deg, var(--dl-bar-top), var(--dl-bar-bottom));
-  --dl-rim: linear-gradient(180deg, #5d93c0, #0a2a48);
+  --dl-rim: linear-gradient(180deg, #5dc080, #0a4820);
   background: var(--dl-rim);
-  color: #fff;
-  text-shadow: 0 1px 2px #000;
+  color: #ffffff;
+  text-shadow: 0 1px 2px #000000;
 }
 
 /* Ready: a soft light breathing inside the plate (a ring would be cut by the angled ends). */
@@ -248,8 +248,8 @@
 
 /* Switch: a cyan track when on, a metal knob with a dark centre. */
 :root[data-style="dauntless"] .switch {
-  border: 1px solid #000;
-  background: #20262c;
+  border: 1px solid #000000;
+  background: #202c24;
   box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.6);
 }
 
@@ -259,21 +259,21 @@
   width: 22px;
   height: 22px;
   background:
-    radial-gradient(circle, #0c1218 0 3px, #2b3640 3.5px 5px, transparent 5.5px),
-    radial-gradient(circle at 35% 30%, #f3f6f8, #9aa6b1 55%, #4a5560);
+    radial-gradient(circle, #0c1810 0 3px, #2b4033 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 35% 30%, #f3f8f5, #9ab1a2 55%, #4a6052);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.7), inset 0 0 0 1px rgb(0 0 0 / 0.55);
 }
 
 :root[data-style="dauntless"] .switch[aria-checked="true"] {
-  background: linear-gradient(180deg, #9be3ec, var(--dl-cyan) 60%, #3aa6b5);
-  border-color: #000;
+  background: linear-gradient(180deg, #eee099, var(--dl-cyan) 60%, #3ab557);
+  border-color: #000000;
 }
 
 :root[data-style="dauntless"] .switch[aria-checked="true"]::after {
   transform: translateX(22px);
   background:
-    radial-gradient(circle, #0c1218 0 3px, var(--dl-cyan) 3.5px 5px, transparent 5.5px),
-    radial-gradient(circle at 35% 30%, #f3f6f8, #9aa6b1 55%, #4a5560);
+    radial-gradient(circle, #0c1810 0 3px, var(--dl-cyan) 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 35% 30%, #f3f8f5, #9ab1a2 55%, #4a6052);
 }
 
 :root[data-style="dauntless"] .input,
@@ -281,7 +281,7 @@
 :root[data-style="dauntless"] .select {
   border-radius: 3px;
   border-color: var(--dl-silver-lo);
-  background-color: #040f1a;
+  background-color: #041a0c;
   box-shadow: inset 0 2px 5px rgb(0 0 0 / 0.6);
 }
 
@@ -292,26 +292,26 @@
   box-shadow: inset 0 2px 5px rgb(0 0 0 / 0.6), 0 0 0 2px color-mix(in srgb, var(--dl-sel-top) 55%, transparent);
 }
 
-/* The invite's preview under the text box: the selected-bar blue in a steel frame. */
+/* The invite's preview under the text box: the selected-bar green in a steel frame. */
 :root[data-style="dauntless"] .preview {
   border: 2px solid transparent;
   border-radius: 4px;
   background:
-    linear-gradient(180deg, #154a78, #0b2a48) padding-box,
+    linear-gradient(180deg, #157838, #0b4821) padding-box,
     linear-gradient(180deg, var(--dl-sel-edge), var(--dl-silver-mid) 50%, var(--dl-silver-lo)) border-box;
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.15);
 }
 
 :root[data-style="dauntless"] .preview-name {
-  color: #fff;
-  text-shadow: 0 1px 2px #000;
+  color: #ffffff;
+  text-shadow: 0 1px 2px #000000;
 }
 
 /* The dropdown list and the language tabs: bars like the game's menus. */
 :root[data-style="dauntless"] .dropdown-list {
   border-radius: 3px;
   border-color: var(--dl-silver-mid);
-  background: #061a2d;
+  background: #062d14;
 }
 
 :root[data-style="dauntless"] .dropdown-option {
@@ -323,7 +323,7 @@
 }
 
 :root[data-style="dauntless"] .dropdown-option[aria-selected="true"] {
-  color: #fff;
+  color: #ffffff;
   background: linear-gradient(180deg, var(--dl-sel-top), var(--dl-sel-bottom));
   box-shadow: inset 0 0 0 1px var(--dl-sel-edge);
 }
@@ -331,19 +331,19 @@
 :root[data-style="dauntless"] .lang-switch {
   border-radius: 3px;
   border-color: var(--dl-silver-lo);
-  background: #040f1a;
+  background: #041a0c;
 }
 
 :root[data-style="dauntless"] .lang-btn {
   border-radius: 2px;
-  color: #c9d6e2;
+  color: #c9e2d2;
 }
 
 :root[data-style="dauntless"] .lang-btn[aria-pressed="true"] {
-  color: #fff;
+  color: #ffffff;
   background: linear-gradient(180deg, var(--dl-sel-top), var(--dl-sel-bottom));
   box-shadow: inset 0 0 0 1px var(--dl-sel-edge);
-  text-shadow: 0 1px 2px #000;
+  text-shadow: 0 1px 2px #000000;
 }
 
 /* ------------------------------------------------------------------ dialogs */
@@ -379,8 +379,8 @@
   clip-path: polygon(0 100%, 7% 38%, 30% 38%, 37% 0, 63% 0, 70% 38%, 93% 38%, 100% 100%);
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.55), transparent 45%),
-    linear-gradient(180deg, #e9edf0, #b9c0c6 45%, #858c93);
-  filter: drop-shadow(0 -1px 0 #202326);
+    linear-gradient(180deg, #e9f0eb, #b9c6be 45%, #85938a);
+  filter: drop-shadow(0 -1px 0 #202622);
   pointer-events: none;
 }
 
@@ -392,16 +392,16 @@
   right: -12px;
   bottom: -2px;
   height: 2px;
-  background: linear-gradient(90deg, transparent, #b4b9be 12px, #8d9195 30%, #8d9195 70%, #b4b9be calc(100% - 12px), transparent);
+  background: linear-gradient(90deg, transparent, #b4beb8 12px, #8d9195 30%, #8d9195 70%, #b4beb8 calc(100% - 12px), transparent);
   pointer-events: none;
 }
 
 :root[data-style="dauntless"] .modal-title {
   justify-content: center;
   padding: 0;
-  color: #fff;
+  color: #ffffff;
   font-weight: 600;
-  text-shadow: 0 1px 2px #000;
+  text-shadow: 0 1px 2px #000000;
   background: none;
 }
 
@@ -426,7 +426,7 @@
 }
 
 /* The game's tab buttons ("Video", "Audio"...), drawn as one SVG (brand/dl-button.svg): a dark rim,
-   a petrol blue body with a bright top edge, and 45 degree corners. */
+   a deep green body with a bright top edge, and 45 degree corners. */
 :root[data-style="dauntless"] .modal-actions .btn {
   position: relative;
   min-width: 170px;
@@ -439,7 +439,7 @@
   padding: 0 6px;
   background: none;
   box-shadow: none;
-  color: #fff;
+  color: #ffffff;
   font-size: 16px;
   font-weight: 700;
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.7);
@@ -447,7 +447,7 @@
 
 :root[data-style="dauntless"] .modal-actions .btn:hover:not(:disabled) {
   background: none;
-  color: #fff;
+  color: #ffffff;
   filter: brightness(1.18);
 }
 
@@ -457,12 +457,12 @@
 }
 
 :root[data-style="dauntless"] .modal-actions .btn:focus-visible {
-  outline: 2px solid #b9d8f2;
+  outline: 2px solid #b9f2cd;
   outline-offset: 3px;
 }
 
 :root[data-style="dauntless"] .modal-actions .btn .icon {
-  color: #d4e7f8;
+  color: #d4f8e1;
 }
 
 :root[data-style="dauntless"] .modal-danger {
@@ -484,11 +484,11 @@
 }
 
 :root[data-style="dauntless"] .modal .fp-compare dt {
-  color: #b9bec2;
+  color: #b9c2bc;
 }
 
 :root[data-style="dauntless"] .modal-danger .modal-title {
-  color: #fff;
+  color: #ffffff;
 }
 
 :root[data-style="dauntless"] .modal-danger .modal-title .icon {
@@ -532,12 +532,12 @@
 }
 
 :root[data-style="dauntless"] .titlebar-brand {
-  color: #dbe6f0;
-  text-shadow: 0 1px 2px #000;
+  color: #dbf0e3;
+  text-shadow: 0 1px 2px #000000;
 }
 
 :root[data-style="dauntless"] .win-btn {
-  color: #b9c6d2;
+  color: #b9d2c2;
   transition: background 0.12s, color 0.12s;
   /* stop above the bar's steel line, so a hover never covers it */
   height: calc(100% - 3px);
@@ -546,13 +546,13 @@
 
 /* Quiet window buttons: a faint light on hover, a muted red only for close. */
 :root[data-style="dauntless"] .win-btn:hover {
-  color: #fff;
+  color: #ffffff;
   background: rgb(255 255 255 / 0.08);
   box-shadow: none;
 }
 
 :root[data-style="dauntless"] .win-close:hover {
-  color: #fff;
+  color: #ffffff;
   background: rgb(180 45 38 / 0.85);
 }
 
@@ -561,7 +561,7 @@
   border: 2px solid transparent;
   border-radius: 4px;
   background:
-    linear-gradient(180deg, #0c2b48, #071a2c) padding-box,
+    linear-gradient(180deg, #0c4822, #072c14) padding-box,
     linear-gradient(180deg, var(--dl-silver-hi), var(--dl-silver-mid) 30%, var(--dl-silver-lo) 70%, var(--dl-silver-mid)) border-box;
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.45);
 }
@@ -570,14 +570,14 @@
 :root[data-style="dauntless"] .badge {
   border-radius: 3px;
   border-color: var(--dl-silver-mid);
-  background: linear-gradient(180deg, #102f4d, #08192b);
+  background: linear-gradient(180deg, #104d26, #082b15);
 }
 
-/* Setup steps: metal rings like the game's round icon frames, the current one lit blue. */
+/* Setup steps: metal rings like the game's round icon frames, the current one lit green. */
 :root[data-style="dauntless"] .step-dot {
   border: 2px solid var(--dl-silver-mid);
-  background: radial-gradient(circle at 40% 35%, #173f63, #07192b);
-  box-shadow: 0 0 0 1px #000, inset 0 1px 2px rgb(255 255 255 / 0.15);
+  background: radial-gradient(circle at 40% 35%, #176332, #072b14);
+  box-shadow: 0 0 0 1px #000000, inset 0 1px 2px rgb(255 255 255 / 0.15);
 }
 
 :root[data-style="dauntless"] .step.done .step-dot {
@@ -588,8 +588,8 @@
 :root[data-style="dauntless"] .step.current .step-dot {
   border-color: var(--dl-sel-edge);
   background: linear-gradient(180deg, var(--dl-sel-top), var(--dl-sel-bottom));
-  color: #fff;
-  box-shadow: 0 0 0 1px #000, 0 0 8px color-mix(in srgb, var(--dl-sel-top) 35%, transparent);
+  color: #ffffff;
+  box-shadow: 0 0 0 1px #000000, 0 0 8px color-mix(in srgb, var(--dl-sel-top) 35%, transparent);
 }
 
 
@@ -600,7 +600,7 @@
   border-radius: 3px;
   border: 2px solid transparent;
   background:
-    linear-gradient(#061a2d, #061a2d) padding-box,
+    linear-gradient(#061a2d, #062d14) padding-box,
     linear-gradient(180deg, var(--dl-silver-hi), var(--dl-silver-mid) 30%, var(--dl-silver-lo) 70%, var(--dl-silver-mid)) border-box;
   box-shadow: 0 12px 30px rgb(0 0 0 / 0.6);
 }
@@ -608,7 +608,7 @@
 :root[data-style="dauntless"] .server-menu-head {
   padding: 4px 8px 6px;
   margin-bottom: 4px;
-  color: #b9c6d2;
+  color: #b9d2c2;
   background: var(--silver-line) bottom / 100% 1px no-repeat;
 }
 
@@ -624,8 +624,8 @@
 }
 
 :root[data-style="dauntless"] .server-menu-name {
-  color: #fff;
-  text-shadow: 0 1px 2px #000;
+  color: #ffffff;
+  text-shadow: 0 1px 2px #000000;
 }
 
 :root[data-style="dauntless"] .account-switch:hover:not(:disabled) {
@@ -633,7 +633,7 @@
 }
 
 :root[data-style="dauntless"] .account-switch::after {
-  border-color: #b9c6d2;
+  border-color: #b9d2c2;
 }
 
 /* ------------------------------------------------------------------ players and worlds */
@@ -643,17 +643,17 @@
   border: 2px solid transparent;
   border-radius: 4px;
   background:
-    linear-gradient(180deg, #0c2b48, #071a2c) padding-box,
+    linear-gradient(180deg, #0c4822, #072c14) padding-box,
     linear-gradient(180deg, var(--dl-silver-hi), var(--dl-silver-mid) 30%, var(--dl-silver-lo) 70%, var(--dl-silver-mid)) border-box;
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.45);
 }
 
 :root[data-style="dauntless"] .instance-title {
-  color: #fff;
-  text-shadow: 0 1px 2px #000;
+  color: #ffffff;
+  text-shadow: 0 1px 2px #000000;
 }
 
-/* The world's icon and the players' initials on a small bevelled steel-blue plate. */
+/* The world's icon and the players' initials on a small bevelled steel-green plate. */
 :root[data-style="dauntless"] .instance-icon,
 :root[data-style="dauntless"] .player-avatar {
   border-radius: 3px;
@@ -666,27 +666,27 @@
 :root[data-style="dauntless"] .instance-bar {
   height: 6px;
   border-radius: 1px;
-  background: #03101c;
+  background: #031c0c;
   box-shadow: 0 0 0 1px var(--dl-silver-lo), inset 0 1px 2px rgb(0 0 0 / 0.8);
 }
 
 :root[data-style="dauntless"] .instance-bar > span {
   border-radius: 0;
-  background: linear-gradient(180deg, #8fd0ec, #3f9ccc 50%, #2a7aa8);
+  background: linear-gradient(180deg, #eede8d, #3fcc6b 50%, #2aa852);
 }
 
 :root[data-style="dauntless"] .k-hunt .instance-bar > span {
-  background: linear-gradient(180deg, #a6eef7, var(--dl-cyan) 50%, #3fa9b8);
+  background: linear-gradient(180deg, #f9eba4, var(--dl-cyan) 50%, #3fb85b);
 }
 
 :root[data-style="dauntless"] .player:hover {
   border-radius: 3px;
-  background: linear-gradient(180deg, rgb(29 79 120 / 0.55), rgb(17 51 79 / 0.55));
+  background: linear-gradient(180deg, rgb(29 120 61 / 0.55), rgb(17 79 39 / 0.55));
 }
 
 /* ------------------------------------------------------------------ settings tabs */
 
-/* Like the game's settings tabs (Video, Audio, Gameplay, Controls): a row of the game's blue tab
+/* Like the game's settings tabs (Video, Audio, Gameplay, Controls): a row of the game's tab
    buttons (brand/dl-button.svg), the open one lit and glossy, the others dimmed. */
 :root[data-style="dauntless"] .settings-tabs {
   gap: 6px;
@@ -703,7 +703,7 @@
   border-radius: 0;
   border-image: url("./brand/dl-tab.svg") 12 fill / 12px stretch;
   background: none;
-  color: #c9d8e6;
+  color: #c9e6d3;
   font-weight: 700;
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.7);
   filter: brightness(0.62) saturate(0.85);
@@ -712,18 +712,18 @@
 
 :root[data-style="dauntless"] .settings-tab:hover {
   background: none;
-  color: #fff;
+  color: #ffffff;
   filter: brightness(0.82);
 }
 
 :root[data-style="dauntless"] .settings-tab[aria-selected="true"] {
   background: none;
-  color: #fff;
-  filter: brightness(1.18) saturate(1.1) drop-shadow(0 0 6px rgb(80 160 220 / 0.45));
+  color: #ffffff;
+  filter: brightness(1.18) saturate(1.1) drop-shadow(0 0 6px rgb(80 220 128 / 0.45));
 }
 
 :root[data-style="dauntless"] .settings-tab:focus-visible {
-  outline: 2px solid #b9d8f2;
+  outline: 2px solid #b9f2cd;
   outline-offset: 2px;
 }
 
@@ -731,17 +731,17 @@
 :root[data-style="dauntless"] .info-tip::after {
   border-radius: 3px;
   border-color: var(--dl-silver-mid);
-  background: #061a2d;
+  background: #062d14;
   box-shadow: 0 10px 26px rgb(0 0 0 / 0.6);
 }
 
 :root[data-style="dauntless"] .info-tip {
-  color: #9fb3c6;
+  color: #9fc6ad;
 }
 
 :root[data-style="dauntless"] .info-tip:hover,
 :root[data-style="dauntless"] .info-tip:focus-visible {
-  color: #fff;
+  color: #ffffff;
 }
 
 /* ------------------------------------------------------------------ settings layout */
@@ -765,21 +765,21 @@
 
 :root[data-style="dauntless"] .settings-panel .card-title,
 :root[data-style="dauntless"] .settings-panel .card-title-text {
-  color: #c9d6e2;
-  text-shadow: 0 1px 2px #000;
+  color: #c9e2d2;
+  text-shadow: 0 1px 2px #000000;
 }
 
 :root[data-style="dauntless"] .settings-panel .settings-row {
-  border: 1px solid rgb(120 145 170 / 0.35);
+  border: 1px solid rgb(120 170 138 / 0.35);
   border-radius: 2px;
-  background: rgb(3 14 25 / 0.55);
+  background: rgb(3 25 11 / 0.55);
 }
 
 :root[data-style="dauntless"] .settings-panel .settings-row:hover,
 :root[data-style="dauntless"] .settings-panel .settings-row:focus-within {
-  border-color: #c9d8e6;
-  background: linear-gradient(90deg, rgb(47 120 189 / 0.28), rgb(3 14 25 / 0.55) 70%);
-  box-shadow: 0 0 10px rgb(150 200 240 / 0.25), inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  border-color: #c9e6d3;
+  background: linear-gradient(90deg, rgb(47 189 98 / 0.28), rgb(3 25 11 / 0.55) 70%);
+  box-shadow: 0 0 10px rgb(150 240 181 / 0.25), inset 0 0 0 1px rgb(255 255 255 / 0.05);
 }
 
 /* The side menu's rows reach past the rail's padding to the window edge; the rail must not scroll

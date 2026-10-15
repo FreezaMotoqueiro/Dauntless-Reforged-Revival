@@ -78,7 +78,9 @@ page (Settings > Launcher > Advanced > Host tools), choosing `D:\Reforged` as th
 1. Dump the SDK with Dumper-7, then **Import SDK**.
 2. **Build** MysticParadox.dll, winmm.dll and CatalogExporter.dll.
 3. Game data: **Use example data** for a first start-up test only; for a playable server, play on
-   your own server, inject CatalogExporter, copy the export, then `npm run gamedata`.
+   your own server, inject CatalogExporter, copy the export, then `npm run gamedata`. Save the result
+   with `npm run gamedata -- --export`; on your next setup, `npm run gamedata -- --import <pack>`
+   (or **Import game data pack**) replaces this step.
 4. `npm run publish-runtime`: the runtime for players, and next to the server's game executable.
 
 ## 4. Start it
@@ -133,6 +135,11 @@ button for it.
 - The progression config is built from the game's own progression tables (see
   [sdk-and-game-data.md](sdk-and-game-data.md#the-progression-config)); the Hunt Pass has ranks but
   no rewards.
+- A 1.14.7 hub (Ramsgate, the Training Grounds) never asks for the progression config on its own,
+  and every player then drops after a minute ("Loading PlayerData Failed" in its log). `npm run start`
+  therefore creates `CALL_HUNTPASS_QUERY.flag` beside the game executable, one of Mystic Paradox's
+  runtime switches: it makes the hub query the Hunt Pass season, which fetches the config. It acts on
+  game servers only, not on your own game client. Delete the file to turn it off.
 - One PC for everything: the services, the database and the game servers. Each hunt is a whole game
   process (about 1 GB of RAM); `--max-hunts` caps them (default 3).
 - Windows only for the server and the launcher, like the game and the runtime.

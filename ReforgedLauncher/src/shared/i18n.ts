@@ -324,6 +324,7 @@ const en = {
   host_job_import_sdk: "Importing the SDK",
   host_job_copy_exports: "Copying the exported catalog",
   host_job_synthetic_data: "Copying the example game data",
+  host_job_import_gamedata: "Importing the game data pack",
   host_job_publish_runtime: "Publishing the runtime",
   host_job_state_running: "running",
   host_job_state_done: "done",
@@ -371,9 +372,12 @@ const en = {
   host_data_step_export: "For real data: press PLAY on your own server, wait in Ramsgate, then inject CatalogExporter.",
   host_data_inject: "Inject CatalogExporter",
   host_data_need_game: "Start the game with PLAY first.",
+  host_data_need_exporter: "Build CatalogExporter.dll in step 3 first.",
   host_data_step_copy: "Copy the exported Items_Analysis folder into the workspace.",
   host_data_copy: "Copy the export",
   host_data_step_generate: "Generate the server's game-data files from it:",
+  host_data_step_pack: "Already generated it once? Import your game data pack (npm run gamedata -- --export makes one) instead of the steps above.",
+  host_data_import_pack: "Import game data pack",
   host_publish_title: "Publish the runtime",
   host_publish_ready: "Published",
   host_publish_missing: "Not published",
@@ -395,6 +399,9 @@ const en = {
   host_err_game_not_running: "Start the game with PLAY first.",
   host_err_exporter: "Build CatalogExporter.dll first.",
   host_err_no_process: "The game didn't start.",
+  host_err_pack_invalid: "That file isn't a game data pack. Make one with npm run gamedata -- --export.",
+  host_err_pack_game: "That game data pack is for another Dauntless version.",
+  host_err_pack_damaged: "That game data pack is damaged: a file in it doesn't match its hash.",
 
   set_title: "Settings",
   set_tab_game: "Game",
@@ -555,6 +562,7 @@ const en = {
   dialog_runtime_folder: "A folder with MysticParadox.dll and winmm.dll",
   dialog_workspace_folder: "Your Dauntless Reforged Revival folder (with ReforgedHost inside)",
   dialog_dumper_dll: "The Dumper-7 DLL",
+  dialog_gamedata_pack: "Your game data pack",
 };
 
 export type StringKey = keyof typeof en;
@@ -879,6 +887,7 @@ const ptBR: Record<StringKey, string> = {
   host_job_import_sdk: "Importando o SDK",
   host_job_copy_exports: "Copiando o catálogo exportado",
   host_job_synthetic_data: "Copiando a game data de exemplo",
+  host_job_import_gamedata: "Importando o pacote de game data",
   host_job_publish_runtime: "Publicando o runtime",
   host_job_state_running: "em andamento",
   host_job_state_done: "concluído",
@@ -926,9 +935,12 @@ const ptBR: Record<StringKey, string> = {
   host_data_step_export: "Para dados reais: aperte JOGAR no seu próprio servidor, espere em Ramsgate e injete o CatalogExporter.",
   host_data_inject: "Injetar o CatalogExporter",
   host_data_need_game: "Inicie o jogo com JOGAR primeiro.",
+  host_data_need_exporter: "Compile antes o CatalogExporter.dll no passo 3.",
   host_data_step_copy: "Copie a pasta Items_Analysis exportada para o workspace.",
   host_data_copy: "Copiar a exportação",
   host_data_step_generate: "Gere a partir dela os arquivos de game data do servidor:",
+  host_data_step_pack: "Já gerou uma vez? Importe o seu pacote de game data (o npm run gamedata -- --export cria um) no lugar dos passos acima.",
+  host_data_import_pack: "Importar pacote de game data",
   host_publish_title: "Publicar o runtime",
   host_publish_ready: "Publicado",
   host_publish_missing: "Não publicado",
@@ -950,6 +962,9 @@ const ptBR: Record<StringKey, string> = {
   host_err_game_not_running: "Inicie o jogo com JOGAR primeiro.",
   host_err_exporter: "Compile o CatalogExporter.dll primeiro.",
   host_err_no_process: "O jogo não iniciou.",
+  host_err_pack_invalid: "Esse arquivo não é um pacote de game data. Crie um com npm run gamedata -- --export.",
+  host_err_pack_game: "Esse pacote de game data é de outra versão do Dauntless.",
+  host_err_pack_damaged: "Esse pacote de game data está danificado: um arquivo dele não confere com o hash.",
 
   set_title: "Configurações",
   set_tab_game: "Jogo",
@@ -1110,6 +1125,7 @@ const ptBR: Record<StringKey, string> = {
   dialog_runtime_folder: "Uma pasta com MysticParadox.dll e winmm.dll",
   dialog_workspace_folder: "A sua pasta do Dauntless Reforged Revival (com ReforgedHost dentro)",
   dialog_dumper_dll: "A DLL do Dumper-7",
+  dialog_gamedata_pack: "O seu pacote de game data",
 };
 
 export const STRINGS: Record<Language, Record<StringKey, string>> = { en, "pt-BR": ptBR };

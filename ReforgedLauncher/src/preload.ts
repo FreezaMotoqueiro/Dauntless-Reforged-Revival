@@ -66,6 +66,7 @@ const api = {
   hostGet: (): Promise<HostKit> => ipcRenderer.invoke(IPC.hostGet),
   hostChooseWorkspace: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostChooseWorkspace),
   hostChooseDumper: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostChooseDumper),
+  hostImportGameData: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostImportGameData),
   hostAction: (action: HostAction): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostAction, String(action)),
   hostOpen: (folder: HostFolder): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostOpen, String(folder)),
   dismissNotice: (): Promise<void> => ipcRenderer.invoke(IPC.dismissNotice),

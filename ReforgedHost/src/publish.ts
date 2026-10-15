@@ -62,3 +62,23 @@ export function installServerRuntime(p: Paths, win64Dir: string): { installed: s
     }
     return out;
 }
+
+// Runtime switches the game servers need, as empty files beside the game executable (the runtime checks
+// for them there). Mystic Paradox's runtime ships them off. They act on the server role only, so the host's
+// own game client, which runs from the same folder, is not affected.
+//   CALL_HUNTPASS_QUERY.flag: a 1.14.7 hub never queries the progression configuration on its own, so each
+//   player's progression component waits forever and the 60-second player-data timeout drops them. With it
+//   the hub queries the current Hunt Pass season, which fetches the configuration (GET /progression/config).
+export const SERVER_RUNTIME_FLAGS = ["CALL_HUNTPASS_QUERY.flag"];
+
+// Creates the missing switches; returns the ones it created.
+export function ensureServerFlags(win64Dir: string): string[] {
+    const created: string[] = [];
+    for (const name of SERVER_RUNTIME_FLAGS) {
+        const file = path.join(win64Dir, name);
+        if (fs.existsSync(file)) continue;
+        fs.writeFileSync(file, "");
+        created.push(name);
+    }
+    return created;
+}

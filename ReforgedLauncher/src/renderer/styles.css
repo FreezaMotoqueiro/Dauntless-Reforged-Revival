@@ -1,21 +1,22 @@
-/* Dauntless Reforged Revival Launcher. The look is Dauntless Revived's (brand/palette.json there,
-   measured from its logo): its eight colours, defined once below as --rr-* tokens and used by role
-   everywhere else: ink page, navy and deep surfaces, ice for links and primary buttons (ink text),
+/* Dauntless Reforged Revival Launcher. The layout and the look are Dauntless Revived's, in our own
+   green and yellow: eight colours (brand/palette.json), defined once below as --rr-* tokens and used by
+   role everywhere else. The token names are Dauntless Revived's (its blues became our greens, its glow
+   our yellow), so the roles read the same in both projects: ink page, navy and deep surfaces, ice for links and primary buttons (ink text),
    glow for highlights and focus rings, azure for pressed fills, steel for muted text, frost for
    text. One warm accent of our own, ember, marks the forge (the emblem's glow, the embers in the
    background, the Host page). Translucent shades are the tokens mixed with transparent.
    System fonts only: Segoe UI for text, Bahnschrift for display type. */
 
 :root {
-  --rr-ink: #01090D;
-  --rr-navy: #031523;
-  --rr-deep: #093251;
-  --rr-azure: #0D669C;
-  --rr-ice: #18A7E0;
-  --rr-glow: #78ECF9;
-  --rr-steel: #999FA7;
-  --rr-frost: #F3F4F5;
-  --rr-ember: #FFB24A;
+  --rr-ink: #010D05;
+  --rr-navy: #03230e;
+  --rr-deep: #095122;
+  --rr-azure: #0D9C3B;
+  --rr-ice: #18E052;
+  --rr-glow: #FCE675;
+  --rr-steel: #99A79E;
+  --rr-frost: #F3F5F4;
+  --rr-ember: #FFC94A;
   --rr-ember-deep: #C8612A;
 
   /* Roles built from the tokens. */

@@ -104,10 +104,11 @@ players that the server runs on example data.
    npm run gamedata
    ```
 
-   This runs, in order: the Director's hunt tables, the Slayer's Path graph and definitions, the
-   Reward Cache store, the progression config (from the progression export, below), the Lady Luck
-   store (when you supply its source, below), and the Platinum store with the storage policy. Each step that cannot run yet
-   says why. The output is in `.workspace\logs\gamedata.log`.
+   This runs, in order: the progression config (from the progression export, below), the Director's
+   hunt tables, the Slayer's Path graph and definitions, the Reward Cache store, the Lady Luck store
+   (when you supply its source, below), and the Platinum store with the storage policy. Each step that
+   cannot run yet says why. A step that fails does not stop the others: the failed ones are listed at
+   the end, with the error, and the full output is in `.workspace\logs\gamedata.log`.
 
 ### The progression config
 
@@ -121,8 +122,16 @@ Mystic Paradox builds it from a captured server response. Without one, `npm run 
 source from the progression tables of your own game, which CatalogExporter exports into
 `Items_Analysis\progression_1_14_7\`: every track with its per-rank XP costs and rewards, plus the
 active Hunt Pass (`season43`). The game's Hunt Pass rows hold no tiers, so the pass gets 50 ranks of
-100 XP and no rewards. A captured response in `ParadoxBackend\game-data\raw\progression_config.source.json`
-(a progression-config response with `payload.paths`) is always used instead.
+100 XP and no rewards. Each weapon's prestige track (`PrestigeTrack_Weapon_*`), which the export has no
+rank table for, gets the ranks of that weapon's experience track and no rewards. A captured response in
+`ParadoxBackend\game-data\raw\progression_config.source.json` (a progression-config response with
+`payload.paths`) is always used instead.
+
+To rebuild only this file after a new progression export, without touching the other game data:
+
+```powershell
+npm run gamedata -- --progression
+```
 
 ### The file you supply
 
@@ -141,8 +150,30 @@ npm run doctor
 shows the state of both folders (real, example or missing). Restart the server after generating:
 the services read the data at start-up.
 
+### Save it once: the game data pack
+
+Once the server plays well, save everything `npm run gamedata` made into one file:
+
+```powershell
+npm run gamedata -- --export
+```
+
+It writes `.workspace\gamedata-packs\reforged-gamedata-1.14.7-<date>.json.gz` (or pass a path:
+`-- --export D:\Backups\gamedata.json.gz`): the backend's and the Director's game data and the
+sources in `game-data\raw`, without the examples. On your next setup, a new PC or a clean
+workspace, put it back instead of dumping the SDK, exporting with CatalogExporter and generating:
+
+```powershell
+npm run gamedata -- --import D:\Backups\gamedata.json.gz
+```
+
+or **Import game data pack** on the launcher's Host page (step 4). The pack is checked first (the
+Dauntless build it is for and each file's hash); a file it replaces is kept beside it as
+`<name>.<time>.bak`. You still build the runtime from an SDK, since the runtime is compiled from it.
+
 ## Keep it to yourself
 
 The SDK, the exports and the game data are derived from Phoenix Labs' game. Do not commit, upload
 or share them; this repository's `.gitignore` and Mystic Paradox's keep them out of Git. Share only
-your server, through invites.
+your server, through invites. The same goes for a game data pack: keep it with your own backups (an
+external drive, a private folder), not in a public repository or release.

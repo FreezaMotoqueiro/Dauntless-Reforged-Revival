@@ -4,12 +4,12 @@ import http from "node:http";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { firewallScript, hostConfigFromArgs, parseArgs } from "../src/cli";
-import { BACKEND_GAME_DATA, gameDataState, gameDataSteps, useExamples } from "../src/gamedata";
+import { BACKEND_GAME_DATA, gameDataState, gameDataSteps, generateGameData, SUPPLIED_SOURCES, useExamples } from "../src/gamedata";
 import { DEFAULT_MONGO_URI, type HostConfig } from "../src/hostconfig";
 import { createInviteCode, formatInvite, inviteFor } from "../src/invite";
 import { directUri, mongodArgs } from "../src/mongo";
 import { paths } from "../src/paths";
-import { installServerRuntime, publishRuntime, sha256File } from "../src/publish";
+import { ensureServerFlags, installServerRuntime, publishRuntime, SERVER_RUNTIME_FLAGS, sha256File } from "../src/publish";
 import { serviceEnvironment, Supervisor } from "../src/services";
 import { parseInvite } from "../../ReforgedLauncher/src/shared/invite";
 import { ParseRuntimeIndex } from "../../ReforgedContent/src/runtime";
@@ -123,6 +123,9 @@ describe("runtime publishing", () => {
         const win64 = tempDir("win64");
         assert.deepEqual(installServerRuntime(p, win64).installed, ["MysticParadox.dll", "winmm.dll"]);
         assert.deepEqual(installServerRuntime(p, win64).unchanged, ["MysticParadox.dll", "winmm.dll"]);
+        assert.deepEqual(ensureServerFlags(win64), ["CALL_HUNTPASS_QUERY.flag"], "the hub's progression query is switched on");
+        assert.deepEqual(ensureServerFlags(win64), [], "and left alone once it is there");
+        assert.ok(SERVER_RUNTIME_FLAGS.every((f) => fs.existsSync(path.join(win64, f))));
     });
 
     it("refuses before anything is built", () => {
@@ -149,8 +152,23 @@ describe("game data", () => {
         const steps = gameDataSteps(p, { examplesForMissing: false });
         assert.equal(steps.length, 7);
         assert.ok(steps.every((s) => s.skipIf?.() !== null), "nothing exported yet: every step is skipped with a reason");
+        assert.equal(steps[0].title, "Progression config", "the progression config goes first: Ramsgate needs it");
         write(path.join(p.exports, "hunts_1_14_7", "player_hunts.jsonl"), "{}\n");
-        assert.equal(steps[0].skipIf?.(), null, "the hunt tables run once the hunts are exported");
+        assert.equal(steps.find((s) => s.title === "Director hunt tables")?.skipIf?.(), null, "the hunt tables run once the hunts are exported");
+    });
+
+    it("runs the other steps when one fails, and names the error, not Node's version line", async () => {
+        const p = paths(tempDir("gen"));
+        write(path.join(p.backendDir, "package.json"), JSON.stringify({ name: "b", private: true, scripts: { "generate:progression-config": "node fail.js", "reward-cache:generate": "node ok.js" } }));
+        write(path.join(p.backendDir, "fail.js"), "throw new Error('Catalog item not found: x');\n");
+        write(path.join(p.backendDir, "ok.js"), "require('fs').writeFileSync('ran.txt', 'yes');\n");
+        write(path.join(p.rawGameData, SUPPLIED_SOURCES["progression_config.json"]), "{}\n");
+        write(path.join(p.exports, "catalog_1_14_7.jsonl"), "{}\n");
+        const lines: string[] = [];
+        const r = await generateGameData(p, { examplesForMissing: false, logFile: path.join(p.logs, "gamedata.log"), print: (l) => lines.push(l) });
+        assert.deepEqual(r, { ok: false, failed: ["Progression config"] });
+        assert.ok(fs.existsSync(path.join(p.backendDir, "ran.txt")), "the Reward Cache step still ran");
+        assert.ok(lines.some((l) => l.includes("failed: Error: Catalog item not found: x")), lines.join("\n"));
     });
 });
 

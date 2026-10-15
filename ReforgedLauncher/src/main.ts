@@ -300,6 +300,7 @@ function registerIpc(c: Controller): void {
   handle(IPC.hostGet, () => c.hostKit());
   handle(IPC.hostChooseWorkspace, () => c.hostChooseWorkspace());
   handle(IPC.hostChooseDumper, () => c.hostChooseDumper());
+  handle(IPC.hostImportGameData, () => c.hostImportGameData());
   handle(IPC.hostAction, (_e, action) => {
     const a = hostAction(action);
     return a === null ? { ok: false, error: { code: "unknown" } } : c.hostAction(a);
@@ -383,6 +384,15 @@ function makePlatform(): Platform {
       if (!mainWindow) return null;
       const r = await dialog.showOpenDialog(mainWindow, {
         filters: [{ name: "Text", extensions: ["txt"] }],
+        properties: ["openFile", "dontAddToRecent"],
+      });
+      return r.canceled || r.filePaths.length !== 1 ? null : r.filePaths[0];
+    },
+    choosePack: async () => {
+      if (!mainWindow) return null;
+      const r = await dialog.showOpenDialog(mainWindow, {
+        title: translate(lang(), "dialog_gamedata_pack"),
+        filters: [{ name: "Game data pack", extensions: ["gz"] }],
         properties: ["openFile", "dontAddToRecent"],
       });
       return r.canceled || r.filePaths.length !== 1 ? null : r.filePaths[0];

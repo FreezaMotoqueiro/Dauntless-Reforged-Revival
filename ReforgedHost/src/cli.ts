@@ -5,7 +5,7 @@
 //   npm run start
 //   npm run invite -- [--uses 1] [--for "Alex"] [--unlimited] [--list]
 //   npm run doctor
-//   npm run gamedata [-- --examples | --example-sources]
+//   npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]
 //   npm run publish-runtime
 
 import fs from "node:fs";
@@ -13,6 +13,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { portInUse, printChecks, runDoctor, tailscaleIPv4 } from "./doctor";
 import { BACKEND_GAME_DATA, DIRECTOR_GAME_DATA, gameDataState, generateGameData, useExamples } from "./gamedata";
+import { defaultPackFile, exportGameDataPack, importGameDataPack } from "./gamepack";
 import {
     DEFAULT_MONGO_URI,
     buildEnvFiles,
@@ -28,7 +29,7 @@ import {
 import { certificateFingerprint, createInviteCode, inviteFor, listInviteCodes } from "./invite";
 import { ensureReplicaSet, findMongod, mongodArgs } from "./mongo";
 import { findRepoRoot, GAME_EXE_RELATIVE, paths, PORTS, type Paths } from "./paths";
-import { installServerRuntime, publishRuntime } from "./publish";
+import { ensureServerFlags, installServerRuntime, publishRuntime } from "./publish";
 import { capture, run } from "./run";
 import { Supervisor, type ServiceSpec } from "./services";
 import { ensureUpstream, gitAvailable, readPin } from "./upstream";
@@ -252,6 +253,11 @@ async function start(p: Paths): Promise<void> {
     if (gd.some((g) => g.state === "missing")) fail("game data is missing: npm run gamedata (or npm run gamedata -- --examples for a start-up test only)");
     if (gd.some((g) => g.state === "synthetic")) say("! This server runs on example game data: it starts, but it is not playable. The launcher tells players so.");
     if (!fs.existsSync(path.join(p.runtimePublish, "runtime.json"))) say("! No runtime published yet: players can join but not play. Build it and run npm run publish-runtime.");
+    const win64 = config.gameDir ? path.dirname(path.join(config.gameDir, GAME_EXE_RELATIVE)) : null;
+    if (win64 && fs.existsSync(win64)) {
+        const flags = ensureServerFlags(win64);
+        if (flags.length) say(`Turned on for the game servers: ${flags.join(", ")} (in ${win64})`);
+    }
 
     const width = 9;
     const supervisor = new Supervisor(p.logs, (name, line) => process.stdout.write(`${name.padEnd(width)}| ${line}\n`));
@@ -360,6 +366,36 @@ async function invite(p: Paths, args: Args): Promise<void> {
 
 async function gamedata(p: Paths, args: Args): Promise<void> {
     if (!fs.existsSync(p.backendDir)) fail("not set up yet: run npm run setup first");
+    if (args.export !== undefined) {
+        // Relative to where npm was run from (INIT_CWD), not ReforgedHost.
+        const out = typeof args.export === "string" ? path.resolve(process.env.INIT_CWD ?? process.cwd(), args.export) : defaultPackFile(p);
+        let r;
+        try {
+            r = exportGameDataPack(p, out);
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+        say(`Game data pack written: ${r.file}`);
+        say(`  ${r.included.length} files${r.left.length ? `; not in it (missing, or still the example): ${r.left.join(", ")}` : ""}`);
+        say("Keep it for your own servers: it is Phoenix Labs' game data from your game, not for publishing.");
+        say("On a new setup: npm run gamedata -- --import <this file>");
+        return;
+    }
+    if (args.import !== undefined) {
+        if (typeof args.import !== "string") fail("--import needs the pack file: npm run gamedata -- --import <file>");
+        let r;
+        try {
+            r = importGameDataPack(p, path.resolve(process.env.INIT_CWD ?? process.cwd(), args.import));
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+        say(`Game data pack imported: ${r.written.length} files written, ${r.unchanged.length} already the same${r.backups.length ? ` (${r.backups.length} replaced files kept as .bak)` : ""}`);
+        for (const [label, dir, files] of [["backend", p.backendGameData, BACKEND_GAME_DATA], ["Director", p.directorGameData, DIRECTOR_GAME_DATA]] as const) {
+            const g = gameDataState(dir, files);
+            say(`${label}: ${g.state}${g.missing.length ? ` (missing ${g.missing.join(", ")})` : ""}${g.synthetic.length ? ` (example data in ${g.synthetic.join(", ")})` : ""}`);
+        }
+        return;
+    }
     if (args.examples === true) {
         const copied = [...useExamples(p.backendGameData, BACKEND_GAME_DATA), ...useExamples(p.directorGameData, DIRECTOR_GAME_DATA)];
         say(copied.length ? `Copied the example data for ${copied.join(", ")}.` : "Nothing was missing.");
@@ -367,7 +403,9 @@ async function gamedata(p: Paths, args: Args): Promise<void> {
         return;
     }
     say("Generating the game data from your export (Items_Analysis):");
-    const r = await generateGameData(p, { examplesForMissing: args["example-sources"] === true, logFile: path.join(p.logs, "gamedata.log"), print: say });
+    // --progression: only the progression config (from the progression export), nothing else rewritten.
+    const only = args.progression === true ? ["Progression config"] : undefined;
+    const r = await generateGameData(p, { examplesForMissing: args["example-sources"] === true, logFile: path.join(p.logs, "gamedata.log"), print: say, only });
     for (const [label, dir, files] of [["backend", p.backendGameData, BACKEND_GAME_DATA], ["Director", p.directorGameData, DIRECTOR_GAME_DATA]] as const) {
         const g = gameDataState(dir, files);
         say(`${label}: ${g.state}${g.missing.length ? ` (missing ${g.missing.join(", ")})` : ""}${g.synthetic.length ? ` (example data in ${g.synthetic.join(", ")})` : ""}`);
@@ -391,6 +429,7 @@ function publish(p: Paths): void {
         const r = installServerRuntime(p, win64);
         if (r.installed.length) say(`Installed for the game servers in ${win64}: ${r.installed.join(", ")}`);
         if (r.failed.length) say(`! Could not replace ${r.failed.map((f) => f.name).join(", ")} in ${win64} (a game server still running? stop the server and run this again): ${r.failed[0].error}`);
+        ensureServerFlags(win64);
     }
 }
 
@@ -422,7 +461,7 @@ async function main(): Promise<void> {
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list]");
             say("  npm run doctor [-- --no-hash]");
-            say("  npm run gamedata [-- --examples | --example-sources]");
+            say("  npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]");
             say("  npm run publish-runtime");
             say("See README.md and ../docs/hosting.md.");
     }
