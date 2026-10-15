@@ -1247,6 +1247,7 @@ function renderHost(): void {
               h("div", {}, t("host_sdk_step_import")),
               k.dumps.length ? h("p", { class: "small-print" }, t("host_sdk_found", { name: k.dumps[0].name, date: formatDate(k.dumps[0].modified, state.lang) })) : h("p", { class: "small-print" }, t("host_sdk_none")),
               h("div", { class: "card-row" }, button(t("host_sdk_import"), () => hostAct("import_sdk"), { icon: "download", fk: "host-import", disabled: running || !k.dumps.length || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("dumps"), { icon: "folder", fk: "host-dumps-open" })),
+              k.upstream.present ? null : h("p", { class: "small-print" }, t("host_sdk_need_setup")),
             ),
           ),
         ),

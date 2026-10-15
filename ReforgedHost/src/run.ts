@@ -20,9 +20,12 @@ export interface RunResult {
 
 const isWindows = process.platform === "win32";
 
-// npm on Windows is npm.cmd, which Node only starts through cmd.exe. The arguments here are always
-// fixed words (no user input), so that is safe.
+// npm on Windows is npm.cmd, which Node only starts through cmd.exe. Under `npm run`, npm names its
+// own entry script in npm_execpath: that runs with this Node and no shell. Otherwise cmd.exe it is;
+// the arguments here are always fixed words (no user input), so that is safe.
 function resolveCommand(command: string, args: string[]): { file: string; args: string[]; shell: boolean } {
+    const npmCli = process.env.npm_execpath;
+    if (isWindows && command === "npm" && npmCli && /npm-cli\.js$/i.test(npmCli) && fs.existsSync(npmCli)) return { file: process.execPath, args: [npmCli, ...args], shell: false };
     if (isWindows && (command === "npm" || command === "npx")) return { file: `${command}.cmd`, args, shell: true };
     return { file: command, args, shell: false };
 }

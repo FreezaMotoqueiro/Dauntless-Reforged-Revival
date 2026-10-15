@@ -39,6 +39,28 @@ describe("command line", () => {
         assert.equal(hostConfigFromArgs(parseArgs(["--mode", "private", "--mongo-uri", "mongodb://db.local:27017/?replicaSet=rs0"]), null, detect).mongo.manage, false);
     });
 
+    it("wants a full path for --game", () => {
+        assert.equal(hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "/games/Dauntless 1.14.7/Dauntless"]), null, detect).gameDir, "/games/Dauntless 1.14.7/Dauntless");
+        assert.ok(hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "D:\\Games\\Dauntless 1.14.7\\Dauntless"]), null, detect).gameDir);
+        assert.throws(() => hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "Games\\Dauntless"]), null, detect), /full path/);
+        // What npm 10 on Windows used to hand over for "D:\Games\Dauntless 1.14.7\Dauntless".
+        assert.throws(() => hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "^D:\\Games\\Dauntless^ 1.14.7\\Dauntless^"]), null, detect), /full path/);
+    });
+
+    // npm on Windows escapes a script's arguments for cmd.exe once, or twice when the script's first
+    // command is a .cmd (npm itself is npm.cmd). Arguments meant for node.exe after
+    // "npm run build && node ..." kept one level of ^, so the command scripts start with node and
+    // build in their pre-script.
+    it("package.json: every command script starts with node and builds in its pre-script", () => {
+        const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "..", "..", "package.json"), "utf8")) as { scripts: Record<string, string> };
+        const commands = Object.entries(pkg.scripts).filter(([, s]) => s.includes("dist/cli.js"));
+        assert.ok(commands.length >= 7);
+        for (const [name, script] of commands) {
+            assert.match(script, /^node dist\/cli\.js\b/, `${name} starts with node`);
+            assert.equal(pkg.scripts[`pre${name}`], "npm run build --silent", `pre${name} builds`);
+        }
+    });
+
     it("writes firewall rules: Tailscale-only in private mode, 443 and a closed allowlist rule in public mode", () => {
         const base = hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "D:\\Games\\Dauntless"]), null, detect);
         const priv = firewallScript(base, "C:\\node\\node.exe");

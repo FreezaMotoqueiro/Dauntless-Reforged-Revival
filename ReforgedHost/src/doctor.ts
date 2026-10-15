@@ -36,7 +36,7 @@ export function countFunctionFiles(sdkDir: string): number {
     }
 }
 
-function portInUse(port: number, host = "127.0.0.1"): Promise<boolean> {
+export function portInUse(port: number, host = "127.0.0.1"): Promise<boolean> {
     return new Promise((resolve) => {
         const socket = net.connect({ port, host });
         socket.setTimeout(800);

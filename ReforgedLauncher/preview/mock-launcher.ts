@@ -117,7 +117,7 @@ const news: NewsItem[] = [
 const hostKit: HostKit = {
   workspace: "C:\\Users\\host\\Dauntless-Reforged-Revival",
   workspaceOk: true,
-  upstream: { present: true, patched: true },
+  upstream: { present: scene !== "host-empty", patched: scene !== "host-empty" },
   sdk: { present: scene !== "host-empty", functionFiles: scene !== "host-empty" ? 412 : 0 },
   dumps: [{ dir: "C:\\Dumper-7\\4.26.2-647472-Dauntless\\CppSDK", name: "4.26.2-647472-Dauntless", modified: new Date(now - 3600_000).toISOString() }],
   dumperDll: "C:\\Tools\\Dumper-7.dll",
