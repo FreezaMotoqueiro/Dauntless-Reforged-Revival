@@ -40,6 +40,17 @@ describe("command line", () => {
         assert.equal(hostConfigFromArgs(parseArgs(["--mode", "private", "--mongo-uri", "mongodb://db.local:27017/?replicaSet=rs0"]), null, detect).mongo.manage, false);
     });
 
+    it("follows a new Tailscale address on setup, and keeps the old one only when Tailscale is not running", () => {
+        const old = hostConfigFromArgs(parseArgs(["--mode", "private", "--name", "Freeza"]), null, { ...detect, tailscale: () => "100.117.171.17" });
+        const moved = hostConfigFromArgs(parseArgs([]), old, { ...detect, tailscale: () => "100.88.12.40" });
+        assert.equal(moved.host, "100.88.12.40", "another Tailscale account, another address");
+        assert.equal(moved.gameAddress, "100.88.12.40", "the game servers move with it");
+        assert.equal(moved.name, "Freeza");
+        const offline = hostConfigFromArgs(parseArgs([]), old, { ...detect, tailscale: () => null });
+        assert.equal(offline.host, "100.117.171.17");
+        assert.equal(hostConfigFromArgs(parseArgs(["--host", "100.64.0.9"]), old, detect).host, "100.64.0.9", "--host still wins");
+    });
+
     it("wants a full path for --game", () => {
         assert.equal(hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "/games/Dauntless 1.14.7/Dauntless"]), null, detect).gameDir, "/games/Dauntless 1.14.7/Dauntless");
         assert.ok(hostConfigFromArgs(parseArgs(["--mode", "private", "--game", "D:\\Games\\Dauntless 1.14.7\\Dauntless"]), null, detect).gameDir);

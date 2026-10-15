@@ -283,6 +283,31 @@ test("private mode: open registration, a server without a runtime waits for its 
   await hx.c.shutdown();
 });
 
+test("a private server at a new address (its host changed Tailscale accounts): the account goes along only when the player says so", async () => {
+  const hx = await harness();
+  await hx.c.init();
+  // The launcher keeps the name the server itself reports (the fake one is "LAN Party"), as the host kit's invites carry it.
+  const first = formatInvite({ mode: "private", host: "127.0.0.1", port: lanPort, fp: null, code: "OPEN-ANYONE", name: "LAN Party", share: null });
+  assert.deepEqual(await hx.c.submitInvite(first), { ok: true });
+  assert.deepEqual(await hx.c.register("Wanderer"), { ok: true, username: "Wanderer" });
+  assert.equal(hx.last().account.hasKey, true);
+
+  const moved = formatInvite({ mode: "private", host: "127.0.0.2", port: lanPort, fp: null, code: "NEW-CODE", name: "LAN Party", share: null });
+  assert.deepEqual(await hx.c.checkInvite(moved), { ok: true, certificateChanged: false, previousFingerprint: null, movedFrom: "127.0.0.1" });
+  const other = formatInvite({ mode: "private", host: "127.0.0.2", port: lanPort, fp: null, code: "NEW-CODE", name: "Another server", share: null });
+  assert.equal(((await hx.c.checkInvite(other)) as { movedFrom: string | null }).movedFrom, null, "another server's name: not the same server");
+
+  // Without the player's yes, nothing is taken along.
+  assert.deepEqual(await hx.c.submitInvite(moved), { ok: true });
+  assert.equal(hx.last().account.hasKey, false);
+  // With it, the key moves to the new address and the old entry goes.
+  assert.deepEqual(await hx.c.submitInvite(moved, { carryAccount: true }), { ok: true });
+  assert.equal(hx.last().account.hasKey, true);
+  assert.deepEqual(hx.last().savedServers.map((sv) => sv.host), ["127.0.0.2"]);
+  assert.equal(((await hx.c.checkInvite(moved)) as { movedFrom: string | null }).movedFrom, null, "nothing to take along any more");
+  await hx.c.shutdown();
+});
+
 test("a banned account is told why", async () => {
   const key = "RRK_" + "b".repeat(48);
   const banned = new FakeServer({ registration: "OPEN", existingUsers: new Map([["ghost", key]]), banned: new Map([[key, "cheating"]]) });

@@ -25,8 +25,9 @@ const api = {
   getSnapshot: (): Promise<Snapshot> => ipcRenderer.invoke(IPC.getSnapshot),
   checkInvite: (text: string): Promise<InviteCheck> => ipcRenderer.invoke(IPC.checkInvite, String(text)),
   // acceptNewCertificate: the user confirmed a public server's changed certificate.
-  submitInvite: (text: string, acceptNewCertificate = false): Promise<ActionResult> =>
-    ipcRenderer.invoke(IPC.submitInvite, String(text), acceptNewCertificate === true),
+  // carryAccount: the user confirmed taking their account along to a private server's new address.
+  submitInvite: (text: string, acceptNewCertificate = false, carryAccount = false): Promise<ActionResult> =>
+    ipcRenderer.invoke(IPC.submitInvite, String(text), acceptNewCertificate === true, carryAccount === true),
   retryConnect: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.retryConnect),
   forgetServer: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.forgetServer),
   switchServer: (id: string): Promise<ActionResult> => ipcRenderer.invoke(IPC.switchServer, String(id)),

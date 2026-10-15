@@ -164,7 +164,7 @@ function update(patch: Partial<Snapshot>): void {
 
 const mock: LauncherApi = {
   getSnapshot: async () => snap,
-  checkInvite: async () => ({ ok: true, certificateChanged: false, previousFingerprint: null }),
+  checkInvite: async () => ({ ok: true, certificateChanged: false, previousFingerprint: null, movedFrom: scene === "moved" ? "100.117.171.17" : null }),
   submitInvite: ok,
   retryConnect: ok,
   forgetServer: ok,
