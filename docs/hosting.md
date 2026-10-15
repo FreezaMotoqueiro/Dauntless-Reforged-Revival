@@ -75,14 +75,36 @@ These come from your own game and are never shared. Follow
 [sdk-and-game-data.md](sdk-and-game-data.md). The short version, with the launcher's Host tools
 page (Settings > Launcher > Advanced > Host tools), choosing `D:\Reforged` as the workspace:
 
-1. Dump the SDK with Dumper-7, then **Import SDK**.
-2. **Build** MysticParadox.dll, winmm.dll and CatalogExporter.dll.
-3. Game data: **Use example data** for a first start-up test only; for a playable server, play on
-   your own server, inject CatalogExporter, copy the export, then `npm run gamedata`. Save the result
+1. **Build** tab: dump the SDK with Dumper-7, then **Import SDK**.
+2. **Build** tab: build MysticParadox.dll, winmm.dll and CatalogExporter.dll.
+3. **Game data** tab: **Use example data** for a first start-up test only; for a playable server, play
+   on your own server, inject CatalogExporter, then **Generate game data** (or `npm run gamedata`). Save the result
    with `npm run gamedata -- --export`; on your next setup, `npm run gamedata -- --import <pack>`
    (or **Import game data pack**) replaces this step. When the project carries a server preset
    (`preset/`, `npm run preset -- --create`), `npm run setup` already fills the game data from it.
 4. `npm run publish-runtime`: the runtime for players, and next to the server's game executable.
+
+## The launcher's Host page, without a terminal
+
+Everything below can also be done from the launcher's Host page (Settings > Launcher > Advanced >
+Host tools), without opening a terminal:
+
+- **Requirements** tab: what this PC needs (Git, Node.js, MongoDB, Tailscale, Visual Studio, Rust,
+  Dumper-7, the Visual C++ runtime), each one detected, with its download and the install steps that
+  avoid the usual mistakes (MongoDB's Windows service, Visual Studio without its C++ workload, an old
+  Node.js). Close and reopen the launcher after installing something, so it finds it.
+- **Server** tab: **Prepare server** runs `npm run setup` with the server's name and kind and the
+  launcher's game folder (**Update server** runs it again after updating the project);
+  **Start server** and **Stop server** run `npm run start` and stop it the way Ctrl+C does;
+  **Create invite** runs `npm run invite`. The server's output is under **Show details**, and its logs
+  are in `.workspace\logs\` (`launcher-*.log`). The server stops when the launcher closes.
+- **Game data** tab: **Generate game data** copies CatalogExporter's export from beside the game and
+  runs `npm run gamedata`; **Save pack** runs `npm run gamedata -- --export`.
+
+The launcher runs the host kit with the Node.js installed on this PC, and builds it first when its
+sources changed. A server started in a terminal shows as running there: stop it with Ctrl+C before
+starting it from the launcher. A public server needs the launcher run as administrator, as the
+terminal would be.
 
 ## 4. Start it
 

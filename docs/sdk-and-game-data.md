@@ -25,7 +25,7 @@ launcher refuses to dump a game it found to be another build.
 
 1. Build [Dumper-7](https://github.com/Encryqed/Dumper-7) (Visual Studio, Release x64) and note
    where its DLL is.
-2. Host tools page, step 2: **Choose Dumper-7 DLL…**, then **Start game and dump**. The launcher
+2. Host tools page, **Build** tab: **Choose Dumper-7 DLL…**, then **Start game and dump**. The launcher
    sets the runtime loader aside (so the game starts unmodified), starts Dauntless, waits for its
    window and loads Dumper-7 into it. Wait in the main menu until `C:\Dumper-7\<game>\CppSDK\`
    appears and is complete (a minute or two), then close the game; the loader is put back.
@@ -38,7 +38,7 @@ By hand: inject Dumper-7 into your running 1.14.7 game with any injector, and co
 
 ## 2. The runtime
 
-Host tools page, step 3, or by hand from `.workspace\Mystic-Paradox`:
+Host tools page, **Build** tab, or by hand from `.workspace\Mystic-Paradox`:
 
 ```powershell
 cd ParadoxRuntime; .\_build.bat                     # -> ParadoxRuntime\x64\Release\MysticParadox.dll
@@ -85,9 +85,10 @@ players that the server runs on example data.
 ### For a playable server: export from your game
 
 1. Build CatalogExporter (step 2).
-2. Start the server (`npm run start`), make yourself an invite, join it with the launcher and
-   press PLAY: the exporter needs the running 1.14.7 game.
-3. Host tools page, step 4: **Inject CatalogExporter**. The launcher writes `export_flags.txt` next
+2. Start the server (**Start server** on the Host page's Server tab, or `npm run start`), make
+   yourself an invite, join it with the launcher and press PLAY: the exporter needs the running
+   1.14.7 game.
+3. Host tools page, **Game data** tab: **Inject CatalogExporter**. The launcher writes `export_flags.txt` next
    to the game (catalog, Slayer's Path, hunts, the store's runtime data and the progression tables)
    and loads the exporter. While it runs (up to two minutes), go where each export needs you to be:
    - the catalog and the progression tables: the main menu or Ramsgate;
@@ -96,8 +97,8 @@ players that the server runs on example data.
    - the store: in Ramsgate, Journal > Challenges > Reward Cache.
    The exporter writes `Items_Analysis\` next to the game; check its `export_manifest_1_14_7.json`
    and `catalog_export_status.txt`. Flags are read once per injection: inject again for a missing part.
-4. **Copy the export** puts `Items_Analysis\` into `.workspace\Mystic-Paradox\`, where the
-   generators read it.
+4. **Generate game data** (Game data tab) copies `Items_Analysis\` into `.workspace\Mystic-Paradox\`,
+   where the generators read it, and runs step 5 for you.
 5. Generate:
 
    ```powershell
@@ -181,7 +182,7 @@ workspace, put it back instead of dumping the SDK, exporting with CatalogExporte
 npm run gamedata -- --import D:\Backups\gamedata.json.gz
 ```
 
-or **Import game data pack** on the launcher's Host page (step 4). The pack is checked first (the
+or **Import game data pack** on the launcher's Host page (Game data tab, where **Save pack** makes one). The pack is checked first (the
 Dauntless build it is for and each file's hash); a file it replaces is kept beside it as
 `<name>.<time>.bak`. You still build the runtime from an SDK, since the runtime is compiled from it.
 

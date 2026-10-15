@@ -31,7 +31,10 @@ import type {
   HostFolder,
   HostJob,
   HostKit,
+  HostServerView,
+  HostSetupRequest,
   InviteCheck,
+  Requirement,
   Language,
   LauncherError,
   NewsItem,
@@ -86,7 +89,10 @@ import {
   runLogged,
   useSyntheticData,
   workspacePaths,
+  type Toolchain,
 } from "./hostkit";
+import { HostKitError, HostServer, type HostServerOptions } from "./hostserver";
+import { detectRequirements } from "./requirements";
 import type { InjectEvent, InjectOptions } from "./injector";
 
 export type FolderPurpose = "game" | "runtime" | "workspace";
@@ -123,6 +129,9 @@ export interface Platform {
   emitSnapshot(s: Snapshot): void;
   emitProgress(p: TaskProgress): void;
   emitHostKit?(k: HostKit): void;
+  emitHostServer?(v: HostServerView): void;
+  // Tests: how the Host page's server runs (a fake Node.js, a fake port probe).
+  hostServer?: Partial<Omit<HostServerOptions, "onChange">>;
   findTailscale(): string | null;
   findRunningClients(): Promise<number[]>;
   spawn?: SpawnFn;
@@ -132,6 +141,7 @@ export interface Platform {
 
 const err = (code: ErrorCode, detail?: string): { ok: false; error: LauncherError } => ({ ok: false, error: detail ? { code, detail } : { code } });
 const OK: ActionResult = { ok: true };
+const REQUIREMENTS_TTL_MS = 15000;
 
 export function endpointFor(sv: StoredServer): Endpoint {
   return { host: sv.host, port: sv.port, pin: sv.mode === "public" ? sv.fp : null };
@@ -181,12 +191,22 @@ export class Controller {
   // A game started for Dumper-7, with or without a loader to put back. Its exit code is not a
   // failed launch: Dumper-7's console window ends the game with 0xC000013A when it is closed.
   private dumping = false;
+  // The server the Host page starts (ReforgedHost's npm run start), and the requirements it found
+  // last (vswhere and friends are slow: looked at again after REQUIREMENTS_TTL_MS).
+  private readonly server: HostServer;
+  private requirements: { at: number; workspace: string | null; list: Requirement[] } | null = null;
 
   constructor(private readonly p: Platform) {
     this.settings = new SettingsStore(p.userDataDir, p.defaultLanguage, p.hostPlatform ?? process.platform);
     this.keys = new KeyStore(path.join(p.userDataDir, "keys"), p.encryptor, p.documentsDir ? path.join(p.documentsDir, "Dauntless Reforged Revival", "Account Keys") : undefined);
     this.game = new GameProcess(p.spawn);
     this.hashes = new HashCache(path.join(p.userDataDir, "file-hashes.json"));
+    this.server = new HostServer({
+      env: p.env ?? process.env,
+      platform: p.hostPlatform ?? process.platform,
+      ...p.hostServer,
+      onChange: () => this.p.emitHostServer?.(this.server.view()),
+    });
     this.game.onChange((running, code) => {
       log.info(running ? "game started" : `game exited (code ${code ?? "none"})`);
       if (!running) {
@@ -1289,9 +1309,136 @@ export class Controller {
 
   // ------------------------------------------------------------------ Host tools
 
-  async hostKit(): Promise<HostKit> {
-    const kit = await detectHostKit(this.s.hostWorkspace, { env: this.p.env ?? process.env, platform: this.hostPlatform, dumpRoot: this.p.dumpRoot });
-    return { ...kit, dumperDll: this.s.dumperDll, job: this.hostJob };
+  async hostKit(opts: { fresh?: boolean } = {}): Promise<HostKit> {
+    const env = this.p.env ?? process.env;
+    const toolchain: Toolchain = await findToolchain(env, this.hostPlatform);
+    const kit = await detectHostKit(this.s.hostWorkspace, { env, platform: this.hostPlatform, dumpRoot: this.p.dumpRoot, toolchain });
+    const cached = this.requirements;
+    let list: Requirement[];
+    if (!opts.fresh && cached && cached.workspace === this.s.hostWorkspace && Date.now() - cached.at < REQUIREMENTS_TTL_MS) list = cached.list;
+    else {
+      const g = this.gameInfo;
+      list = await detectRequirements({
+        env,
+        platform: this.hostPlatform,
+        toolchain,
+        game: { ok: g.root !== null && g.problem !== "not_found" && g.problem !== "not_set" && g.problem !== "wrong_version", detail: g.versionText },
+        dumperDll: this.s.dumperDll,
+        findTailscale: () => this.p.findTailscale(),
+      }).catch((e) => {
+        log.warn(`requirements not detected: ${describeError(e)}`);
+        return [];
+      });
+      this.requirements = { at: Date.now(), workspace: this.s.hostWorkspace, list };
+    }
+    const win64 = this.win64Dir();
+    const exports = { ...kit.exports, inGame: win64 !== null && existsSync(path.join(win64, "Items_Analysis")) };
+    return { ...kit, exports, requirements: list, dumperDll: this.s.dumperDll, job: this.hostJob };
+  }
+
+  // ------------------------------------------------------------------ the Host page's server
+
+  async hostServerView(): Promise<HostServerView> {
+    await this.server.refresh();
+    return this.server.view();
+  }
+
+  private workspaceOrNull(): string | null {
+    const ws = this.s.hostWorkspace;
+    return ws && existsSync(path.join(ws, "ReforgedHost", "package.json")) ? ws : null;
+  }
+
+  private hostKitFailure(e: unknown): { ok: false; error: LauncherError } {
+    if (e instanceof HostKitError) return this.fail("host_failed", e.code === "hostkit_build" ? e.detail ?? e.code : e.code);
+    log.error(`host kit: ${describeError(e)}`);
+    return this.fail("host_failed", describeError(e));
+  }
+
+  async hostServerStart(): Promise<ActionResult> {
+    const ws = this.workspaceOrNull();
+    if (!ws) return this.fail("host_failed", "workspace");
+    if (this.hostJob?.state === "running") return err("busy");
+    const kit = await detectHostKit(ws, { env: this.p.env ?? process.env, platform: this.hostPlatform, dumpRoot: this.p.dumpRoot });
+    if (!kit.serverConfig.configured) return this.fail("host_failed", "not_configured");
+    if (kit.gameData.backend === "missing" || kit.gameData.director === "missing") return this.fail("host_failed", "gamedata_missing");
+    try {
+      await this.server.start(ws);
+      log.info("host: server start requested from the Host page");
+      return OK;
+    } catch (e) {
+      return this.hostKitFailure(e);
+    }
+  }
+
+  async hostServerStop(): Promise<ActionResult> {
+    await this.server.stop();
+    log.info("host: server stopped from the Host page");
+    return OK;
+  }
+
+  // npm run setup, from the Host page's form. The game folder is the one this launcher plays from.
+  async hostSetup(req: HostSetupRequest): Promise<ActionResult> {
+    const ws = this.workspaceOrNull();
+    if (!ws) return this.fail("host_failed", "workspace");
+    if (this.hostJob?.state === "running") return err("busy");
+    if (this.server.running || this.server.serverState === "external") return this.fail("host_failed", "server_running");
+    const args = ["setup", "--mode", req.mode, "--name", req.name];
+    if (req.mode === "public" && req.publicHost) args.push("--host", req.publicHost);
+    if (this.gameInfo.root) args.push("--game", this.gameInfo.root);
+    this.setJob({ kind: "setup", state: "running", message: null, logFile: path.join(ws, ".workspace", "logs", "launcher-setup.log") });
+    try {
+      const r = await this.server.command(ws, args, "setup");
+      this.requirements = null;
+      return this.finishJob("setup", r.code === 0, r.code === 0 ? req.name : r.failure, path.join(ws, ".workspace", "logs", "launcher-setup.log"));
+    } catch (e) {
+      this.setJob(null);
+      return this.hostKitFailure(e);
+    }
+  }
+
+  async hostCreateInvite(forName: string | null): Promise<ActionResult> {
+    const ws = this.workspaceOrNull();
+    if (!ws) return this.fail("host_failed", "workspace");
+    const state = this.server.serverState;
+    if (state !== "running" && state !== "external") return this.fail("host_failed", "server_not_running");
+    try {
+      const r = await this.server.command(ws, ["invite", "--json", ...(forName ? ["--for", forName] : [])], "invite");
+      const json = [...r.lines].reverse().find((l) => l.trim().startsWith("{"));
+      const parsed = json ? (JSON.parse(json) as { link?: unknown; for?: unknown }) : null;
+      if (r.code !== 0 || !parsed || typeof parsed.link !== "string") return this.fail("host_failed", r.failure ?? "invite");
+      this.server.setInvite({ link: parsed.link, for: typeof parsed.for === "string" ? parsed.for : null });
+      log.info(`host: invite created${forName ? " (with a note)" : ""}`);
+      return OK;
+    } catch (e) {
+      return this.hostKitFailure(e);
+    }
+  }
+
+  // The game's Items_Analysis (CatalogExporter's output) into the workspace when there is one, then
+  // npm run gamedata. A running server reads the new data once it is started again.
+  private async generateGameData(ws: string): Promise<ActionResult> {
+    const w = workspacePaths(ws);
+    const logFile = path.join(ws, ".workspace", "logs", "launcher-gamedata.log");
+    this.setJob({ kind: "generate_gamedata", state: "running", message: null, logFile });
+    const dir = this.win64Dir();
+    const from = dir ? path.join(dir, "Items_Analysis") : null;
+    if (from && existsSync(from)) {
+      const n = await copyTree(from, w.exports);
+      this.server.note(`Copied ${n} files of the game's CatalogExporter export into the workspace.`);
+    } else if (!existsSync(w.exports)) {
+      this.setJob(null);
+      return this.fail("host_failed", "no_exports");
+    }
+    const r = await this.server.command(ws, ["gamedata"], "gamedata");
+    return this.finishJob("generate_gamedata", r.code === 0, r.code === 0 ? (this.server.running ? "restart" : null) : r.failure, logFile);
+  }
+
+  private async exportGameData(ws: string): Promise<ActionResult> {
+    const logFile = path.join(ws, ".workspace", "logs", "launcher-gamedata-export.log");
+    this.setJob({ kind: "export_gamedata", state: "running", message: null, logFile });
+    const r = await this.server.command(ws, ["gamedata", "--export"], "gamedata-export");
+    const written = r.lines.map((l) => /^Game data pack written: (.+)$/.exec(l.trim())?.[1]).find(Boolean);
+    return this.finishJob("export_gamedata", r.code === 0, r.code === 0 ? (written ? path.basename(written) : null) : r.failure, logFile);
   }
 
   private async emitHostKit(): Promise<void> {
@@ -1357,6 +1504,7 @@ export class Controller {
       game_data: w ? path.dirname(w.backendGameData) : null,
       runtime_publish: w?.publish ?? null,
       host_logs: w?.logs ?? null,
+      gamedata_packs: ws ? path.join(ws, ".workspace", "gamedata-packs") : null,
     };
     const dir = target[folder];
     if (!dir || !existsSync(dir)) return this.fail("host_failed", "folder");
@@ -1436,8 +1584,17 @@ export class Controller {
           log.info(`host: runtime ${r.version} published to the content server`);
           return this.finishJob("publish_runtime", true, r.version);
         }
+        case "generate_gamedata":
+          return await this.generateGameData(ws!);
+        case "export_gamedata":
+          return await this.exportGameData(ws!);
       }
+      return err("unknown");
     } catch (e) {
+      if (e instanceof HostKitError) {
+        this.setJob(null);
+        return this.hostKitFailure(e);
+      }
       log.error(`host action ${action} failed: ${describeError(e)}`);
       return this.finishJob(action === "inject_dumper" || action === "inject_exporter" ? "inject" : action, false, describeError(e));
     }
@@ -1507,6 +1664,8 @@ export class Controller {
   }
 
   async shutdown(): Promise<void> {
+    // The server the Host page started stops with the launcher (the page says so).
+    await this.server.stop().catch((e) => log.warn(`host: server not stopped: ${describeError(e)}`));
     this.setStatusPolling(false);
     this.taskAbort?.abort();
     await this.stopRelay();

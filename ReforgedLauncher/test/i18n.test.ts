@@ -58,13 +58,29 @@ const FAMILIES: Record<string, readonly string[]> = {
   reg_mode_: ["OPEN", "INVITECODE", "NONE"],
   gamedata_kind_: ["real", "synthetic", "missing", "unknown"],
   runtime_state_: ["ok", "missing", "outdated", "untrusted", "unavailable", "local"],
-  host_job_: ["inject", "build_runtime", "build_loader", "build_exporter", "import_sdk", "copy_exports", "synthetic_data", "publish_runtime"],
+  host_job_: ["inject", "build_runtime", "build_loader", "build_exporter", "import_sdk", "copy_exports", "synthetic_data", "import_gamedata", "publish_runtime", "setup", "generate_gamedata", "export_gamedata", "create_invite"],
   host_job_state_: ["running", "done", "failed"],
-  host_err_: ["workspace", "dumper", "folder", "no_dump", "msbuild", "cargo", "no_exports", "windows_only", "game_not_running", "exporter", "no_process"],
+  host_err_: ["workspace", "dumper", "folder", "no_dump", "msbuild", "cargo", "no_exports", "windows_only", "game_not_running", "exporter", "no_process", "node_missing", "npm_missing", "not_configured", "gamedata_missing", "server_running", "server_not_running", "setup_form", "invite"],
+  host_tab_: ["server", "gamedata", "build", "requirements"],
+  hsrv_state_: ["stopped", "starting", "running", "stopping", "external", "failed"],
+  hsrv_text_: ["stopped", "starting", "running", "stopping", "external"],
+  hsrv_mode_: ["private", "public"],
+  hsrv_mode_short_: ["private", "public"],
+  hreq_state_: ["ok", "missing", "problem"],
   set_tab_: ["game", "graphics", "account", "launcher"],
   credits_role_: ["maintainer", "creator", "contributor"],
   step_: ["join", "register", "game", "runtime", "play"],
 };
+
+// The Requirements tab's guides: a name, why it is needed and its install steps (src/renderer/index.ts).
+const REQUIREMENT_STEPS: Record<string, number> = { dauntless: 2, git: 3, node: 3, mongodb: 5, tailscale: 3, visual_studio: 4, rust: 4, dumper7: 3, vc_redist: 2 };
+
+test("every requirement has its name, its reason and each install step", () => {
+  for (const [id, steps] of Object.entries(REQUIREMENT_STEPS)) {
+    for (const part of ["name", "why", ...Array.from({ length: steps }, (_, i) => `s${i + 1}`)]) assert.ok(isStringKey(`req_${id}_${part}`), `missing key req_${id}_${part}`);
+    assert.equal(isStringKey(`req_${id}_s${steps + 1}`), false, `req_${id} has more steps than the page shows`);
+  }
+});
 
 test("every key built from a code exists", () => {
   for (const [prefix, values] of Object.entries(FAMILIES)) {

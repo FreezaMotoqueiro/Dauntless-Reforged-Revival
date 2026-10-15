@@ -187,9 +187,9 @@ export interface Toolchain {
   cargo: string | null;
 }
 
-type ExecFn = (file: string, args: string[]) => Promise<string | null>;
+export type ExecFn = (file: string, args: string[]) => Promise<string | null>;
 
-const execText: ExecFn = (file, args) =>
+export const execText: ExecFn = (file, args) =>
   new Promise((resolve) => {
     execFile(file, args, { windowsHide: true, timeout: 20000, maxBuffer: 4 * 1024 * 1024 }, (err, out) => resolve(err ? null : String(out)));
   });
@@ -236,10 +236,24 @@ export function msbuildArgs(project: string, toolset: string): string[] {
   return [project, "/m", "/p:Configuration=Release", "/p:Platform=x64", `/p:PlatformToolset=${toolset}`, "/nologo", "/verbosity:minimal"];
 }
 
-export async function detectHostKit(root: string | null, opts: { env: NodeJS.ProcessEnv; platform?: NodeJS.Platform; toolchain?: Toolchain; dumpRoot?: string }): Promise<Omit<HostKit, "job" | "dumperDll">> {
+// The server's host.json (written by npm run setup): what the Host page shows of it. It holds no
+// secrets (those are in secrets.env beside it).
+export async function readServerConfig(root: string): Promise<HostKit["serverConfig"]> {
+  const none: HostKit["serverConfig"] = { configured: false, name: null, mode: null, host: null };
+  try {
+    const c = JSON.parse(await fsp.readFile(path.join(root, ".workspace", "config", "host.json"), "utf8")) as { name?: unknown; mode?: unknown; host?: unknown };
+    const mode = c.mode === "private" || c.mode === "public" ? c.mode : null;
+    if (!mode) return none;
+    return { configured: true, name: typeof c.name === "string" ? c.name.slice(0, 80) : null, mode, host: typeof c.host === "string" ? c.host.slice(0, 255) : null };
+  } catch {
+    return none;
+  }
+}
+
+export async function detectHostKit(root: string | null, opts: { env: NodeJS.ProcessEnv; platform?: NodeJS.Platform; toolchain?: Toolchain; dumpRoot?: string }): Promise<Omit<HostKit, "job" | "dumperDll" | "requirements">> {
   const toolchain = opts.toolchain ?? (await findToolchain(opts.env, opts.platform));
   const dumps = (opts.platform ?? process.platform) === "win32" || opts.dumpRoot ? await findDumps(opts.dumpRoot) : [];
-  const base: Omit<HostKit, "job" | "dumperDll"> = {
+  const base: Omit<HostKit, "job" | "dumperDll" | "requirements"> = {
     workspace: root,
     workspaceOk: false,
     upstream: { present: false, patched: false },
@@ -248,7 +262,8 @@ export async function detectHostKit(root: string | null, opts: { env: NodeJS.Pro
     builds: { runtime: false, loader: false, exporter: false, published: false },
     toolchain: { visualStudio: toolchain.visualStudio, msbuild: toolchain.msbuild !== null, cargo: toolchain.cargo !== null },
     gameData: { backend: "missing", director: "missing" },
-    exports: { present: false },
+    exports: { present: false, inGame: false },
+    serverConfig: { configured: false, name: null, mode: null, host: null },
   };
   if (root === null) return base;
   const w = workspacePaths(root);
@@ -264,6 +279,7 @@ export async function detectHostKit(root: string | null, opts: { env: NodeJS.Pro
   base.gameData.backend = await detectGameData(w.backendGameData, BACKEND_GAME_DATA);
   base.gameData.director = await detectGameData(w.directorGameData, DIRECTOR_GAME_DATA);
   base.exports.present = await isDir(w.exports);
+  base.serverConfig = await readServerConfig(root);
   return base;
 }
 

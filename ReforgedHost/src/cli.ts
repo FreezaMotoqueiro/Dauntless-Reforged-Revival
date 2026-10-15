@@ -3,7 +3,7 @@
 //   npm run setup -- --mode private [--host <Tailscale IP>] --name "Friday Hunts" --game "D:\Games\Dauntless"
 //   npm run setup -- --mode public --host 203.0.113.7 --name "Friday Hunts" --game "D:\Games\Dauntless"
 //   npm run start
-//   npm run invite -- [--uses 1] [--for "Alex"] [--unlimited] [--list]
+//   npm run invite -- [--uses 1] [--for "Alex"] [--unlimited] [--list] [--json]
 //   npm run doctor
 //   npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]
 //   npm run publish-runtime
@@ -117,6 +117,31 @@ export function hostConfigFromArgs(args: Args, existing: HostConfig | null, dete
         mongo: { uri: mongoUri, manage, mongod: str(args, "mongod") ?? existing?.mongo.mongod ?? (manage ? detect.mongod() : null) },
         maxHuntServers: Number(str(args, "max-hunts") ?? existing?.maxHuntServers ?? 3),
     };
+}
+
+// The launcher's Host page starts the server with REFORGED_CONTROL=stdin and its stdin a pipe: a "stop"
+// line, or the pipe closing (the launcher quit), stops the server as Ctrl+C does. Windows has no signal a
+// program can send another for that. The launcher also reads SERVER_READY_LINE from the output.
+export const CONTROL_ENV = "REFORGED_CONTROL";
+export const SERVER_READY_LINE = "REFORGED_SERVER_READY";
+
+export function watchStopInput(input: NodeJS.ReadableStream, onStop: () => void): void {
+    let buffered = "";
+    let stopped = false;
+    const once = () => {
+        if (stopped) return;
+        stopped = true;
+        onStop();
+    };
+    input.setEncoding?.("utf8");
+    input.on("data", (chunk: string | Buffer) => {
+        buffered += chunk.toString();
+        const lines = buffered.split(/\r?\n/);
+        buffered = lines.pop() ?? "";
+        if (lines.some((l) => l.trim().toLowerCase() === "stop")) once();
+    });
+    input.on("end", once);
+    input.on("close", once);
 }
 
 export function firewallScript(c: HostConfig, nodeExe: string): string {
@@ -289,6 +314,8 @@ async function start(p: Paths): Promise<void> {
     process.on("SIGINT", () => void stop());
     process.on("SIGTERM", () => void stop());
     process.on("SIGBREAK", () => void stop());
+    const controlled = process.env[CONTROL_ENV] === "stdin";
+    if (controlled) watchStopInput(process.stdin, () => void stop());
 
     if (config.mongo.manage) {
         const mongod = config.mongo.mongod ?? findMongod();
@@ -340,6 +367,10 @@ async function start(p: Paths): Promise<void> {
     }
     say("");
     say(`Server "${config.name}" is up: ${config.mode === "public" ? `https://${config.host}:${PORTS.publicGateway} (pinned TLS)` : `http://${config.host}:${PORTS.privateGateway} inside your tailnet`}`);
+    if (controlled) {
+        say(SERVER_READY_LINE);
+        return;
+    }
     say("Make an invite in another terminal: npm run invite -- --for \"Alex\"");
     say("Ctrl+C stops everything.");
 }
@@ -368,6 +399,11 @@ async function invite(p: Paths, args: Args): Promise<void> {
     }
     const fp = config.mode === "public" ? certificateFingerprint(p.certFile) : null;
     const link = inviteFor(config, code, fp);
+    if (args.json === true) {
+        // For the launcher's Host page: one line it can read.
+        say(JSON.stringify({ link, for: str(args, "for") ?? null, uses: args.unlimited === true ? null : uses, shareUrl: config.mode === "private" ? config.shareUrl : null }));
+        return;
+    }
     say(`\nInvite${str(args, "for") ? ` for ${str(args, "for")}` : ""} (${args.unlimited === true ? "unlimited uses" : `${uses} use${uses === 1 ? "" : "s"}`}):\n`);
     say(`  ${link}\n`);
     say("Send the whole line. They paste it into the Dauntless Reforged Revival launcher (or click it once the launcher is installed).");
@@ -525,7 +561,7 @@ async function main(): Promise<void> {
             say("                   [--game-address <IPv4>] [--registration INVITECODE|OPEN|NONE] [--share <Tailscale share link>]");
             say("                   [--mongo-uri <uri>] [--no-manage-mongo] [--mongod <path>] [--max-hunts 1-6] [--skip-install] [--force-upstream]");
             say("  npm run start");
-            say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list]");
+            say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list] [--json]");
             say("  npm run doctor [-- --no-hash]");
             say("  npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]");
             say("  npm run publish-runtime");
