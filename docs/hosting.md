@@ -80,7 +80,8 @@ page (Settings > Launcher > Advanced > Host tools), choosing `D:\Reforged` as th
 3. Game data: **Use example data** for a first start-up test only; for a playable server, play on
    your own server, inject CatalogExporter, copy the export, then `npm run gamedata`. Save the result
    with `npm run gamedata -- --export`; on your next setup, `npm run gamedata -- --import <pack>`
-   (or **Import game data pack**) replaces this step.
+   (or **Import game data pack**) replaces this step. When the project carries a server preset
+   (`preset/`, `npm run preset -- --create`), `npm run setup` already fills the game data from it.
 4. `npm run publish-runtime`: the runtime for players, and next to the server's game executable.
 
 ## 4. Start it

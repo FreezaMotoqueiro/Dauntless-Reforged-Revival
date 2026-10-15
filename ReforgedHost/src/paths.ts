@@ -25,6 +25,8 @@ export const PORTS = {
 
 export interface Paths {
     repo: string;
+    // The project's server preset (preset.ts), committed with the project.
+    preset: string;
     hostKit: string;
     upstreamPin: string;
     patchesDir: string;
@@ -69,6 +71,7 @@ export function paths(root: string): Paths {
     const logs = path.join(workspace, "logs");
     return {
         repo: root,
+        preset: path.join(root, "preset"),
         hostKit: path.join(root, "ReforgedHost"),
         upstreamPin: path.join(root, "upstream", "mystic-paradox.json"),
         patchesDir: path.join(root, "upstream"),

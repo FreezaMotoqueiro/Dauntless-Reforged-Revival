@@ -7,6 +7,7 @@
 //   npm run doctor
 //   npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]
 //   npm run publish-runtime
+//   npm run preset [-- --create [--generate] [--name "<name>"] | --apply [--force]]
 
 import fs from "node:fs";
 import path from "node:path";
@@ -14,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import { portInUse, printChecks, runDoctor, tailscaleIPv4 } from "./doctor";
 import { BACKEND_GAME_DATA, DIRECTOR_GAME_DATA, gameDataState, generateGameData, useExamples } from "./gamedata";
 import { defaultPackFile, exportGameDataPack, importGameDataPack } from "./gamepack";
+import { applyPreset, createPreset, readPresetManifest } from "./preset";
 import {
     DEFAULT_MONGO_URI,
     buildEnvFiles,
@@ -188,6 +190,14 @@ async function setup(p: Paths, args: Args): Promise<void> {
         say(`- ${result === "already_ready" ? "already in place" : result === "fetched" ? "downloaded and patched" : "updated and patched (your SDK, game data and exports were kept)"}: ${pin.commit.slice(0, 12)} in ${p.upstream}`);
     } catch (e) {
         fail(e instanceof Error ? e.message : String(e));
+    }
+
+    // The project's preset (preset/): the game data this server starts from, where none of its own is there yet.
+    try {
+        const applied = applyPreset(p);
+        if (applied) say(`- server preset "${applied.name}": ${applied.written.length} game-data files taken from preset/${applied.kept.length ? `, ${applied.kept.length} of your own kept` : ""}`);
+    } catch (e) {
+        say(`! The server preset in preset/ was not applied: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     if (args["skip-install"] !== true) {
@@ -413,6 +423,59 @@ async function gamedata(p: Paths, args: Args): Promise<void> {
     if (!r.ok) process.exit(1);
 }
 
+async function preset(p: Paths, args: Args): Promise<void> {
+    if (args.create !== undefined) {
+        if (!fs.existsSync(p.backendDir)) fail("not set up yet: run npm run setup first");
+        if (args.generate === true) {
+            say("Generating the game data from your export (Items_Analysis) first:");
+            const r = await generateGameData(p, { examplesForMissing: false, logFile: path.join(p.logs, "gamedata.log"), print: say });
+            if (!r.ok) say(`! Not every generator ran (${r.failed.join(", ")}); the preset takes the files that are there.`);
+        }
+        const config = readHostConfig(p.hostJson);
+        const exe = config?.gameDir ? path.join(config.gameDir, GAME_EXE_RELATIVE) : null;
+        const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : config?.name ?? "Dauntless Reforged Revival";
+        let r;
+        try {
+            r = createPreset(p, { name, executable: exe });
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+        say(`Server preset "${name}" written to ${p.preset}: ${r.manifest.files.length} files`);
+        for (const f of r.manifest.files) say(`  ${f.path}  ${f.bytes} bytes`);
+        if (r.left.length) say(`  not in it (missing, or still the example): ${r.left.join(", ")}`);
+        say(r.manifest.executableSha256 ? `  read from the game executable ${r.manifest.executableSha256}` : "  ! no game folder in host.json, so the executable's SHA-256 was not recorded");
+        say("Every server set up from this checkout now starts from it (npm run setup applies it). To ship it with the project, commit preset/.");
+        say("It is data read from Phoenix Labs' game: committing it to a public repository publishes it (see docs/sdk-and-game-data.md).");
+        return;
+    }
+    if (args.apply === true) {
+        if (!fs.existsSync(p.backendDir)) fail("not set up yet: run npm run setup first");
+        let r;
+        try {
+            r = applyPreset(p, { force: args.force === true });
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+        if (!r) fail(`no server preset in ${p.preset} (make one with npm run preset -- --create)`);
+        say(`Server preset "${r.name}": ${r.written.length} files written, ${r.unchanged.length} already the same${r.backups.length ? ` (${r.backups.length} replaced files kept as .bak)` : ""}`);
+        if (r.kept.length) say(`  your own game data kept (npm run preset -- --apply --force replaces it): ${r.kept.join(", ")}`);
+        return;
+    }
+    let m;
+    try {
+        m = readPresetManifest(p);
+    } catch (e) {
+        fail(e instanceof Error ? e.message : String(e));
+    }
+    if (!m) {
+        say(`No server preset in ${p.preset} yet. Make one from your game data: npm run preset -- --create [--generate]`);
+        return;
+    }
+    say(`Server preset "${m.name}" for Dauntless ${m.game}, made ${m.created}${m.executableSha256 ? `, from the executable ${m.executableSha256.slice(0, 16)}...` : ""}:`);
+    for (const f of m.files) say(`  ${f.path}  ${f.bytes} bytes`);
+    say("npm run setup applies it; npm run preset -- --apply [--force] applies it now.");
+}
+
 function publish(p: Paths): void {
     let runtime;
     try {
@@ -453,6 +516,8 @@ async function main(): Promise<void> {
             return gamedata(p, args);
         case "publish-runtime":
             return publish(p);
+        case "preset":
+            return preset(p, args);
         default:
             say("Dauntless Reforged Revival host kit. Commands (from the ReforgedHost folder):");
             say("  npm run setup -- --mode private|public [--host <address>] --name \"<server name>\" --game \"<Dauntless 1.14.7 folder>\"");
@@ -463,6 +528,7 @@ async function main(): Promise<void> {
             say("  npm run doctor [-- --no-hash]");
             say("  npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]");
             say("  npm run publish-runtime");
+            say("  npm run preset [-- --create [--generate] [--name \"<name>\"] | --apply [--force]]");
             say("See README.md and ../docs/hosting.md.");
     }
 }
