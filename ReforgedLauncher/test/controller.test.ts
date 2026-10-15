@@ -228,6 +228,16 @@ test("public mode end to end: join, register, game check, runtime trust and inst
 
   hx.child()!.emit("exit", 0);
   await waitFor(() => hx.last().phase === "ready" && !hx.c.relayActive);
+
+  // Closed through its console (0xC000013A): not a failure. A crash code is reported.
+  assert.deepEqual(await hx.c.play(), { ok: true });
+  hx.child()!.emit("exit", 0xc000013a);
+  await waitFor(() => hx.last().phase === "ready" && !hx.c.relayActive);
+  assert.equal(hx.last().lastError, null);
+  assert.deepEqual(await hx.c.play(), { ok: true });
+  hx.child()!.emit("exit", 0xc0000005);
+  await waitFor(() => hx.last().phase === "ready" && !hx.c.relayActive);
+  assert.deepEqual(hx.last().lastError, { code: "launch_failed", detail: "0xC0000005" });
   await hx.c.shutdown();
 });
 

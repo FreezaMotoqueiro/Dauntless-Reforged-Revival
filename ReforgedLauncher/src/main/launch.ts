@@ -156,6 +156,10 @@ export function findRunningClients(platform: NodeJS.Platform = process.platform)
   });
 }
 
+// The game's console was closed or sent Ctrl+C (Windows ends the process with this status): the
+// player closed it, not a failure.
+export const STATUS_CONTROL_C_EXIT = 0xc000013a;
+
 // The exit codes that have an explanation the player can act on.
 export function gameExitDetail(code: number): string {
   const hex = `0x${(code >>> 0).toString(16).toUpperCase().padStart(8, "0")}`;
