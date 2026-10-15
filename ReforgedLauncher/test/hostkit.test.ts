@@ -10,6 +10,7 @@ import {
   countFunctionFiles,
   detectGameData,
   detectHostKit,
+  EXPORT_FLAGS,
   findDumps,
   importSdk,
   msbuildArgs,
@@ -36,6 +37,12 @@ function write(file: string, data: string | Buffer): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, data);
 }
+
+test("CatalogExporter flags: the catalog, Slayer's Path, hunts, store and progression tables, and nothing client-only", () => {
+  const on = EXPORT_FLAGS.split("\r\n").filter((l) => /=1$/.test(l)).map((l) => l.slice(0, -2));
+  assert.deepEqual(on, ["EXPORT_CATALOG", "EXPORT_SLAYERS_PATH", "EXPORT_HUNTS", "EXPORT_STORE_RUNTIME", "EXPORT_PROGRESSION"]);
+  assert.ok(EXPORT_FLAGS.includes("EXPORT_SKINS_RESOLVE_STRINGTABLE=0"));
+});
 
 test("workspace paths follow the layout ReforgedHost's setup creates", () => {
   const w = workspacePaths("C:\\rr", path.win32);

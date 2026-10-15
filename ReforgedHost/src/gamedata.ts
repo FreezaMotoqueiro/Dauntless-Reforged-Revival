@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { run } from "./run";
+import { PROGRESSION_EXPORT_DIR, writeProgressionSource } from "./progression";
 import type { Paths } from "./paths";
 
 export const BACKEND_GAME_DATA = [
@@ -27,7 +28,9 @@ export const DIRECTOR_GAME_DATA = [
     "arena_elite_matchmaker_hunts_new.json",
 ];
 
-// The two files no export can produce: a response the host supplies goes in game-data/raw/.
+// The sources of the two files no CatalogExporter catalog export produces, in game-data/raw/: the
+// progression config's is written from the progression export (progression.ts) unless the host supplies
+// a captured response; the Lady Luck store's only comes from a captured response.
 export const SUPPLIED_SOURCES: Record<string, string> = {
     "progression_config.json": "progression_config.source.json",
     "ladyluck_store.json": "ladyluck_store.source.json",
@@ -87,8 +90,8 @@ export function gameDataSteps(p: Paths, opts: { examplesForMissing: boolean }): 
         { title: "Slayer's Path definitions", cwd: "backend", command: "node", args: ["scripts/generate_slayers_path_definitions.cjs", "--apply"], skipIf: () => exportMissing(path.join("slayers_path_1_14_7", "player_journey_nodes.jsonl")) },
         { title: "Reward Cache store", cwd: "backend", command: "npm", args: ["run", "reward-cache:generate"], skipIf: () => exportMissing("catalog_1_14_7.jsonl") },
         {
-            title: "Progression config (from a response you supply)", cwd: "backend", command: "npm", args: ["run", "generate:progression-config", "--", "--apply"],
-            skipIf: () => (has(raw("progression_config.json")) ? null : `no ${SUPPLIED_SOURCES["progression_config.json"]} in ${p.rawGameData}${opts.examplesForMissing ? " (the example is used)" : ""}`),
+            title: "Progression config", cwd: "backend", command: "npm", args: ["run", "generate:progression-config", "--", "--apply"],
+            skipIf: () => (has(raw("progression_config.json")) ? null : `no ${PROGRESSION_EXPORT_DIR} export in ${p.exports} and no ${SUPPLIED_SOURCES["progression_config.json"]} in ${p.rawGameData}${opts.examplesForMissing ? " (the example is used, and players cannot load into Ramsgate with it)" : ""}`),
         },
         {
             title: "Lady Luck store (from a response you supply)", cwd: "backend", command: "npm", args: ["run", "generate:ladyluck-store", "--", "--apply"],
@@ -105,6 +108,14 @@ export async function generateGameData(p: Paths, opts: { examplesForMissing: boo
     // The graph generator fills an existing slayers_path.json, so the example goes first.
     if (!fs.existsSync(path.join(p.backendGameData, "slayers_path.json")) && fs.existsSync(path.join(p.backendGameData, "slayers_path.example.json"))) {
         fs.copyFileSync(path.join(p.backendGameData, "slayers_path.example.json"), path.join(p.backendGameData, "slayers_path.json"));
+    }
+    // The progression config's source, from the host's own progression export when no captured
+    // response was supplied (see progression.ts).
+    try {
+        const r = writeProgressionSource(p.exports, path.join(p.rawGameData, SUPPLIED_SOURCES["progression_config.json"]));
+        if (typeof r === "object") opts.print(`- Progression config source, from your progression export: ${r.written} tracks`);
+    } catch (e) {
+        opts.print(`- Progression config source: ${e instanceof Error ? e.message : String(e)}`);
     }
     if (opts.examplesForMissing) {
         for (const target of Object.keys(SUPPLIED_SOURCES)) {

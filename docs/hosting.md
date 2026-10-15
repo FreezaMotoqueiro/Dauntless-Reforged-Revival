@@ -128,9 +128,11 @@ button for it.
 
 - First version: the server side was tested end to end, but not yet with the real 1.14.7 client
   and real game servers. Expect to look at logs on the first evenings.
-- Two game-data files (`progression_config.json`, `ladyluck_store.json`) cannot be generated from
-  the game; Mystic Paradox needs a captured server response for each (see its game-data guide).
-  Without them, the examples are used: no Hunt Pass rewards and no Lady Luck offers.
+- The Lady Luck store (`ladyluck_store.json`) cannot be generated from the game; Mystic Paradox
+  needs a captured server response for it. Without one, the example is used: no Lady Luck offers.
+- The progression config is built from the game's own progression tables (see
+  [sdk-and-game-data.md](sdk-and-game-data.md#the-progression-config)); the Hunt Pass has ranks but
+  no rewards.
 - One PC for everything: the services, the database and the game servers. Each hunt is a whole game
   process (about 1 GB of RAM); `--max-hunts` caps them (default 3).
 - Windows only for the server and the launcher, like the game and the runtime.
