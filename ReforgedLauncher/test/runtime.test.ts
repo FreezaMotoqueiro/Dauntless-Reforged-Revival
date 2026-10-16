@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseRuntimeManifest, fetchRuntimeManifest, type RuntimeManifest } from "../src/main/hostapi";
-import { checkRuntime, installLocalRuntime, installRuntime, isCompleteRuntimeDir, RuntimeError, runtimeSetId } from "../src/main/runtime-files";
+import { checkRuntime, installLocalRuntime, installRuntime, isCompleteRuntimeDir, replaceFile, RuntimeError, runtimeSetId, sweepAside, type ReplaceOps } from "../src/main/runtime-files";
+import { promises as fsp } from "node:fs";
 import type { Endpoint } from "../src/main/http";
 import { FakeServer, makeRuntime, runtimeManifestFor, sha256 } from "./fakes";
 
@@ -140,4 +141,66 @@ test("installLocalRuntime copies a host's own build next to the game", async () 
   mkdirSync(win64, { recursive: true });
   await installLocalRuntime(local, win64);
   for (const f of files) assert.ok(readFileSync(path.join(win64, f.name)).equals(f.data));
+});
+
+// Windows: a DLL a running process has loaded can be renamed but not overwritten. These ops act like
+// that for the files in `loaded`.
+function windowsLikeOps(loaded: Set<string>): ReplaceOps {
+  return {
+    rename: async (from, to) => {
+      if (loaded.has(to)) throw Object.assign(new Error(`EPERM: operation not permitted, rename '${from}' -> '${to}'`), { code: "EPERM" });
+      await fsp.rename(from, to);
+      if (loaded.has(from)) {
+        loaded.delete(from);
+        loaded.add(to);
+      }
+    },
+    rm: async (file, opts) => {
+      if (loaded.has(file)) throw Object.assign(new Error(`EPERM: operation not permitted, unlink '${file}'`), { code: "EPERM" });
+      await fsp.rm(file, opts);
+    },
+  };
+}
+
+test("replaceFile: a loaded runtime file is moved aside and the new one takes its place", async () => {
+  const dir = tempDir();
+  const target = path.join(dir, "MysticParadox.dll");
+  writeFileSync(target, "old build");
+  writeFileSync(`${target}.rr-download`, "new build");
+  const loaded = new Set([target]);
+  assert.equal(await replaceFile(`${target}.rr-download`, target, windowsLikeOps(loaded)), "in_use");
+  assert.equal(readFileSync(target, "utf8"), "new build");
+  const aside = readdirSync(dir).filter((n) => n.startsWith("MysticParadox.dll.rr-old-"));
+  assert.equal(aside.length, 1, "the old file stays while it is loaded");
+  assert.equal(readFileSync(path.join(dir, aside[0]), "utf8"), "old build");
+  await sweepAside(dir);
+  assert.deepEqual(readdirSync(dir), ["MysticParadox.dll"], "swept once nothing holds it");
+});
+
+test("replaceFile: a free file is replaced in place; a file that can't be moved aside is kept", async () => {
+  const dir = tempDir();
+  const target = path.join(dir, "winmm.dll");
+  writeFileSync(target, "old");
+  writeFileSync(`${target}.rr-download`, "new");
+  assert.equal(await replaceFile(`${target}.rr-download`, target), "replaced");
+  assert.equal(readFileSync(target, "utf8"), "new");
+  writeFileSync(`${target}.rr-download`, "newer");
+  const locked: ReplaceOps = {
+    rename: async () => {
+      throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+    },
+    rm: (f, o) => fsp.rm(f, o),
+  };
+  await assert.rejects(replaceFile(`${target}.rr-download`, target, locked), /EBUSY/);
+  assert.equal(readFileSync(target, "utf8"), "new");
+});
+
+test("installRuntime clears old runtime files left aside by an earlier install", async () => {
+  const win64 = tempDir();
+  writeFileSync(path.join(win64, "MysticParadox.dll.rr-old-123"), "old");
+  writeFileSync(path.join(win64, "notes.txt.rr-old-1"), "not ours");
+  const r = await installRuntime({ endpoint: ep, key: KEY, manifest: manifest(), win64Dir: win64 });
+  assert.deepEqual(r.replacedInUse, []);
+  assert.equal(existsSync(path.join(win64, "MysticParadox.dll.rr-old-123")), false);
+  assert.equal(existsSync(path.join(win64, "notes.txt.rr-old-1")), true);
 });

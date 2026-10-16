@@ -20,7 +20,61 @@ export function sha256File(file: string): string {
 function copyAtomically(from: string, to: string): void {
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.copyFileSync(from, `${to}.tmp`);
-    fs.renameSync(`${to}.tmp`, to);
+    replaceLoadedFile(`${to}.tmp`, to);
+}
+
+// Windows refuses to overwrite a DLL a running game server has loaded, but lets it be renamed: the
+// old file is moved aside, the new one takes its name, and the old one is deleted when it is free
+// (now, or on the next publish). Running game servers keep the old runtime until they restart.
+export const ASIDE_MARK = ".rr-old-";
+
+export function replaceLoadedFile(tmp: string, target: string): "replaced" | "in_use" {
+    try {
+        fs.renameSync(tmp, target);
+        return "replaced";
+    } catch (first) {
+        const aside = `${target}${ASIDE_MARK}${Date.now()}`;
+        try {
+            fs.renameSync(target, aside);
+        } catch {
+            fs.rmSync(tmp, { force: true });
+            throw first;
+        }
+        try {
+            fs.renameSync(tmp, target);
+        } catch (e) {
+            try {
+                fs.renameSync(aside, target);
+            } catch {
+                /* the old file stays aside */
+            }
+            fs.rmSync(tmp, { force: true });
+            throw e;
+        }
+        try {
+            fs.rmSync(aside, { force: true });
+        } catch {
+            /* still loaded: swept later */
+        }
+        return "in_use";
+    }
+}
+
+function sweepAside(dir: string): void {
+    let names: string[];
+    try {
+        names = fs.readdirSync(dir);
+    } catch {
+        return;
+    }
+    for (const name of names) {
+        if (!RUNTIME_FILE_NAMES.some((r) => name.startsWith(`${r}${ASIDE_MARK}`))) continue;
+        try {
+            fs.rmSync(path.join(dir, name), { force: true });
+        } catch {
+            /* still loaded */
+        }
+    }
 }
 
 export function publishRuntime(p: Paths, now: Date = new Date(), sources: Record<string, string> = { "MysticParadox.dll": p.runtimeDll, "winmm.dll": p.loaderDll }): PublishedRuntime {
@@ -42,10 +96,12 @@ export function publishRuntime(p: Paths, now: Date = new Date(), sources: Record
     return runtime;
 }
 
-// Copies the published runtime next to the server's game executable. Windows refuses to replace a
-// DLL a running game server has loaded; that is reported per file.
-export function installServerRuntime(p: Paths, win64Dir: string): { installed: string[]; unchanged: string[]; failed: { name: string; error: string }[] } {
-    const out = { installed: [] as string[], unchanged: [] as string[], failed: [] as { name: string; error: string }[] };
+// Copies the published runtime next to the server's game executable. A file a running game server
+// has loaded is moved aside and still replaced (listed in inUse: those servers use it once they
+// restart); a file that can't be replaced at all is reported in failed.
+export function installServerRuntime(p: Paths, win64Dir: string): { installed: string[]; unchanged: string[]; inUse: string[]; failed: { name: string; error: string }[] } {
+    const out = { installed: [] as string[], unchanged: [] as string[], inUse: [] as string[], failed: [] as { name: string; error: string }[] };
+    sweepAside(win64Dir);
     for (const name of RUNTIME_FILE_NAMES) {
         const from = path.join(p.runtimePublish, name);
         const to = path.join(win64Dir, name);
@@ -54,7 +110,9 @@ export function installServerRuntime(p: Paths, win64Dir: string): { installed: s
                 out.unchanged.push(name);
                 continue;
             }
-            copyAtomically(from, to);
+            fs.mkdirSync(win64Dir, { recursive: true });
+            fs.copyFileSync(from, `${to}.tmp`);
+            if (replaceLoadedFile(`${to}.tmp`, to) === "in_use") out.inUse.push(name);
             out.installed.push(name);
         } catch (e) {
             out.failed.push({ name, error: e instanceof Error ? e.message : String(e) });

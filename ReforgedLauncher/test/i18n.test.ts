@@ -46,10 +46,10 @@ test("translate fills placeholders; systemLanguage maps any Portuguese locale to
 
 // The prefixes the page and the main process build keys from, with every value the code can produce.
 const FAMILIES: Record<string, readonly string[]> = {
-  err_: ["account_banned", "invite_invalid_format", "invite_invalid", "username_invalid", "username_taken", "registration_closed", "bad_request", "server_unreachable", "server_error", "key_invalid", "key_rejected", "key_storage_unavailable", "folder_invalid", "game_folder_not_found", "game_wrong_version", "runtime_unavailable", "runtime_untrusted", "runtime_failed", "runtime_different_on_server", "local_runtime_invalid", "download_failed", "disk_space", "already_running", "launch_failed", "config_failed", "busy", "cancelled", "cert_mismatch", "cert_changed", "rate_limited", "relay_port_busy", "relay_failed", "host_failed", "unknown"],
+  err_: ["account_banned", "invite_invalid_format", "invite_invalid", "username_invalid", "username_taken", "registration_closed", "bad_request", "server_unreachable", "server_error", "key_invalid", "key_rejected", "key_storage_unavailable", "folder_invalid", "game_folder_not_found", "game_wrong_version", "runtime_unavailable", "runtime_untrusted", "runtime_failed", "runtime_different_on_server", "runtime_in_use", "local_runtime_invalid", "download_failed", "disk_space", "already_running", "launch_failed", "config_failed", "busy", "cancelled", "cert_mismatch", "cert_changed", "rate_limited", "relay_port_busy", "relay_failed", "host_failed", "unknown"],
   invite_err_: ["empty", "too_long", "not_invite", "version", "params", "mode", "host", "port", "fp", "code", "name", "share"],
   reg_check_: ["empty", "too_short", "too_long", "bad_chars", "ok"],
-  notice_: ["keep_open", "backup_saved", "runtime_installed", "game_verified", "sdk_imported", "host_done"],
+  notice_: ["keep_open", "backup_saved", "runtime_installed", "runtime_installed_restart", "game_verified", "sdk_imported", "host_done"],
   where_: ["menu", "city", "hunt", "dojo", "tutorial", "unknown"],
   kind_: ["city", "hunt", "dojo", "tutorial"],
   gfx_: ["menu", "0", "1", "2", "3", "4"],

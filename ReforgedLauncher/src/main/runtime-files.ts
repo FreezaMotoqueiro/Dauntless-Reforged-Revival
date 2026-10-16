@@ -96,6 +96,64 @@ export interface RuntimeProgress {
   currentFile: string | null;
 }
 
+// Puts a checked file in place of the old one. Windows refuses to overwrite a DLL that a running
+// process has loaded, and on a host's own PC the Director's game servers (Ramsgate, the Training
+// Grounds, hunts) run the same Dauntless executable from the same folder, so they hold both runtime
+// files for as long as the server is up. Windows does let a loaded file be renamed, though: when the
+// plain replace fails, the old file is moved aside, the new one takes its name, and the old one is
+// deleted once nothing has it loaded any more (here, or by sweepAside on a later install). A process
+// that already had the old file keeps using it until it restarts; a new one loads the new file.
+//  returns "in_use" when the old file had to be moved aside (it was loaded somewhere)
+export interface ReplaceOps {
+  rename(from: string, to: string): Promise<void>;
+  rm(file: string, opts: { force: boolean }): Promise<void>;
+}
+
+export const ASIDE_MARK = ".rr-old-";
+
+export async function replaceFile(tmp: string, target: string, ops: ReplaceOps = fsp): Promise<"replaced" | "in_use"> {
+  try {
+    await ops.rename(tmp, target);
+    return "replaced";
+  } catch (first) {
+    const aside = `${target}${ASIDE_MARK}${Date.now()}`;
+    try {
+      await ops.rename(target, aside);
+    } catch {
+      throw first;
+    }
+    try {
+      await ops.rename(tmp, target);
+    } catch (e) {
+      // Put the old file back so the game still has a runtime.
+      await ops.rename(aside, target).catch(() => undefined);
+      throw e;
+    }
+    await ops.rm(aside, { force: true }).catch(() => undefined);
+    return "in_use";
+  }
+}
+
+// Deletes old runtime files moved aside by an earlier install, the ones no process holds any more.
+export async function sweepAside(dir: string): Promise<void> {
+  let names: string[];
+  try {
+    names = await fsp.readdir(dir);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!RUNTIME_FILE_NAMES.some((r) => name.startsWith(`${r}${ASIDE_MARK}`))) continue;
+    await fsp.rm(path.join(dir, name), { force: true }).catch(() => undefined);
+  }
+}
+
+export interface RuntimeInstallResult {
+  // Files whose old copy was loaded by a running process (on a host's PC: its game servers). The
+  // new file is in place; those processes use it once they restart.
+  replacedInUse: string[];
+}
+
 // Downloads and installs the server's runtime into the game's Win64 folder. Each file is written
 // next to its target first, checked, and only then renamed over the old one.
 export async function installRuntime(opts: {
@@ -105,12 +163,14 @@ export async function installRuntime(opts: {
   win64Dir: string;
   signal?: AbortSignal;
   onProgress?: (p: RuntimeProgress) => void;
-}): Promise<void> {
+}): Promise<RuntimeInstallResult> {
   const { manifest, win64Dir } = opts;
   const totalBytes = manifest.files.reduce((s, f) => s + f.size, 0);
   let doneBytes = 0;
   let filesDone = 0;
+  const replacedInUse: string[] = [];
   await fsp.mkdir(win64Dir, { recursive: true });
+  await sweepAside(win64Dir);
   const report = (current: string | null) => opts.onProgress?.({ doneBytes, totalBytes, filesDone, filesTotal: manifest.files.length, currentFile: current });
   for (const f of manifest.files) {
     const target = path.join(win64Dir, f.name);
@@ -162,10 +222,10 @@ export async function installRuntime(opts: {
       throw new RuntimeError("different", f.name, "the file does not match the server's list");
     }
     try {
-      await fsp.rename(tmp, target);
+      if ((await replaceFile(tmp, target)) === "in_use") replacedInUse.push(f.name);
     } catch (e) {
       await fsp.rm(tmp, { force: true });
-      // Windows refuses to replace a DLL a running game has loaded.
+      // Neither replaced nor moved aside: something holds the file without sharing it.
       throw new RuntimeError("in_use", f.name, e instanceof Error ? e.message : String(e));
     }
     await unblock(target);
@@ -175,10 +235,13 @@ export async function installRuntime(opts: {
     report(f.name);
   }
   await writeMarker(win64Dir, manifest);
+  return { replacedInUse };
 }
 
 // Copies a local runtime (a folder with both files, built by the host) next to the game.
-export async function installLocalRuntime(localDir: string, win64Dir: string): Promise<void> {
+export async function installLocalRuntime(localDir: string, win64Dir: string): Promise<RuntimeInstallResult> {
+  const replacedInUse: string[] = [];
+  await sweepAside(win64Dir);
   for (const name of RUNTIME_FILE_NAMES) {
     const source = path.join(localDir, name);
     const target = path.join(win64Dir, name);
@@ -195,13 +258,14 @@ export async function installLocalRuntime(localDir: string, win64Dir: string): P
       throw new RuntimeError("different", name, "changed while copying (antivirus?)");
     }
     try {
-      await fsp.rename(tmp, target);
+      if ((await replaceFile(tmp, target)) === "in_use") replacedInUse.push(name);
     } catch (e) {
       await fsp.rm(tmp, { force: true });
       throw new RuntimeError("in_use", name, e instanceof Error ? e.message : String(e));
     }
     await unblock(target);
   }
+  return { replacedInUse };
 }
 
 async function writeMarker(win64Dir: string, manifest: RuntimeManifest): Promise<void> {

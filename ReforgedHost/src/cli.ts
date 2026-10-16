@@ -647,7 +647,8 @@ function publish(p: Paths): void {
         const win64 = path.dirname(path.join(config.gameDir, GAME_EXE_RELATIVE));
         const r = installServerRuntime(p, win64);
         if (r.installed.length) say(`Installed for the game servers in ${win64}: ${r.installed.join(", ")}`);
-        if (r.failed.length) say(`! Could not replace ${r.failed.map((f) => f.name).join(", ")} in ${win64} (a game server still running? stop the server and run this again): ${r.failed[0].error}`);
+        if (r.inUse.length) say(`Game servers still running keep the old ${r.inUse.join(", ")} until the server restarts: restart it so every world uses the new runtime.`);
+        if (r.failed.length) say(`! Could not replace ${r.failed.map((f) => f.name).join(", ")} in ${win64} (another program holds it: stop the server and run this again): ${r.failed[0].error}`);
         ensureServerFlags(win64);
     }
 }

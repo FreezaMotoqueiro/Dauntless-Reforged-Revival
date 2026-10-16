@@ -79,6 +79,7 @@ export type ErrorCode =
   | "runtime_untrusted" // the player has not accepted this server's runtime
   | "runtime_failed" // downloading or installing the runtime failed
   | "runtime_different_on_server" // a file did not match the server's own list
+  | "runtime_in_use" // a runtime file is held by a program that would not let it be replaced
   | "local_runtime_invalid"
   | "download_failed"
   | "disk_space"
@@ -96,7 +97,7 @@ export type ErrorCode =
   | "unknown";
 
 // Short messages that are not errors.
-export type NoticeCode = "keep_open" | "backup_saved" | "runtime_installed" | "game_verified" | "sdk_imported" | "host_done";
+export type NoticeCode = "keep_open" | "backup_saved" | "runtime_installed" | "runtime_installed_restart" | "game_verified" | "sdk_imported" | "host_done";
 
 export interface LauncherError {
   code: ErrorCode;
