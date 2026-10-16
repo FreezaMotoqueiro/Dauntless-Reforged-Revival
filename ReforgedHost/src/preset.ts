@@ -142,7 +142,9 @@ export function applyPreset(p: Paths, opts: { force?: boolean; now?: Date } = {}
         if (PRESET_EXCLUDED.includes(f.path)) throw new Error(`the preset lists ${f.path}, which each server builds from the store captures instead`);
         const file = path.join(p.preset, ...f.path.split("/"));
         if (!fs.existsSync(file)) throw new Error(`the preset is incomplete: ${f.path} is missing`);
-        const text = fs.readFileSync(file, "utf8");
+        // Git for Windows checks the preset out with CRLF line endings (core.autocrlf); its hashes are of the
+        // LF files, so the text is read back to LF first (.gitattributes keeps new checkouts LF).
+        const text = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
         if (sha256(text) !== f.sha256) throw new Error(`the preset's ${f.path} does not match its hash in preset.json (edited by hand? run npm run preset -- --create again)`);
         data.set(f.path, text);
     }

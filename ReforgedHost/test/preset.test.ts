@@ -63,6 +63,9 @@ describe("the server preset", () => {
         createPreset(p, { name: "x", executable: null });
         write(path.join(p.preset, "backend", "progression_config.json"), "{\"paths\":2}\n");
         assert.throws(() => applyPreset(p), /does not match its hash/);
+        // A Git for Windows checkout (CRLF line endings) is the same file.
+        write(path.join(p.preset, "backend", "progression_config.json"), "{\"paths\":1}\r\n");
+        assert.deepEqual(applyPreset(p)!.unchanged, ["backend/progression_config.json"]);
         assert.throws(() => createPreset(host("preset-empty"), { name: "x", executable: null }), /npm run gamedata first/);
 
         // Made on another machine than the game's: the executable's hash is given.

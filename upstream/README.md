@@ -114,7 +114,7 @@ backend uses them only when `REFORGED_SERVER_MODE=private` and `REFORGED_SERVER_
   challenge-funded season coins and anything a craft or a purchase removes keep their quantities. The game's own
   reward screen still shows the original numbers; the inventory and the levels hold the multiplied ones.
 
-### 0008: mastery XP is stored, and stored objectives are served as completed
+### 0009: mastery XP is stored, and stored objectives are served as completed
 
 `ParadoxBackend`, `src/controllers/progression.ts` and the progression repository (with a test in
 `progressionHardening.gamedata.test.ts`). Mastery never gained XP:
