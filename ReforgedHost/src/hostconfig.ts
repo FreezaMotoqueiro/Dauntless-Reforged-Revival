@@ -31,6 +31,15 @@ export interface HostConfig {
         mongod: string | null; // path to mongod(.exe) when managed
     };
     maxHuntServers: number;
+    // Private servers only: multiply the XP and the loot the game servers grant, to reach late-game content quickly
+    // when testing. Absent or 1 is off; the backend checks again that it runs as a private Tailscale server.
+    multipliers?: { xp: number; rewards: number };
+}
+
+export const MAX_MULTIPLIER = 100;
+
+export function multipliersOn(c: HostConfig): boolean {
+    return c.mode === "private" && c.multipliers !== undefined && (c.multipliers.xp !== 1 || c.multipliers.rewards !== 1);
 }
 
 export interface Secrets {
@@ -154,6 +163,12 @@ export function validateHostConfig(c: HostConfig): HostConfig {
     if (c.shareUrl !== null && !/^https:\/\/login\.tailscale\.com\/[A-Za-z0-9/_?=&.%-]+$/.test(c.shareUrl)) throw new Error("shareUrl must be a https://login.tailscale.com/ link");
     if (!/^mongodb(\+srv)?:\/\//.test(c.mongo.uri)) throw new Error("mongo.uri must be a mongodb:// connection string");
     if (!Number.isInteger(c.maxHuntServers) || c.maxHuntServers < 1 || c.maxHuntServers > 6) throw new Error("maxHuntServers must be 1 to 6 (8 game ports: Ramsgate, the Training Grounds and the hunts)");
+    if (c.multipliers !== undefined) {
+        for (const [what, value] of Object.entries(c.multipliers)) {
+            if (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > MAX_MULTIPLIER) throw new Error(`the ${what} multiplier must be a number from 1 to ${MAX_MULTIPLIER}, not ${value}`);
+        }
+        if (c.mode === "public" && (c.multipliers.xp !== 1 || c.multipliers.rewards !== 1)) throw new Error("XP and reward multipliers are for private (Tailscale) test servers only");
+    }
     return { ...c, host, name };
 }
 
@@ -216,6 +231,13 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ["REFORGED_SERVER_VERSION", "0.1.0"],
         ["REFORGED_SOURCE_URL", "https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival"],
         ["REFORGED_SOURCE_COMMIT", extra.sourceCommit ?? ""],
+        // The backend multiplies XP and rewards only as a private server on a Tailscale address (testMultipliers.ts).
+        ["REFORGED_SERVER_MODE", c.mode],
+        ["REFORGED_SERVER_HOST", c.host],
+        ...(multipliersOn(c) ? [
+            ["REFORGED_XP_MULTIPLIER", String(c.multipliers!.xp)],
+            ["REFORGED_REWARD_MULTIPLIER", String(c.multipliers!.rewards)],
+        ] as [string, string][] : []),
         ["LOG_LEVEL", "info"],
     ];
     const exe = c.gameDir ? path.join(c.gameDir, GAME_EXE_RELATIVE) : "";

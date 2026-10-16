@@ -22,6 +22,7 @@ Run them in this folder (`cd ReforgedHost`, then `npm install` once).
 | `npm run publish-runtime` | Publishes the built `MysticParadox.dll` and `winmm.dll` for players, and installs them next to the server's game executable |
 | `npm run gamedata` | Generates the game data from your CatalogExporter export (the progression config from the progression export; `-- --example-sources` uses the examples for the files no export produced; `-- --progression` rebuilds only the progression config; `-- --export [file]` saves it all into one game data pack and `-- --import <file>` puts a pack back; `-- --examples` copies every example, for a start-up test only) |
 | `npm run preset` | The project's server preset in `../preset/`: `-- --create [--generate] [--name "<name>"]` extracts it from your game data (with its provenance), `-- --apply [--force]` applies it now; `setup` applies it on its own where game data is missing or still the example |
+| `npm run multipliers` | Private test servers only: `-- --xp 1-100 --rewards 1-100` multiplies the XP and the hunt loot the game servers grant, `-- --off` turns it off, no arguments shows what is set; restart the server after a change (see `../upstream/README.md`, patch 0007) |
 | `npm run doctor` | Checks everything and says what to do next (`-- --no-hash` skips hashing the game executable) |
 
 Other `setup` options: `--registration INVITECODE|OPEN|NONE` (default invite codes only),

@@ -40,6 +40,17 @@ describe("command line", () => {
         assert.equal(hostConfigFromArgs(parseArgs(["--mode", "private", "--mongo-uri", "mongodb://db.local:27017/?replicaSet=rs0"]), null, detect).mongo.manage, false);
     });
 
+    it("takes test multipliers on a private server only, keeps them on the next setup, and --off clears them", () => {
+        const c = hostConfigFromArgs(parseArgs(["--mode", "private", "--xp-multiplier", "5", "--reward-multiplier", "x3"]), null, detect);
+        assert.deepEqual(c.multipliers, { xp: 5, rewards: 3 });
+        assert.deepEqual(hostConfigFromArgs(parseArgs([]), c, detect).multipliers, { xp: 5, rewards: 3 });
+        assert.equal(hostConfigFromArgs(parseArgs(["--off"]), c, detect).multipliers, undefined);
+        assert.equal(hostConfigFromArgs(parseArgs(["--xp-multiplier", "1", "--reward-multiplier", "1"]), c, detect).multipliers, undefined);
+        assert.equal(hostConfigFromArgs(parseArgs(["--mode", "public", "--host", "203.0.113.7"]), c, detect).multipliers, undefined, "not carried into a public server");
+        assert.throws(() => hostConfigFromArgs(parseArgs(["--mode", "public", "--host", "203.0.113.7", "--xp-multiplier", "5"]), null, detect), /private/);
+        assert.throws(() => hostConfigFromArgs(parseArgs(["--mode", "private", "--xp-multiplier", "500"]), null, detect), /1 to 100/);
+    });
+
     it("follows a new Tailscale address on setup, and keeps the old one only when Tailscale is not running", () => {
         const old = hostConfigFromArgs(parseArgs(["--mode", "private", "--name", "Freeza"]), null, { ...detect, tailscale: () => "100.117.171.17" });
         const moved = hostConfigFromArgs(parseArgs([]), old, { ...detect, tailscale: () => "100.88.12.40" });

@@ -26,6 +26,8 @@
     "publish-runtime": "node dist/cli.js publish-runtime",
     "prepreset": "npm run build --silent",
     "preset": "node dist/cli.js preset",
+    "premultipliers": "npm run build --silent",
+    "multipliers": "node dist/cli.js multipliers",
     "test": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test --test-concurrency=1 \"build/ReforgedHost/test/*.test.js\""
   },
   "devDependencies": {

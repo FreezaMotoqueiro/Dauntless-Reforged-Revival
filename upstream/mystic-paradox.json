@@ -11,6 +11,7 @@
     "patches/0003-director-bind-host-and-instances.patch",
     "patches/0004-runtime-keep-hub-up-on-phantom-load-failure.patch",
     "patches/0005-backend-store-game-server-xp-and-objectives.patch",
-    "patches/0006-runtime-free-leftover-worlds-before-loadmap.patch"
+    "patches/0006-runtime-free-leftover-worlds-before-loadmap.patch",
+    "patches/0007-backend-test-xp-and-reward-multipliers.patch"
   ]
 }
