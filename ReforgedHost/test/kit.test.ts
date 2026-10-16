@@ -173,6 +173,19 @@ describe("runtime publishing", () => {
         assert.ok(SERVER_RUNTIME_FLAGS.every((f) => fs.existsSync(path.join(win64, f))));
     });
 
+    it("clears old runtime files a previous install had to move aside", () => {
+        const p = paths(tempDir("publish-aside"));
+        write(p.runtimeDll, Buffer.alloc(6000, 5));
+        write(p.loaderDll, Buffer.alloc(2000, 6));
+        publishRuntime(p);
+        const win64 = tempDir("win64-aside");
+        fs.writeFileSync(path.join(win64, "MysticParadox.dll.rr-old-123"), "old");
+        const r = installServerRuntime(p, win64);
+        assert.deepEqual(r.inUse, []);
+        assert.equal(fs.existsSync(path.join(win64, "MysticParadox.dll.rr-old-123")), false);
+        assert.equal(fs.existsSync(path.join(win64, "MysticParadox.dll.tmp")), false);
+    });
+
     it("refuses before anything is built", () => {
         assert.throws(() => publishRuntime(paths(tempDir("nopublish"))), /not built/);
     });

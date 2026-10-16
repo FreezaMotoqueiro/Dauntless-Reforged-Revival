@@ -1097,7 +1097,7 @@ export class Controller {
     this.task = { kind: "runtime", totalBytes: total, doneBytes: 0, filesTotal: m.files.length, filesDone: 0, bytesPerSecond: 0, etaSeconds: null, currentFile: null };
     this.publish();
     try {
-      await installRuntime({
+      const r = await installRuntime({
         endpoint: ep,
         key,
         manifest: m,
@@ -1111,7 +1111,11 @@ export class Controller {
         },
       });
       log.info(`runtime ${m.version} installed next to the game`);
-      this.notice = "runtime_installed";
+      // The old files were loaded somewhere: on a host's PC, its own game servers. They keep the old
+      // runtime until the server restarts.
+      if (r.replacedInUse.length) log.info(`runtime: replaced while in use (${r.replacedInUse.join(", ")})`);
+      const serverUp = this.server.running || this.server.serverState === "external";
+      this.notice = r.replacedInUse.length && serverUp ? "runtime_installed_restart" : "runtime_installed";
       return OK;
     } catch (e) {
       if (e instanceof RuntimeError) {
@@ -1130,7 +1134,7 @@ export class Controller {
           download_failed: "download_failed",
           cert_mismatch: "cert_mismatch",
           disk_error: "folder_invalid",
-          in_use: "already_running",
+          in_use: "runtime_in_use",
           cancelled: "cancelled",
         };
         return this.fail(map[e.code], e.file ?? undefined);
@@ -1221,7 +1225,7 @@ export class Controller {
           await installLocalRuntime(this.s.localRuntimeDir, dir);
         } catch (e) {
           log.error(`local runtime not installed: ${describeError(e)}`);
-          return this.fail(e instanceof RuntimeError && e.code === "in_use" ? "already_running" : "local_runtime_invalid");
+          return this.fail(e instanceof RuntimeError && e.code === "in_use" ? "runtime_in_use" : "local_runtime_invalid");
         }
       }
       await this.inspectRuntime();

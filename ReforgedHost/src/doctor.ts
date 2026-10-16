@@ -156,7 +156,7 @@ export async function runDoctor(p: Paths, opts: { hashExe?: boolean } = {}): Pro
     if (published && config?.gameDir) {
         const win64 = path.dirname(path.join(config.gameDir, GAME_EXE_RELATIVE));
         const same = RUNTIME_FILE_NAMES.every((n) => fs.existsSync(path.join(win64, n)) && sha256File(path.join(win64, n)) === sha256File(path.join(p.runtimePublish, n)));
-        add(same ? { area: "runtime", level: "ok", text: "the game servers use the published runtime" } : { area: "runtime", level: "fail", text: "the server's game folder does not have the published runtime", fix: "npm run publish-runtime (with the game servers stopped)" });
+        add(same ? { area: "runtime", level: "ok", text: "the game servers use the published runtime" } : { area: "runtime", level: "fail", text: "the server's game folder does not have the published runtime", fix: "npm run publish-runtime, then restart the server" });
     }
 
     // ---- game data
