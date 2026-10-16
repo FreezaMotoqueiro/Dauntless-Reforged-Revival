@@ -127,6 +127,26 @@ until the game's 60-second player-data timeout fired and its retry completed the
 query is now issued at the first check, at boot, as a hub already does. The client keeps the original
 timing.
 
+### 0009: mastery XP is stored, and stored objectives are served as completed
+
+`ParadoxBackend`, `src/controllers/progression.ts` and the progression repository (with a test in
+`progressionHardening.gamedata.test.ts`). Mastery never gained XP:
+
+- The 1.14.7 game server sends no grant for a `MasteryTrack_*`. When a mastery objective is completed it
+  reports the points in its objective report (`POST /progression/<user>`) as `progress_tracks` deltas:
+  +1 on the weapon's or the behemoth track and +1 on `MasteryTrack_PlayerLevel` per objective (captured from
+  real hunts). Those were only logged. From a game server they are now added to the tracks, and a track
+  gains at most the number of objectives this report completes for the first time (`completed_count` above
+  the stored one), so a repeated report adds nothing. The log says `[MasteryXp] user=... MasteryTrack_...+1=<total>`.
+- `GET /progression/objectives/<user>` answered `{objective_id, value, completed_count}`. The live service's
+  row (Progression/GetObjectiveProgression.md in the endpoint captures) holds the count in `progress`, so the
+  game server read every stored objective as not started and completed the same mastery objectives again in
+  each hunt. The rows now carry `progress` (and `phx_account_id`, `created_date`, `last_modified_date`) as
+  the capture does; `value` stays.
+
+Mastery XP earned before this patch was never stored and is not restored; the objectives completed since
+patch 0005 are stored and count as done.
+
 ### 0010: claiming a completed bounty works
 
 `ParadoxBackend`, `src/bountyState.ts` (with `bountyState.test.ts`), `src/controllers/bounty.ts` and

@@ -1,3 +1,5 @@
 # The Reforged patches are applied byte for byte to upstream's LF files: keep them LF on every OS
 # (Git for Windows would otherwise check them out with CRLF line endings).
 *.patch text eol=lf
+# The server preset's hashes in preset/preset.json are of the LF files.
+preset/** text eol=lf
