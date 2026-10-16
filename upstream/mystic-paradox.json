@@ -13,6 +13,7 @@
     "patches/0005-backend-store-game-server-xp-and-objectives.patch",
     "patches/0006-runtime-free-leftover-worlds-before-loadmap.patch",
     "patches/0007-backend-test-xp-and-reward-multipliers.patch",
+    "patches/0008-runtime-progression-config-at-server-start.patch",
     "patches/0010-backend-claim-bounties-delete-route.patch"
   ]
 }

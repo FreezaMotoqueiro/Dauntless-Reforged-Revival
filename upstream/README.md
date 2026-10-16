@@ -114,6 +114,19 @@ backend uses them only when `REFORGED_SERVER_MODE=private` and `REFORGED_SERVER_
   challenge-funded season coins and anything a craft or a purchase removes keep their quantities. The game's own
   reward screen still shows the original numbers; the inventory and the levels hold the multiplied ones.
 
+### 0008: players no longer wait a minute on the loading screen of a hunt
+
+`ParadoxRuntime/dllmain.cpp`, server only. Joining a hunt or the Training Grounds kept every player on the
+loading screen for about 60 seconds. With `CALL_HUNTPASS_QUERY.flag` the runtime issues the progression
+configuration query (`GET /progression/config`) at the second "is the configuration loaded?" check. A hub
+makes two such checks at boot, so its configuration is cached before anyone joins. A hunt or the Training
+Grounds makes only one at boot, so the second was the first real player's own load: their progression
+component started waiting, the configuration arrived a few milliseconds later, and nothing checked again
+until the game's 60-second player-data timeout fired and its retry completed the load (the runtime log shows
+`[HuntPassQuery] calling` at the join and `[LoadFailedDiag] fire #1` exactly 60 s later). On the server the
+query is now issued at the first check, at boot, as a hub already does. The client keeps the original
+timing.
+
 ### 0010: claiming a completed bounty works
 
 `ParadoxBackend`, `src/bountyState.ts` (with `bountyState.test.ts`), `src/controllers/bounty.ts` and
@@ -126,7 +139,7 @@ and unclaimable. The new route (POST, and DELETE) removes the named bounties fro
 `delete_claimed_bounties`, and answers with the state like a save does. Season challenges are never deleted, so a
 claimed challenge still cannot be re-seeded and pay its Cache Coins twice. Each call logs a
 `[DraftMon] BOUNTY-DELETE` line with what was deleted and the raw body; a body that names nothing gets a 400.
-The number skips 0008 and 0009, which other pending changes use.
+The number skips 0009, which another pending change uses.
 
 ## Store captures
 
