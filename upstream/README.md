@@ -161,6 +161,18 @@ claimed challenge still cannot be re-seeded and pay its Cache Coins twice. Each 
 `[DraftMon] BOUNTY-DELETE` line with what was deleted and the raw body; a body that names nothing gets a 400.
 The number skips 0009, which another pending change uses.
 
+### 0011: a hunt client no longer crashes when its loading takes more than 3 seconds
+
+`ParadoxRuntime/dllmain.cpp`, the client side of the `HasFinishedLoading` compatibility override. On a client
+the override forces the local player controller's readiness to true as soon as the possession chain has been
+stable since `ClientRestart` for 3 seconds. A hunt client is normally ready on its own about 1.5 seconds after
+`ClientRestart`, so the override never fired; when the client was slower (a busy machine), it fired at 3 seconds,
+the whole map ran `ReceiveGameplayStart` at once, including the adventure HUD, and the game crashed 20 ms later
+with `EXCEPTION_ACCESS_VIOLATION reading address 0x248` at `Dauntless-Win64-Shipping.exe+0x1F6D6BE`
+(`[ReadinessCompat] FORCE_TRUE scope=local-controller` right before `[ExceptionTrace]` in the client's
+`mysticparadox_dll_port0.log`). The override now waits 20 seconds after `ClientRestart`, so a slow load finishes
+on its own and only a load that is really stuck is forced.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
