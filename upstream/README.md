@@ -114,6 +114,20 @@ backend uses them only when `REFORGED_SERVER_MODE=private` and `REFORGED_SERVER_
   challenge-funded season coins and anything a craft or a purchase removes keep their quantities. The game's own
   reward screen still shows the original numbers; the inventory and the levels hold the multiplied ones.
 
+### 0008: behemoth health bars on the player's HUD
+
+`ParadoxRuntime/dllmain.cpp`, client only (`Globals::AmServer` stays off, so the local game servers do nothing).
+A behemoth the player has damaged gets a health bar on the right of the screen, under the danger meter: its icon
+in a ring on the left, a red bar with "current / max" health, and a blue shield bar under it while its shield is
+up. A second damaged behemoth gets a second bar below the first; a third replaces the one hit longest ago, and a
+dead behemoth's bar goes after 3 seconds. The bars are drawn with the HUD's own reflected Canvas functions
+(`HUD.DrawRect`, `DrawText`, `DrawTexture`, `GetTextSize`) from the client `ProcessEvent` hook, right after the
+HUD's `ReceiveDrawHUD`, so nothing is created and no RVA is used. The target is
+`BP_PlayerCharacter_C.LastDamagedActor`; health and shield come from the behemoth's `UArchonHealthAttributeSet`
+(there is no max shield, so the shield bar is relative to the largest shield seen), and the icon is its
+`UBehemothMarkerComponent.BehemothIcon`. The game's log says `[BehemothBars] ...`.
+`DISABLE_BEHEMOTH_BARS.flag` beside the game executable turns the bars off.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
