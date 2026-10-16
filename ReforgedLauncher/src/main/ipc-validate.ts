@@ -5,6 +5,7 @@ import {
   GAME_LANGUAGES,
   GRAPHICS_PRESETS,
   LANGUAGES,
+  MAX_MULTIPLIER,
   RUNTIME_PROFILES,
   type ExternalTarget,
   type HostSetupRequest,
@@ -12,6 +13,7 @@ import {
   type GraphicsPreset,
   type HostAction,
   type HostFolder,
+  type HostMultipliers,
   type Language,
   type RuntimeProfile,
   type Settings,
@@ -124,6 +126,19 @@ export function hostSetupRequest(v: unknown): HostSetupRequest | null {
   const host = typeof o.publicHost === "string" ? o.publicHost.trim() : "";
   if (!/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/.test(host)) return null;
   return { name, mode: "public", publicHost: host };
+}
+
+// The test multipliers: null turns them off, otherwise XP and rewards from 1 to 100 (two decimals at most).
+// Undefined: refused.
+export function hostMultipliers(v: unknown): HostMultipliers | null | undefined {
+  if (v === null) return null;
+  if (typeof v !== "object" || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x >= 1 && x <= MAX_MULTIPLIER ? Math.round(x * 100) / 100 : null);
+  const xp = n(o.xp);
+  const rewards = n(o.rewards);
+  if (xp === null || rewards === null) return undefined;
+  return xp === 1 && rewards === 1 ? null : { xp, rewards };
 }
 
 // Who an invite is for: optional, a short note.

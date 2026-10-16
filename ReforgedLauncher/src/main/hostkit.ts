@@ -23,7 +23,7 @@ import { createWriteStream, existsSync, promises as fsp } from "node:fs";
 import path from "node:path";
 import { hashFile } from "./verify";
 import { GAME_CHANGELIST, RUNTIME_FILE_NAMES } from "./constants";
-import type { GameDataState, HostKit } from "../shared/types";
+import { MAX_MULTIPLIER, type GameDataState, type HostKit, type HostMultipliers } from "../shared/types";
 
 export const BACKEND_GAME_DATA = [
   "progression_config.json",
@@ -238,22 +238,31 @@ export function msbuildArgs(project: string, toolset: string): string[] {
 
 // The server's host.json (written by npm run setup): what the Host page shows of it. It holds no
 // secrets (those are in secrets.env beside it).
+// The host kit writes them only for a private server, and leaves them out when both are 1 (off).
+function readMultipliers(v: unknown): HostMultipliers | null {
+  if (typeof v !== "object" || v === null) return null;
+  const { xp, rewards } = v as { xp?: unknown; rewards?: unknown };
+  const ok = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 1 && n <= MAX_MULTIPLIER;
+  if (!ok(xp) || !ok(rewards) || (xp === 1 && rewards === 1)) return null;
+  return { xp, rewards };
+}
+
 export async function readServerConfig(root: string): Promise<HostKit["serverConfig"]> {
-  const none: HostKit["serverConfig"] = { configured: false, name: null, mode: null, host: null };
+  const none: HostKit["serverConfig"] = { configured: false, name: null, mode: null, host: null, multipliers: null };
   try {
-    const c = JSON.parse(await fsp.readFile(path.join(root, ".workspace", "config", "host.json"), "utf8")) as { name?: unknown; mode?: unknown; host?: unknown };
+    const c = JSON.parse(await fsp.readFile(path.join(root, ".workspace", "config", "host.json"), "utf8")) as { name?: unknown; mode?: unknown; host?: unknown; multipliers?: unknown };
     const mode = c.mode === "private" || c.mode === "public" ? c.mode : null;
     if (!mode) return none;
-    return { configured: true, name: typeof c.name === "string" ? c.name.slice(0, 80) : null, mode, host: typeof c.host === "string" ? c.host.slice(0, 255) : null };
+    return { configured: true, name: typeof c.name === "string" ? c.name.slice(0, 80) : null, mode, host: typeof c.host === "string" ? c.host.slice(0, 255) : null, multipliers: mode === "private" ? readMultipliers(c.multipliers) : null };
   } catch {
     return none;
   }
 }
 
-export async function detectHostKit(root: string | null, opts: { env: NodeJS.ProcessEnv; platform?: NodeJS.Platform; toolchain?: Toolchain; dumpRoot?: string }): Promise<Omit<HostKit, "job" | "dumperDll" | "requirements">> {
+export async function detectHostKit(root: string | null, opts: { env: NodeJS.ProcessEnv; platform?: NodeJS.Platform; toolchain?: Toolchain; dumpRoot?: string }): Promise<Omit<HostKit, "job" | "dumperDll" | "requirements" | "update">> {
   const toolchain = opts.toolchain ?? (await findToolchain(opts.env, opts.platform));
   const dumps = (opts.platform ?? process.platform) === "win32" || opts.dumpRoot ? await findDumps(opts.dumpRoot) : [];
-  const base: Omit<HostKit, "job" | "dumperDll" | "requirements"> = {
+  const base: Omit<HostKit, "job" | "dumperDll" | "requirements" | "update"> = {
     workspace: root,
     workspaceOk: false,
     upstream: { present: false, patched: false },
@@ -263,7 +272,7 @@ export async function detectHostKit(root: string | null, opts: { env: NodeJS.Pro
     toolchain: { visualStudio: toolchain.visualStudio, msbuild: toolchain.msbuild !== null, cargo: toolchain.cargo !== null },
     gameData: { backend: "missing", director: "missing" },
     exports: { present: false, inGame: false },
-    serverConfig: { configured: false, name: null, mode: null, host: null },
+    serverConfig: { configured: false, name: null, mode: null, host: null, multipliers: null },
   };
   if (root === null) return base;
   const w = workspacePaths(root);

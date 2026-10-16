@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import net from "node:net";
 import { EventEmitter } from "node:events";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -84,7 +85,7 @@ interface Harness {
   relayPort: number;
 }
 
-async function harness(chooseFolder: Platform["chooseFolder"] = async () => null): Promise<Harness> {
+async function harness(chooseFolder: Platform["chooseFolder"] = async () => null, extra: Partial<Platform> = {}): Promise<Harness> {
   let snap: Snapshot | null = null;
   const spawns: Harness["spawns"] = [];
   let child: EventEmitter | null = null;
@@ -130,6 +131,7 @@ async function harness(chooseFolder: Platform["chooseFolder"] = async () => null
     findRunningClients: async () => [],
     runtimeFilesExist: () => true,
     spawn: fakeSpawn,
+    ...extra,
   };
   const c = new Controller(p);
   return { c, last: () => snap ?? c.snapshot(), spawns, child: () => child, configDir, relayPort };
@@ -324,4 +326,120 @@ test("a banned account is told why", async () => {
   } finally {
     await banned.stop();
   }
+});
+
+// A project folder whose host kit is a small script: it logs each command and answers update, setup and
+// multipliers the way ReforgedHost does (--json lines, host.json).
+function hostWorkspace(opts: { legacy?: boolean; dir?: string } = {}): string {
+  const ws = opts.dir ?? temp("rr-ctl-ws-");
+  const kit = path.join(ws, "ReforgedHost");
+  mkdirSync(path.join(kit, "dist"), { recursive: true });
+  mkdirSync(path.join(kit, "node_modules"), { recursive: true });
+  mkdirSync(path.join(ws, ".workspace", "config"), { recursive: true });
+  writeFileSync(path.join(kit, "package.json"), "{}");
+  if (!opts.legacy) {
+    mkdirSync(path.join(kit, "src"), { recursive: true });
+    writeFileSync(path.join(kit, "src", "selfupdate.ts"), "");
+  }
+  writeFileSync(path.join(ws, ".workspace", "config", "host.json"), JSON.stringify({ version: 1, mode: "private", name: "Test Hunts", host: "100.64.0.1" }));
+  writeFileSync(
+    path.join(kit, "dist", "cli.js"),
+    `
+const fs = require("fs"), path = require("path");
+const ws = path.join(__dirname, "..", "..");
+const a = process.argv.slice(2).join(" ");
+fs.appendFileSync(path.join(ws, "calls.log"), a + "\\n");
+const behind = fs.existsSync(path.join(ws, "behind")) ? 3 : 0;
+if (a === "update --check --json") {
+  if (fs.existsSync(path.join(ws, "dirty"))) { console.log(JSON.stringify({ error: "local_changes", detail: "README.md" })); console.error("Error: local changes"); process.exit(1); }
+  console.log(JSON.stringify({ branch: "main", upstream: "origin/main", head: "aaaaaaaaaaaa", remoteHead: "bbbbbbbbbbbb", behind, ahead: 0 }));
+} else if (a === "update --json --no-setup") {
+  console.log(JSON.stringify({ branch: "main", upstream: "origin/main", head: "bbbbbbbbbbbb", remoteHead: "bbbbbbbbbbbb", behind: 0, ahead: 0, updated: true, from: "aaaaaaaaaaaa", to: "bbbbbbbbbbbb", files: 4, runtimeChanged: true, hostKitDeps: false }));
+} else if (a === "setup") {
+  console.log("setup again");
+} else if (process.argv[2] === "multipliers") {
+  const file = path.join(ws, ".workspace", "config", "host.json");
+  const c = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (process.argv[3] === "--off") delete c.multipliers;
+  else c.multipliers = { xp: Number(process.argv[4]), rewards: Number(process.argv[6]) };
+  fs.writeFileSync(file, JSON.stringify(c));
+} else process.exit(9);
+`,
+  );
+  return ws;
+}
+
+test("the Host page updates the project from GitHub, and sets the test multipliers", async () => {
+  const ws = hostWorkspace();
+  const hx = await harness(async () => ws, { hostServer: { findNode: () => ({ node: process.execPath, npmCli: null }), probe: async () => false } });
+  await hx.c.init();
+  assert.deepEqual(await hx.c.hostChooseWorkspace(), { ok: true });
+  const calls = () => readFileSync(path.join(ws, "calls.log"), "utf8").trim().split("\n");
+
+  // Up to date: it only compares.
+  assert.deepEqual(await hx.c.hostUpdate(), { ok: true });
+  assert.deepEqual(calls(), ["update --check --json"]);
+  assert.deepEqual((await hx.c.hostKit()).update, { state: "up_to_date", head: "aaaaaaaaaaaa", files: 0, runtimeChanged: false });
+
+  // Behind GitHub: updated, then setup runs again with this server's settings.
+  writeFileSync(path.join(ws, "behind"), "");
+  assert.deepEqual(await hx.c.hostUpdate(), { ok: true });
+  assert.deepEqual(calls().slice(1), ["update --check --json", "update --json --no-setup", "setup"]);
+  const kit = await hx.c.hostKit();
+  assert.deepEqual(kit.update, { state: "updated", head: "bbbbbbbbbbbb", files: 4, runtimeChanged: true });
+  assert.equal(kit.job?.kind, "update");
+  assert.equal(kit.job?.state, "done");
+
+  // The host kit's own reason has its own text on the page.
+  writeFileSync(path.join(ws, "dirty"), "");
+  assert.deepEqual(await hx.c.hostUpdate(), { ok: false, error: { code: "host_failed", detail: "update_local_changes" } });
+
+  // Multipliers: on, read back from host.json, then off.
+  assert.deepEqual(await hx.c.hostSetMultipliers({ xp: 5, rewards: 2.5 }), { ok: true });
+  assert.ok(calls().includes("multipliers --xp 5 --rewards 2.5"));
+  assert.deepEqual((await hx.c.hostKit()).serverConfig.multipliers, { xp: 5, rewards: 2.5 });
+  assert.deepEqual(await hx.c.hostSetMultipliers(null), { ok: true });
+  assert.equal((await hx.c.hostKit()).serverConfig.multipliers, null);
+
+  // A public server refuses them before anything runs.
+  writeFileSync(path.join(ws, ".workspace", "config", "host.json"), JSON.stringify({ version: 1, mode: "public", name: "Open", host: "203.0.113.7" }));
+  assert.deepEqual(await hx.c.hostSetMultipliers({ xp: 2, rewards: 2 }), { ok: false, error: { code: "host_failed", detail: "multipliers_public" } });
+  await hx.c.shutdown();
+});
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" } }).trim();
+}
+
+test("a project from before npm run update is updated with git, once", async () => {
+  const remote = temp("rr-ctl-remote-");
+  git(remote, "init", "--quiet", "--bare", "--initial-branch=main");
+  const dev = temp("rr-ctl-dev-");
+  git(dev, "clone", "--quiet", remote, ".");
+  git(dev, "checkout", "--quiet", "-b", "main");
+  writeFileSync(path.join(dev, ".gitignore"), ".workspace/\nReforgedHost/\ncalls.log\n");
+  writeFileSync(path.join(dev, "README.md"), "one\n");
+  git(dev, "add", "-A");
+  git(dev, "commit", "--quiet", "-m", "one");
+  git(dev, "push", "--quiet", "origin", "main");
+  const ws = temp("rr-ctl-clone-");
+  git(ws, "clone", "--quiet", remote, ".");
+  hostWorkspace({ legacy: true, dir: ws });
+
+  const hx = await harness(async () => ws, { hostServer: { findNode: () => ({ node: process.execPath, npmCli: null }), probe: async () => false } });
+  await hx.c.init();
+  assert.deepEqual(await hx.c.hostChooseWorkspace(), { ok: true });
+  assert.deepEqual(await hx.c.hostUpdate(), { ok: true });
+  assert.equal((await hx.c.hostKit()).update?.state, "up_to_date");
+
+  mkdirSync(path.join(dev, "upstream", "patches"), { recursive: true });
+  writeFileSync(path.join(dev, "upstream", "patches", "0009-runtime-x.patch"), "x\n");
+  git(dev, "add", "-A");
+  git(dev, "commit", "--quiet", "-m", "two");
+  git(dev, "push", "--quiet", "origin", "main");
+  assert.deepEqual(await hx.c.hostUpdate(), { ok: true });
+  assert.deepEqual((await hx.c.hostKit()).update, { state: "updated", head: git(dev, "rev-parse", "HEAD").slice(0, 12), files: 1, runtimeChanged: true });
+  assert.equal(git(ws, "rev-parse", "HEAD"), git(dev, "rev-parse", "HEAD"));
+  assert.deepEqual(readFileSync(path.join(ws, "calls.log"), "utf8").trim().split("\n"), ["setup"], "setup ran again; the host kit was not asked to update");
+  await hx.c.shutdown();
 });

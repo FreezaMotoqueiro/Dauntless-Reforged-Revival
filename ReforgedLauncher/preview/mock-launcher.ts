@@ -125,7 +125,7 @@ const hostKit: HostKit = {
   toolchain: { visualStudio: "Visual Studio Community 2022 (17.14)", msbuild: true, cargo: true },
   gameData: { backend: "synthetic", director: "synthetic" },
   exports: { present: false, inGame: scene !== "host-empty" },
-  serverConfig: scene === "host-empty" ? { configured: false, name: null, mode: null, host: null } : { configured: true, name: "Friday Night Hunts", mode: "private", host: "100.101.102.103" },
+  serverConfig: scene === "host-empty" ? { configured: false, name: null, mode: null, host: null, multipliers: null } : { configured: true, name: "Friday Night Hunts", mode: "private", host: "100.101.102.103", multipliers: scene === "host-running" ? { xp: 5, rewards: 3 } : null },
   requirements: [
     { id: "dauntless", state: "ok", detail: "1.14.7 (647472)", problem: null },
     { id: "git", state: "ok", detail: "2.47.1.windows.1", problem: null },
@@ -137,6 +137,7 @@ const hostKit: HostKit = {
     { id: "dumper7", state: "ok", detail: "Dumper-7.dll", problem: null },
     { id: "vc_redist", state: "ok", detail: null, problem: null },
   ],
+  update: scene === "host-running" ? { state: "updated", head: "9377a20c41f6", files: 12, runtimeChanged: true } : null,
   job: scene === "host-empty" ? null : { kind: "build_loader", state: "done", message: "Finished `release` profile [optimized] target(s) in 41.2s", logFile: "C:\\Users\\host\\Dauntless-Reforged-Revival\\.workspace\\logs\\build_loader.log" },
 };
 
@@ -148,6 +149,7 @@ let hostServer: HostServerView = {
   invite: scene === "host-running" ? { link: "reforged-revival://join?v=1&m=private&h=100.101.102.103&p=61000&c=RR-7K2M-9QXA&n=Friday%20Night%20Hunts", for: "Alex" } : null,
 };
 const hostServerListeners: ((v: HostServerView) => void)[] = [];
+const hostKitListeners: ((k: HostKit) => void)[] = [];
 function setHostServer(patch: Partial<HostServerView>): void {
   hostServer = { ...hostServer, ...patch };
   for (const l of hostServerListeners) l(hostServer);
@@ -216,6 +218,16 @@ const mock: LauncherApi = {
     return { ok: true };
   },
   hostSetup: ok,
+  hostUpdate: async () => {
+    hostKit.update = { state: "up_to_date", head: "9377a20c41f6", files: 0, runtimeChanged: false };
+    for (const l of hostKitListeners) l(hostKit);
+    return { ok: true };
+  },
+  hostSetMultipliers: async (m) => {
+    hostKit.serverConfig = { ...hostKit.serverConfig, multipliers: m };
+    for (const l of hostKitListeners) l(hostKit);
+    return { ok: true };
+  },
   hostCreateInvite: async (forName) => {
     setHostServer({ invite: { link: "reforged-revival://join?v=1&m=private&h=100.101.102.103&p=61000&c=RR-4D8F-2WJN&n=Friday%20Night%20Hunts", for: forName } });
     return { ok: true };
@@ -233,7 +245,9 @@ const mock: LauncherApi = {
   onProgress: (fn) => {
     if (scene === "installing") setTimeout(() => fn(progress), 50);
   },
-  onHostKit: () => undefined,
+  onHostKit: (fn) => {
+    hostKitListeners.push(fn);
+  },
   onHostServer: (fn) => {
     hostServerListeners.push(fn);
   },

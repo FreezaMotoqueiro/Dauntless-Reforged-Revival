@@ -3360,3 +3360,36 @@ img {
   display: grid;
   gap: 10px;
 }
+
+/* The test multipliers: two short number fields side by side, each with a "×" in front. */
+.mult-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.host-panel .mult-field {
+  margin-top: 4px;
+  width: 140px;
+}
+
+.mult-input {
+  position: relative;
+  display: block;
+}
+
+.mult-x {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--rr-steel);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.input.input-mult {
+  padding-left: 30px;
+  font-size: 16px;
+  font-weight: 600;
+}

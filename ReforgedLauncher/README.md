@@ -28,10 +28,11 @@ Players: see [docs/players.md](../docs/players.md). Hosts: see [docs/hosting.md]
    `REFORGED_BACKEND_URL=http://127.0.0.1:61100` for the runtime.
 
 The **Host** page (Settings > Advanced > Host tools) does a host's work without a terminal, in four
-tabs: **Server** (prepare it with `npm run setup`, start and stop it, create invites, its output),
-**Game data** (generate it from CatalogExporter's export, save and import packs), **Build** (the SDK
-with Dumper-7, the runtime, CatalogExporter, publishing the runtime) and **Requirements** (what this
-PC needs, detected, with downloads and install steps). It runs ReforgedHost's commands with the
+tabs, in the order a new host goes through them: **Requirements** (what this PC needs, detected, with
+downloads and install steps), **Build** (the SDK with Dumper-7, the runtime, CatalogExporter,
+publishing the runtime), **Game data** (generate it from CatalogExporter's export, save and import
+packs) and **Server** (start and stop it, create invites, the test multipliers, update the project
+from GitHub with `npm run update`, prepare it with `npm run setup`, its output). It runs ReforgedHost's commands with the
 host's own Node.js (`src/main/hostserver.ts`); the server stops when the launcher closes. See
 [docs/hosting.md](../docs/hosting.md) and [docs/sdk-and-game-data.md](../docs/sdk-and-game-data.md).
 

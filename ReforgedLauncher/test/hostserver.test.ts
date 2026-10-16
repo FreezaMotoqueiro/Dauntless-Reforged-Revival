@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { cleanLine, failureLine, findNode, HostServer, hostKitNeedsBuild, SERVER_READY_LINE } from "../src/main/hostserver";
 import { findGit, findMongod, nodeVersionOk } from "../src/main/requirements";
-import { hostSetupRequest, inviteFor } from "../src/main/ipc-validate";
+import { hostMultipliers, hostSetupRequest, inviteFor } from "../src/main/ipc-validate";
 import type { HostServerView } from "../src/shared/types";
 
 const dirs: string[] = [];
@@ -152,4 +152,11 @@ test("lines, errors and the page's form are cleaned and checked", () => {
   assert.equal(inviteFor(""), null);
   assert.equal(inviteFor("Alex"), "Alex");
   assert.equal(inviteFor("a".repeat(41)), undefined);
+});
+
+test("the test multipliers the page may ask for", () => {
+  assert.equal(hostMultipliers(null), null);
+  assert.deepEqual(hostMultipliers({ xp: 5, rewards: 2.505 }), { xp: 5, rewards: 2.51 });
+  assert.equal(hostMultipliers({ xp: 1, rewards: 1 }), null, "1 and 1 is off");
+  for (const bad of [{ xp: 0, rewards: 2 }, { xp: 101, rewards: 2 }, { xp: "5", rewards: 2 }, { xp: Number.NaN, rewards: 2 }, { xp: 5 }, [5, 5], "5"]) assert.equal(hostMultipliers(bad), undefined, JSON.stringify(bad));
 });

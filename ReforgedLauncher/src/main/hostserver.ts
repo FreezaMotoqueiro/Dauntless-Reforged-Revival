@@ -271,19 +271,21 @@ export class HostServer {
     return { child, done };
   }
 
-  // npm install (once) and npm run build in ReforgedHost, when its build is missing or older than its sources.
-  async prepare(workspace: string): Promise<NodeTools> {
+  // npm install (once, or again when an update changed its dependencies) and npm run build in ReforgedHost,
+  // when its build is missing or older than its sources.
+  async prepare(workspace: string, opts: { install?: boolean } = {}): Promise<NodeTools> {
     const tools = this.tools();
     const dir = path.join(workspace, "ReforgedHost");
     if (!existsSync(path.join(dir, "package.json"))) throw new HostKitError("workspace");
     if (this.building) await this.building;
-    if (!hostKitNeedsBuild(dir) && existsSync(path.join(dir, "node_modules"))) return tools;
+    const install = opts.install === true || !existsSync(path.join(dir, "node_modules"));
+    if (!install && !hostKitNeedsBuild(dir)) return tools;
     if (!tools.npmCli) throw new HostKitError("npm_missing");
     const logFile = path.join(workspace, ".workspace", "logs", "launcher-hostkit-build.log");
     const work = (async () => {
       const env = this.childEnv(tools);
-      if (!existsSync(path.join(dir, "node_modules"))) {
-        this.note("Installing the host kit (npm install, once)...");
+      if (install) {
+        this.note("Installing the host kit (npm install)...");
         const code = await this.exec(tools.node, [tools.npmCli!, "install", "--no-audit", "--no-fund"], dir, env, logFile).done;
         if (code !== 0) throw new HostKitError("hostkit_build", failureLine(this.lines));
       }
@@ -308,6 +310,17 @@ export class HostServer {
     });
     const code = await done;
     return { code, lines: own, failure: code === 0 ? null : failureLine(own) };
+  }
+
+  // Another program (git) run the same way, its output on the page and in a log file.
+  async program(file: string, args: string[], cwd: string, logName: string): Promise<{ code: number; lines: string[] }> {
+    const own: string[] = [];
+    const env: NodeJS.ProcessEnv = { ...this.o.env, GIT_TERMINAL_PROMPT: "0" };
+    const { done } = this.exec(file, args, cwd, env, path.join(cwd, ".workspace", "logs", `launcher-${logName}.log`), (line) => {
+      own.push(cleanLine(line));
+      return true;
+    });
+    return { code: await done, lines: own };
   }
 
   // Is a server running on this PC that the launcher did not start?

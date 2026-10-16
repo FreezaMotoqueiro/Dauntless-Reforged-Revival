@@ -9,6 +9,7 @@
 //   npm run publish-runtime
 //   npm run preset [-- --create [--generate] [--name "<name>"] | --apply [--force]]
 //   npm run multipliers [-- --xp 5 --rewards 5 | --off]   (private test servers only)
+//   npm run update [-- --check] [--json] [--no-setup]   (fast-forwards this checkout to GitHub, then runs setup again)
 
 import fs from "node:fs";
 import path from "node:path";
@@ -37,6 +38,7 @@ import { findRepoRoot, GAME_EXE_RELATIVE, paths, PORTS, type Paths } from "./pat
 import { ensureServerFlags, installServerRuntime, publishRuntime } from "./publish";
 import { capture, run } from "./run";
 import { Supervisor, type ServiceSpec } from "./services";
+import { applyUpdate, checkForUpdate, UpdateError, type UpdateCheck } from "./selfupdate";
 import { ensureUpstream, gitAvailable, readPin } from "./upstream";
 
 type Args = { _: string[]; [k: string]: string | boolean | string[] };
@@ -441,6 +443,61 @@ function multipliers(p: Paths, args: Args): void {
     if (asked) say("Restart the server (Ctrl+C, then npm run start) for the backend to use them. Its log says [TestMultiplier] ON or off.");
 }
 
+// ------------------------------------------------------------------ updating the project
+
+const UPDATE_PROBLEMS: Record<UpdateError["code"], string> = {
+    not_git: "this folder is not a git clone of the project: clone it again with git (see docs/hosting.md) and move .workspace into the new clone",
+    no_upstream: "this checkout does not follow a branch on GitHub (git checkout main, then try again)",
+    fetch_failed: "could not reach GitHub",
+    diverged: "this checkout has commits of its own that GitHub does not: update it by hand (git pull)",
+    local_changes: "files of the project were changed on this PC and the update would overwrite them (git status lists them; git checkout -- <file> undoes a change)",
+    merge_failed: "git could not apply the update",
+};
+
+function describeCheck(c: UpdateCheck): string {
+    return c.behind === 0 ? `Up to date: ${c.branch} at ${c.head}.` : `${c.behind} update${c.behind === 1 ? "" : "s"} on GitHub for ${c.branch} (${c.head} -> ${c.remoteHead}).`;
+}
+
+// Compares this checkout with GitHub and fast-forwards it; then setup runs again (it re-applies the
+// patches and installs what changed). --check only compares. --json ends with one JSON line (the launcher).
+async function update(p: Paths, args: Args): Promise<void> {
+    const json = args.json === true;
+    const logFile = path.join(p.logs, "update.log");
+    try {
+        if (!gitAvailable()) throw new Error("git is needed to update: install Git for Windows from https://git-scm.com");
+        if (args.check === true) {
+            const c = await checkForUpdate(p.repo, { logFile });
+            say(describeCheck(c));
+            if (json) say(JSON.stringify(c));
+            return;
+        }
+        say("Comparing this project with GitHub...");
+        const r = await applyUpdate(p.repo, { logFile });
+        if (!r.updated) say(describeCheck(r));
+        else {
+            say(`Updated ${r.branch}: ${r.from} -> ${r.to} (${r.files} file${r.files === 1 ? "" : "s"} changed).`);
+            if (r.runtimeChanged) say("The game runtime changed: build MysticParadox.dll again and publish it (npm run publish-runtime) for the players.");
+        }
+        if (json) say(JSON.stringify(r));
+        if (!r.updated || args["no-setup"] === true) return;
+        const kit = path.join(p.repo, "ReforgedHost");
+        if (r.hostKitDeps) {
+            say("\nThe host kit's dependencies changed: npm install");
+            if ((await run("npm", ["install", "--no-audit", "--no-fund"], { cwd: kit, logFile })).code !== 0) fail(`npm install failed (see ${logFile})`);
+        }
+        if (!readHostConfig(p.hostJson)) return say("Now run npm run setup.");
+        say("\nRunning setup again with this server's settings (npm run setup)...");
+        const s = await run("npm", ["run", "setup"], { cwd: kit });
+        if (s.code !== 0) fail(`setup failed: ${s.lastLine ?? `exit ${s.code}`}`);
+    } catch (e) {
+        if (e instanceof UpdateError) {
+            if (json) say(JSON.stringify({ error: e.code, detail: e.detail }));
+            fail(`${UPDATE_PROBLEMS[e.code]}${e.detail ? ` (${e.detail})` : ""}`);
+        }
+        fail(e instanceof Error ? e.message : String(e));
+    }
+}
+
 // ------------------------------------------------------------------ invite, gamedata, runtime
 
 async function invite(p: Paths, args: Args): Promise<void> {
@@ -619,6 +676,8 @@ async function main(): Promise<void> {
             return preset(p, args);
         case "multipliers":
             return multipliers(p, args);
+        case "update":
+            return update(p, args);
         default:
             say("Dauntless Reforged Revival host kit. Commands (from the ReforgedHost folder):");
             say("  npm run setup -- --mode private|public [--host <address>] --name \"<server name>\" --game \"<Dauntless 1.14.7 folder>\"");
@@ -631,6 +690,7 @@ async function main(): Promise<void> {
             say("  npm run publish-runtime");
             say("  npm run preset [-- --create [--generate] [--name \"<name>\"] | --apply [--force]]");
             say("  npm run multipliers [-- --xp 1-100 --rewards 1-100 | --off]   (private test servers; also setup's --xp-multiplier/--reward-multiplier)");
+            say("  npm run update [-- --check]   (compares this project with GitHub, updates it and runs setup again)");
             say("See README.md and ../docs/hosting.md.");
     }
 }

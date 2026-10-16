@@ -87,19 +87,24 @@ page (Settings > Launcher > Advanced > Host tools), choosing `D:\Reforged` as th
 ## The launcher's Host page, without a terminal
 
 Everything below can also be done from the launcher's Host page (Settings > Launcher > Advanced >
-Host tools), without opening a terminal:
+Host tools), without opening a terminal. Its tabs are in the order a new host goes through them:
+Requirements, Build, Game data, Server.
 
 - **Requirements** tab: what this PC needs (Git, Node.js, MongoDB, Tailscale, Visual Studio, Rust,
   Dumper-7, the Visual C++ runtime), each one detected, with its download and the install steps that
   avoid the usual mistakes (MongoDB's Windows service, Visual Studio without its C++ workload, an old
   Node.js). Close and reopen the launcher after installing something, so it finds it.
-- **Server** tab: **Prepare server** runs `npm run setup` with the server's name and kind and the
-  launcher's game folder (**Update server** runs it again after updating the project);
-  **Start server** and **Stop server** run `npm run start` and stop it the way Ctrl+C does;
-  **Create invite** runs `npm run invite`. The server's output is under **Show details**, and its logs
-  are in `.workspace\logs\` (`launcher-*.log`). The server stops when the launcher closes.
 - **Game data** tab: **Generate game data** copies CatalogExporter's export from beside the game and
   runs `npm run gamedata`; **Save pack** runs `npm run gamedata -- --export`.
+- **Server** tab: **Start server** and **Stop server** run `npm run start` and stop it the way Ctrl+C
+  does; **Create invite** runs `npm run invite`. **Test multipliers** (private servers only) takes the
+  XP and reward multipliers, 1 to 100, and runs `npm run multipliers`; a running server restarts by
+  itself to use them. **Update setup** runs `npm run update`: it compares the project folder with
+  GitHub and, when there is an update, downloads it, prepares the server again and restarts it if it
+  was running (it says so when the game runtime changed and has to be built and published again).
+  **Prepare server** runs `npm run setup` with the server's name and kind and the launcher's game
+  folder (**Apply changes** runs it again). The server's output is under **Show details**, and its
+  logs are in `.workspace\logs\` (`launcher-*.log`). The server stops when the launcher closes.
 
 The launcher runs the host kit with the Node.js installed on this PC, and builds it first when its
 sources changed. A server started in a terminal shows as running there: stop it with Ctrl+C before
@@ -148,9 +153,12 @@ button for it.
   images in `.workspace\branding\` show in the launcher; see [ReforgedContent/README.md](../ReforgedContent/README.md).
 - **Backups**: back up MongoDB (`mongodump`), and keep `.workspace\config\` (secrets) and
   `.workspace\tls\` (public: the certificate) safe and private.
-- **Updating**: `git pull` in `D:\Reforged`, then `npm run setup` (keeps your SDK, game data and
-  secrets), rebuild the runtime if the patches or the upstream pin changed, and `npm run publish-runtime`.
-  Players are asked to accept a new runtime.
+- **Updating**: `npm run update` (or **Update setup** on the launcher's Host page) compares
+  `D:\Reforged` with GitHub, fast-forwards it when GitHub has more and runs `npm run setup` again (it keeps
+  your SDK, game data and secrets; `-- --check` only compares). It refuses to overwrite files you changed
+  in the project, and says so. When it says the game runtime changed, build the runtime again and
+  `npm run publish-runtime`; players are asked to accept a new runtime. `git pull` then `npm run setup`
+  does the same by hand.
 - **A new certificate** (public) changes the fingerprint: send new invites. Players keep their
   accounts; the launcher asks them to confirm the new certificate first.
 

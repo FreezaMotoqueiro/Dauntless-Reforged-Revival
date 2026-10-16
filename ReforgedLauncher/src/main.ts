@@ -16,7 +16,7 @@ import { findRunningClients } from "./main/launch";
 import { injectDll } from "./main/injector";
 import { findTailscale } from "./main/system";
 import { describeError, log, logToFile } from "./main/log";
-import { boundedString, externalTarget, hostAction, hostFolder, hostSetupRequest, inviteFor, isTrustedPageUrl, relayPortOverride, settingsPatch } from "./main/ipc-validate";
+import { boundedString, externalTarget, hostAction, hostFolder, hostMultipliers, hostSetupRequest, inviteFor, isTrustedPageUrl, relayPortOverride, settingsPatch } from "./main/ipc-validate";
 import { INVITE_SCHEME, parseInvite } from "./shared/invite";
 import { IPC, type HostKit, type HostServerView, type Snapshot, type TaskProgress } from "./shared/types";
 import { systemLanguage, translate } from "./shared/i18n";
@@ -316,6 +316,11 @@ function registerIpc(c: Controller): void {
   handle(IPC.hostSetup, (_e, req) => {
     const r = hostSetupRequest(req);
     return r === null ? { ok: false, error: { code: "host_failed", detail: "setup_form" } } : c.hostSetup(r);
+  });
+  handle(IPC.hostUpdate, () => c.hostUpdate());
+  handle(IPC.hostSetMultipliers, (_e, m) => {
+    const v = hostMultipliers(m);
+    return v === undefined ? { ok: false, error: { code: "host_failed", detail: "multipliers_form" } } : c.hostSetMultipliers(v);
   });
   handle(IPC.hostCreateInvite, (_e, forName) => {
     const f = inviteFor(forName);
