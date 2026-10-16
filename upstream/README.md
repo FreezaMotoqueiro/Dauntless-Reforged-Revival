@@ -127,6 +127,20 @@ until the game's 60-second player-data timeout fired and its retry completed the
 query is now issued at the first check, at boot, as a hub already does. The client keeps the original
 timing.
 
+### 0010: claiming a completed bounty works
+
+`ParadoxBackend`, `src/bountyState.ts` (with `bountyState.test.ts`), `src/controllers/bounty.ts` and
+`src/routes/system.ts`. Claiming a completed bounty on the board (U) makes the game server ask the backend to
+delete it (`POST /bounty/delete/<user>`), and only a 200 lets it grant the reward and take the bounty off the
+board. Upstream has no such route, so every claim got a 404, the game server logged
+`UBountyComponent::OnClaimBountyComplete() - invalid http response` and the bounty stayed on the board, complete
+and unclaimable. The new route (POST, and DELETE) removes the named bounties from the stored state, reading
+`bounty_ids` (the field name in the 1.14.7 executable; no capture of the live body exists), `bounties` and
+`delete_claimed_bounties`, and answers with the state like a save does. Season challenges are never deleted, so a
+claimed challenge still cannot be re-seeded and pay its Cache Coins twice. Each call logs a
+`[DraftMon] BOUNTY-DELETE` line with what was deleted and the raw body; a body that names nothing gets a 400.
+The number skips 0009, which another pending change uses.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
