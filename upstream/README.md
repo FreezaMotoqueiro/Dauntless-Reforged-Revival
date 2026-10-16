@@ -96,6 +96,24 @@ entry now clears that stale `Async` bit on the pending-kill objects inside lefto
 purge frees them and the map loads fresh. The game's log says `[ZombieWorld] LoadMap: ...` when it does.
 `KEEP_STUCK_ASYNC_FLAGS.flag` beside the game executable turns it into a report only.
 
+### 0007: XP and reward multipliers for private test servers
+
+`ParadoxBackend`, `src/testMultipliers.ts` (with `testMultipliers.test.ts`), `src/routes/progression.ts`,
+`src/routes/inventory.ts` and a start-up log line in `src/server.ts`. A private server can multiply what its game
+servers grant, so a tester reaches late-game content in a few hunts. `npm run multipliers -- --xp 5 --rewards 5`
+(or setup's `--xp-multiplier` and `--reward-multiplier`) writes `REFORGED_XP_MULTIPLIER` and
+`REFORGED_REWARD_MULTIPLIER` (1 to 100) into `backend.env`; the host kit refuses them in public mode, and the
+backend uses them only when `REFORGED_SERVER_MODE=private` and `REFORGED_SERVER_HOST` is a Tailscale address
+(100.64.0.0/10 or `*.ts.net`). Its log says `[TestMultiplier] ON: XP x5, rewards x5` or `[TestMultiplier] off (why)`.
+
+- XP: every game-server grant on `POST /progression/<user>/<track>/<amount>` (Slayer level, weapons, Hunt Pass),
+  capped at the route's maximum of 100000 per grant.
+- Rewards: in a dedicated game server's `POST /inventory` whose `source` is `PlayerLoot`, `MISC` (part breaks),
+  `patrol_chest`, `quest` or `BUNDLE_GATHER_*`, the stacked items added that are `CURRENCY_NOTES`,
+  `CURRENCY_PJM_*`, `BREAK_*` or `GATHER_*`. Unlock tokens, cosmetics, equipment, prestige-gated rewards,
+  challenge-funded season coins and anything a craft or a purchase removes keep their quantities. The game's own
+  reward screen still shows the original numbers; the inventory and the levels hold the multiplied ones.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store

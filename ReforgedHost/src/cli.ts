@@ -8,6 +8,7 @@
 //   npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]
 //   npm run publish-runtime
 //   npm run preset [-- --create [--generate] [--name "<name>"] | --apply [--force]]
+//   npm run multipliers [-- --xp 5 --rewards 5 | --off]   (private test servers only)
 
 import fs from "node:fs";
 import path from "node:path";
@@ -22,6 +23,8 @@ import {
     isPublicIPv4,
     isTailscaleIPv4,
     loadOrCreateSecrets,
+    MAX_MULTIPLIER,
+    multipliersOn,
     readEnvFile,
     readHostConfig,
     writeEnvFiles,
@@ -81,6 +84,24 @@ function isWindowsAdmin(): boolean {
 
 // ------------------------------------------------------------------ setup
 
+// --xp-multiplier / --reward-multiplier on setup (or --xp / --rewards on `multipliers`): a number from 1 to 100.
+function multiplierArg(args: Args, names: string[], fallback: number): number {
+    const raw = names.map((n) => str(args, n)).find((v) => v !== undefined);
+    if (raw === undefined) return fallback;
+    const value = Number(raw.replace(/^x/i, ""));
+    if (!Number.isFinite(value) || value < 1 || value > MAX_MULTIPLIER) throw new Error(`--${names[0]} must be a number from 1 to ${MAX_MULTIPLIER} (got ${raw})`);
+    return value;
+}
+
+export function multipliersFromArgs(args: Args, mode: HostConfig["mode"], existing: HostConfig["multipliers"], names = { xp: ["xp-multiplier"], rewards: ["reward-multiplier"] }): HostConfig["multipliers"] {
+    if (args.off === true || args["no-multipliers"] === true) return undefined;
+    const xp = multiplierArg(args, names.xp, existing?.xp ?? 1);
+    const rewards = multiplierArg(args, names.rewards, existing?.rewards ?? 1);
+    if (xp === 1 && rewards === 1) return undefined;
+    if (mode !== "private") throw new Error("XP and reward multipliers are for private (Tailscale) test servers only");
+    return { xp, rewards };
+}
+
 export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null }): HostConfig {
     const mode = (str(args, "mode") ?? existing?.mode) as HostConfig["mode"] | undefined;
     if (mode !== "private" && mode !== "public") throw new Error("say which kind of server: --mode private (friends over Tailscale) or --mode public (a server on the internet)");
@@ -119,6 +140,7 @@ export function hostConfigFromArgs(args: Args, existing: HostConfig | null, dete
         shareUrl: mode === "private" ? str(args, "share") ?? existing?.shareUrl ?? null : null,
         mongo: { uri: mongoUri, manage, mongod: str(args, "mongod") ?? existing?.mongo.mongod ?? (manage ? detect.mongod() : null) },
         maxHuntServers: Number(str(args, "max-hunts") ?? existing?.maxHuntServers ?? 3),
+        multipliers: multipliersFromArgs(args, mode, existing?.mode === mode ? existing.multipliers : undefined),
     };
 }
 
@@ -210,6 +232,7 @@ async function setup(p: Paths, args: Args): Promise<void> {
         fail(e instanceof Error ? e.message : String(e));
     }
     say(`\n${config.mode === "public" ? "Public" : "Private"} server "${config.name}" at ${config.host} (game servers on ${config.gameAddress})`);
+    if (multipliersOn(config)) say(`Test multipliers ON: XP x${config.multipliers!.xp}, rewards x${config.multipliers!.rewards} (npm run multipliers -- --off turns them off)`);
 
     say("\n1. Mystic Paradox at the pinned commit, with the Reforged patches");
     const pin = readPin(p.upstreamPin);
@@ -390,6 +413,34 @@ function readEnvForProcess(p: Paths, name: string): Record<string, string> {
     return readEnvFile(path.join(p.config, `${name}.env`));
 }
 
+// ------------------------------------------------------------------ test multipliers
+
+// Changes only the multipliers in host.json and rewrites the env files; the backend reads them when it starts.
+function multipliers(p: Paths, args: Args): void {
+    let config: HostConfig | null;
+    try {
+        config = readHostConfig(p.hostJson);
+    } catch (e) {
+        fail(e instanceof Error ? e.message : String(e));
+    }
+    if (!config) fail("not set up yet: run npm run setup first");
+    const asked = args.off === true || ["xp", "rewards", "xp-multiplier", "reward-multiplier"].some((n) => str(args, n) !== undefined);
+    if (asked) {
+        try {
+            config = { ...config, multipliers: multipliersFromArgs(args, config.mode, config.multipliers, { xp: ["xp", "xp-multiplier"], rewards: ["rewards", "reward-multiplier"] }) };
+            writeHostConfig(p.hostJson, config);
+        } catch (e) {
+            fail(e instanceof Error ? e.message : String(e));
+        }
+        const { secrets } = loadOrCreateSecrets(p.config);
+        const sourceCommit = capture("git", ["rev-parse", "--short=12", "HEAD"], p.repo) ?? "";
+        writeEnvFiles(p, buildEnvFiles(config, secrets, p, { sourceCommit }));
+    }
+    if (multipliersOn(config)) say(`Test multipliers ON: XP x${config.multipliers!.xp}, rewards x${config.multipliers!.rewards}.`);
+    else say(`Test multipliers off.${config.mode === "public" ? " (They are for private Tailscale servers only.)" : ""}`);
+    if (asked) say("Restart the server (Ctrl+C, then npm run start) for the backend to use them. Its log says [TestMultiplier] ON or off.");
+}
+
 // ------------------------------------------------------------------ invite, gamedata, runtime
 
 async function invite(p: Paths, args: Args): Promise<void> {
@@ -566,6 +617,8 @@ async function main(): Promise<void> {
             return publish(p);
         case "preset":
             return preset(p, args);
+        case "multipliers":
+            return multipliers(p, args);
         default:
             say("Dauntless Reforged Revival host kit. Commands (from the ReforgedHost folder):");
             say("  npm run setup -- --mode private|public [--host <address>] --name \"<server name>\" --game \"<Dauntless 1.14.7 folder>\"");
@@ -577,6 +630,7 @@ async function main(): Promise<void> {
             say("  npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]");
             say("  npm run publish-runtime");
             say("  npm run preset [-- --create [--generate] [--name \"<name>\"] | --apply [--force]]");
+            say("  npm run multipliers [-- --xp 1-100 --rewards 1-100 | --off]   (private test servers; also setup's --xp-multiplier/--reward-multiplier)");
             say("See README.md and ../docs/hosting.md.");
     }
 }

@@ -133,6 +133,11 @@ button for it.
 
 ## Running it
 
+- **Test multipliers** (private servers only): `npm run multipliers -- --xp 5 --rewards 5`, then restart the
+  server, multiplies the XP and the hunt loot (Crowns, materials, part breaks, gathering, patrol chests, quest
+  Crowns) so you can reach late-game content quickly while testing. `npm run multipliers -- --off` turns them off,
+  and `npm run multipliers` alone says what is set. A public server refuses them. Details: the 0007 patch in
+  [upstream/README.md](../upstream/README.md).
 - **Bans**: from this PC only, `POST http://127.0.0.1:61000/reforged/api/SetAccountStatus` with the
   header `x-reforged-admin-key` (from `.workspace\config\secrets.env`) and
   `{"Username": "...", "Status": "banned", "Reason": "..."}` (`active` lifts it). The player sees

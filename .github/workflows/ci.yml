@@ -74,7 +74,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
-          node --import tsx --test src/reforgedApiRules.test.ts
+          node --import tsx --test src/reforgedApiRules.test.ts src/testMultipliers.test.ts
       - name: Director (build and tests)
         working-directory: .workspace/Mystic-Paradox/ParadoxDirector
         run: |

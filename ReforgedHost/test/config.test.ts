@@ -142,6 +142,23 @@ describe("the service env files", () => {
         assert.equal(get(f.backend, "REALTIME_XMPP_ALLOWED_HOSTS"), "hunts.example.net");
     });
 
+    it("test multipliers: only a private server's backend gets them, always with its mode and host", () => {
+        const on = buildEnvFiles({ ...PRIVATE, multipliers: { xp: 5, rewards: 3 } }, s, p, { platform: "win32" });
+        assert.equal(get(on.backend, "REFORGED_SERVER_MODE"), "private");
+        assert.equal(get(on.backend, "REFORGED_SERVER_HOST"), "100.101.102.103");
+        assert.equal(get(on.backend, "REFORGED_XP_MULTIPLIER"), "5");
+        assert.equal(get(on.backend, "REFORGED_REWARD_MULTIPLIER"), "3");
+        const off = buildEnvFiles(PRIVATE, s, p, { platform: "win32" });
+        assert.equal(get(off.backend, "REFORGED_XP_MULTIPLIER"), undefined);
+        const pub = buildEnvFiles(PUBLIC, s, p, { platform: "win32" });
+        assert.equal(get(pub.backend, "REFORGED_SERVER_MODE"), "public");
+        assert.equal(get(pub.backend, "REFORGED_XP_MULTIPLIER"), undefined);
+        assert.throws(() => validateHostConfig({ ...PUBLIC, multipliers: { xp: 5, rewards: 1 } }), /private/);
+        assert.throws(() => validateHostConfig({ ...PRIVATE, multipliers: { xp: 101, rewards: 1 } }), /1 to 100/);
+        assert.throws(() => validateHostConfig({ ...PRIVATE, multipliers: { xp: 0.5, rewards: 1 } }), /1 to 100/);
+        assert.equal(validateHostConfig({ ...PUBLIC, multipliers: { xp: 1, rewards: 1 } }).mode, "public");
+    });
+
     it("are written owner-only, and the allowlist file goes away in private mode", () => {
         const root = tempDir("envfiles");
         const lp = paths(root);
