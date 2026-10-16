@@ -173,6 +173,29 @@ with `EXCEPTION_ACCESS_VIOLATION reading address 0x248` at `Dauntless-Win64-Ship
 `mysticparadox_dll_port0.log`). The override now waits 20 seconds after `ClientRestart`, so a slow load finishes
 on its own and only a load that is really stuck is forced.
 
+### 0012: a hunt no longer spawns the player before their data has loaded
+
+`ParadoxRuntime/dllmain.cpp`, both sides. 0011 did not stop the crash: in the next report the client's
+readiness stayed false for the whole 20 seconds and the crash followed the forced `true` again. The load was not
+slow, it was missing something:
+
+- The client: the player controller's own readiness (`+0x1CB1360`) waits for the character's weapon
+  (`AArchonCharacter` `+0x5F0`) and armour slots. The HUD it releases reads that weapon without a null check
+  (`UHUDLegendaryAbilityWidget::NativeConstruct` `+0x1F7AA00` → `HandleWeaponEquipped` `+0x1F6D4F0`, which
+  reads `weapon+0x248` at `+0x1F6D6BE`), so forcing readiness without a weapon always crashed. The override now
+  also requires the weapon, and otherwise leaves the loading screen up.
+- The server: the runtime answers `GameModeBase.PlayerCanRestart` with `true` for every controller, so any
+  restart request spawns the pawn at once. In the three crashed hunts (16 Oct, all Snow Jen) the player was
+  restarted about 1.5 seconds after joining, right after another progression component finished loading
+  (`[ProgDiag] CompleteLoadInternal RUNS`), long before the player's own data had loaded, so the character
+  reached the client without its weapon. In every other hunt the restart comes from `OnPlayerDataLoadComplete`
+  (which calls `ServerRestartPlayer`), including the ones whose load needs the 60-second retry. In a hunt the
+  runtime now answers `false` for a connected player until `OnPlayerDataLoadComplete` has run for that
+  controller (`[RestartDataGate] holding restart ...` in the server log), and after 90 seconds it falls back to
+  the old answer. The city and the Training Grounds keep the old behaviour; `DISABLE_RESTART_DATA_GATE.flag`
+  turns the gate off. The same early restart happened before 0008, 20 to 30 seconds after joining; with the
+  progression configuration available at boot (0008) it comes about 1.5 seconds after joining. 0008 stays.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
