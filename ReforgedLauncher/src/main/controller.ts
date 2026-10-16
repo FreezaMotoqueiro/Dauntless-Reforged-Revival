@@ -31,8 +31,10 @@ import type {
   HostFolder,
   HostJob,
   HostKit,
+  HostMultipliers,
   HostServerView,
   HostSetupRequest,
+  HostUpdateView,
   InviteCheck,
   Requirement,
   Language,
@@ -86,13 +88,14 @@ import {
   msbuildArgs,
   platformToolset,
   publishRuntime,
+  readServerConfig,
   runLogged,
   useSyntheticData,
   workspacePaths,
   type Toolchain,
 } from "./hostkit";
 import { HostKitError, HostServer, type HostServerOptions } from "./hostserver";
-import { detectRequirements } from "./requirements";
+import { detectRequirements, findGit } from "./requirements";
 import type { InjectEvent, InjectOptions } from "./injector";
 
 export type FolderPurpose = "game" | "runtime" | "workspace";
@@ -186,6 +189,7 @@ export class Controller {
   private relay: Relay | null = null;
   private phase: Phase = "loading";
   private hostJob: HostJob | null = null;
+  private hostUpdateResult: HostUpdateView | null = null;
   // While a Dumper-7 session runs: the runtime loader set aside so the game starts without it.
   private dumpRestore: { from: string; to: string } | null = null;
   // A game started for Dumper-7, with or without a loader to put back. Its exit code is not a
@@ -1363,7 +1367,7 @@ export class Controller {
     }
     const win64 = this.win64Dir();
     const exports = { ...kit.exports, inGame: win64 !== null && existsSync(path.join(win64, "Items_Analysis")) };
-    return { ...kit, exports, requirements: list, dumperDll: this.s.dumperDll, job: this.hostJob };
+    return { ...kit, exports, requirements: list, dumperDll: this.s.dumperDll, job: this.hostJob, update: this.hostUpdateResult };
   }
 
   // ------------------------------------------------------------------ the Host page's server
@@ -1440,6 +1444,137 @@ export class Controller {
       log.info(`host: invite created${forName ? " (with a note)" : ""}`);
       return OK;
     } catch (e) {
+      return this.hostKitFailure(e);
+    }
+  }
+
+  // A server this launcher runs is stopped for a change and started again after it; one started in a
+  // terminal ("external") cannot be stopped from here, so the change waits for it to be stopped.
+  private async whileStopped<T>(ws: string, work: () => Promise<T>): Promise<T> {
+    const wasRunning = this.server.running;
+    if (wasRunning) await this.server.stop();
+    try {
+      return await work();
+    } finally {
+      if (wasRunning) await this.server.start(ws).catch((e) => log.warn(`host: server not started again: ${describeError(e)}`));
+    }
+  }
+
+  // ReforgedHost's npm run multipliers (null turns them off). The backend reads them when it starts.
+  async hostSetMultipliers(m: HostMultipliers | null): Promise<ActionResult> {
+    const ws = this.workspaceOrNull();
+    if (!ws) return this.fail("host_failed", "workspace");
+    if (this.hostJob?.state === "running") return err("busy");
+    if (this.server.serverState === "external") return this.fail("host_failed", "server_external");
+    const config = await readServerConfig(ws);
+    if (!config.configured) return this.fail("host_failed", "not_configured");
+    if (config.mode !== "private") return this.fail("host_failed", "multipliers_public");
+    const args = m ? ["multipliers", "--xp", String(m.xp), "--rewards", String(m.rewards)] : ["multipliers", "--off"];
+    const logFile = path.join(ws, ".workspace", "logs", "launcher-multipliers.log");
+    this.setJob({ kind: "multipliers", state: "running", message: null, logFile });
+    try {
+      const r = await this.whileStopped(ws, () => this.server.command(ws, args, "multipliers"));
+      log.info(`host: test multipliers ${m ? `XP x${m.xp}, rewards x${m.rewards}` : "off"}`);
+      return this.finishJob("multipliers", r.code === 0, r.code === 0 ? null : r.failure, logFile);
+    } catch (e) {
+      this.setJob(null);
+      return this.hostKitFailure(e);
+    }
+  }
+
+  // ReforgedHost's npm run update: compares the project folder with GitHub and fast-forwards it; then the
+  // host kit is built again (npm install when its dependencies changed) and setup runs again with this
+  // server's settings, which re-applies the patches. A server this launcher runs restarts afterwards.
+  async hostUpdate(): Promise<ActionResult> {
+    const ws = this.workspaceOrNull();
+    if (!ws) return this.fail("host_failed", "workspace");
+    if (this.hostJob?.state === "running") return err("busy");
+    if (this.server.serverState === "external") return this.fail("host_failed", "server_external");
+    const logFile = path.join(ws, ".workspace", "logs", "launcher-update.log");
+    this.setJob({ kind: "update", state: "running", message: null, logFile });
+    if (!existsSync(path.join(ws, "ReforgedHost", "src", "selfupdate.ts"))) return this.legacyUpdate(ws, logFile);
+    try {
+      // Only compare first: a server stays up when there is nothing to update.
+      const check = await this.server.command(ws, ["update", "--check", "--json"], "update");
+      const checked = lastJson(check.lines);
+      if (check.code !== 0 || !checked || typeof checked.behind !== "number") return this.finishJob("update", false, updateFailure(checked, check.failure), logFile);
+      if (checked.behind === 0) {
+        this.hostUpdateResult = { state: "up_to_date", head: String(checked.head ?? ""), files: 0, runtimeChanged: false };
+        return this.finishJob("update", true, null, logFile);
+      }
+      const configured = (await readServerConfig(ws)).configured;
+      return await this.whileStopped(ws, async () => {
+        const r = await this.server.command(ws, ["update", "--json", "--no-setup"], "update");
+        const done = lastJson(r.lines);
+        if (r.code !== 0 || !done || done.updated !== true) return this.finishJob("update", false, updateFailure(done, r.failure), logFile);
+        this.hostUpdateResult = { state: "updated", head: String(done.to ?? ""), files: Number(done.files) || 0, runtimeChanged: done.runtimeChanged === true };
+        log.info(`host: project updated to ${String(done.to)} (${String(done.files)} files)`);
+        await this.server.prepare(ws, { install: done.hostKitDeps === true });
+        if (configured) {
+          const s = await this.server.command(ws, ["setup"], "setup");
+          this.requirements = null;
+          if (s.code !== 0) return this.finishJob("update", false, s.failure ?? "setup", logFile);
+        }
+        return this.finishJob("update", true, null, logFile);
+      });
+    } catch (e) {
+      this.setJob(null);
+      return this.hostKitFailure(e);
+    }
+  }
+
+  // A project from before npm run update (its host kit has no such command) is brought up to date with git
+  // here, once; from then on its host kit does it.
+  private async legacyUpdate(ws: string, logFile: string): Promise<ActionResult> {
+    const env = this.p.env ?? process.env;
+    const git = this.hostPlatform === "win32" ? findGit(env) : "git";
+    if (!git) return this.finishJob("update", false, "git_missing", logFile);
+    const run = (args: string[]) => this.server.program(git, args, ws, "update");
+    const rev = async (ref: string) => {
+      const r = await run(["rev-parse", ref]);
+      return r.code === 0 ? (r.lines.find((l) => /^[0-9a-f]{40}$/.test(l.trim()))?.trim() ?? null) : null;
+    };
+    const failure = (lines: string[]) => {
+      const text = lines.join("\n");
+      if (/not a git repository/i.test(text)) return "update_not_git";
+      if (/no upstream|no tracking/i.test(text)) return "update_no_upstream";
+      if (/would be overwritten|untracked working tree files/i.test(text)) return "update_local_changes";
+      if (/not possible to fast-forward|diverg/i.test(text)) return "update_diverged";
+      if (/could not resolve|unable to access|could not read from remote/i.test(text)) return "update_fetch_failed";
+      return "update_merge_failed";
+    };
+    try {
+      const fetched = await run(["fetch", "--quiet"]);
+      if (fetched.code !== 0) return this.finishJob("update", false, failure(fetched.lines), logFile);
+      const before = await rev("HEAD");
+      const remote = await rev("@{u}");
+      if (!before || !remote) return this.finishJob("update", false, before ? "update_no_upstream" : "update_not_git", logFile);
+      if (before === remote) {
+        this.hostUpdateResult = { state: "up_to_date", head: before.slice(0, 12), files: 0, runtimeChanged: false };
+        return this.finishJob("update", true, null, logFile);
+      }
+      const configured = (await readServerConfig(ws)).configured;
+      return await this.whileStopped(ws, async () => {
+        // npm install may have rewritten a package-lock.json: put it back (npm install makes it again).
+        const changed = await run(["diff", "--name-only", "HEAD"]);
+        const locks = changed.lines.map((l) => l.trim()).filter((f) => /(^|\/)package-lock\.json$/.test(f));
+        if (locks.length) await run(["checkout", "--", ...locks]);
+        const merged = await run(["merge", "--ff-only", "@{u}"]);
+        if (merged.code !== 0) return this.finishJob("update", false, failure(merged.lines), logFile);
+        const after = (await rev("HEAD")) ?? remote;
+        const files = (await run(["diff", "--name-only", before, after])).lines.map((l) => l.trim()).filter(Boolean);
+        this.hostUpdateResult = { state: "updated", head: after.slice(0, 12), files: files.length, runtimeChanged: files.some((f) => /^upstream\/(patches\/\d+-runtime-|mystic-paradox\.json$)/.test(f)) };
+        log.info(`host: project updated with git to ${after.slice(0, 12)} (${files.length} files)`);
+        await this.server.prepare(ws, { install: locks.includes("ReforgedHost/package-lock.json") || files.some((f) => /^ReforgedHost\/package(-lock)?\.json$/.test(f)) });
+        if (configured) {
+          const s = await this.server.command(ws, ["setup"], "setup");
+          this.requirements = null;
+          if (s.code !== 0) return this.finishJob("update", false, s.failure ?? "setup", logFile);
+        }
+        return this.finishJob("update", true, null, logFile);
+      });
+    } catch (e) {
+      this.setJob(null);
       return this.hostKitFailure(e);
     }
   }
@@ -1705,3 +1840,21 @@ export class Controller {
 
 // For the renderer's "what is wrong with the game folder" text, re-exported for tests.
 export type { GameProblem };
+
+// The JSON line a host kit command ends with (--json).
+function lastJson(lines: readonly string[]): Record<string, unknown> | null {
+  const line = [...lines].reverse().find((l) => l.trim().startsWith("{"));
+  if (!line) return null;
+  try {
+    const v: unknown = JSON.parse(line);
+    return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+// npm run update's own error codes (not_git, local_changes, ...) have their own text on the page.
+function updateFailure(json: Record<string, unknown> | null, failure: string | null): string {
+  const code = typeof json?.error === "string" && /^[a-z_]{1,40}$/.test(json.error) ? json.error : null;
+  return code ? `update_${code}` : failure ?? "update";
+}

@@ -107,6 +107,7 @@ const ICONS = {
   stop: [["path", { d: "M7 7h10v10H7z", fill: "currentColor", stroke: "none" }]],
   list: [["path", { d: "M9 7h10.5M9 12h10.5M9 17h10.5M4.5 7h.01M4.5 12h.01M4.5 17h.01" }]],
   link: [["path", { d: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" }]],
+  bolt: [["path", { d: "M13 3L5 13.5h6L10 21l8-10.5h-6z" }]],
 } as const;
 
 export type IconName = keyof typeof ICONS;

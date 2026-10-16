@@ -11,6 +11,7 @@ import type {
   HostAction,
   HostFolder,
   HostKit,
+  HostMultipliers,
   HostServerView,
   HostSetupRequest,
   InviteCheck,
@@ -78,6 +79,8 @@ const api = {
   hostSetup: (req: HostSetupRequest): Promise<ActionResult> =>
     ipcRenderer.invoke(IPC.hostSetup, { name: String(req.name), mode: String(req.mode), publicHost: req.publicHost === null ? null : String(req.publicHost) }),
   hostCreateInvite: (forName: string | null): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostCreateInvite, forName === null ? null : String(forName)),
+  hostUpdate: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostUpdate),
+  hostSetMultipliers: (m: HostMultipliers | null): Promise<ActionResult> => ipcRenderer.invoke(IPC.hostSetMultipliers, m === null ? null : { xp: Number(m.xp), rewards: Number(m.rewards) }),
   copyText: (text: string): Promise<boolean> => ipcRenderer.invoke(IPC.copyText, String(text)),
   dismissNotice: (): Promise<void> => ipcRenderer.invoke(IPC.dismissNotice),
   dismissError: (): Promise<void> => ipcRenderer.invoke(IPC.dismissError),

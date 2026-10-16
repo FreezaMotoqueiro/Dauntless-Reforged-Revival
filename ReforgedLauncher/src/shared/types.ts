@@ -260,9 +260,26 @@ export interface HostKit {
   gameData: { backend: GameDataState; director: GameDataState };
   exports: { present: boolean; inGame: boolean }; // Items_Analysis in the workspace, and beside the game (CatalogExporter's output)
   // The server's .workspace\config\host.json (no secrets there: they are in secrets.env).
-  serverConfig: { configured: boolean; name: string | null; mode: "private" | "public" | null; host: string | null };
+  // multipliers: the test XP and reward multipliers (private servers only), null when off.
+  serverConfig: { configured: boolean; name: string | null; mode: "private" | "public" | null; host: string | null; multipliers: HostMultipliers | null };
   requirements: Requirement[];
   job: HostJob | null;
+  update: HostUpdateView | null; // what the last "Update" found, since the launcher started
+}
+
+// XP and reward multipliers for a private test server (ReforgedHost's npm run multipliers): 1 to 100 each.
+export interface HostMultipliers {
+  xp: number;
+  rewards: number;
+}
+export const MAX_MULTIPLIER = 100;
+
+// The project compared with GitHub (ReforgedHost's npm run update).
+export interface HostUpdateView {
+  state: "up_to_date" | "updated";
+  head: string; // the short commit this PC is at now
+  files: number; // files the update changed
+  runtimeChanged: boolean; // the game runtime changed: build MysticParadox.dll again and publish it
 }
 
 // What the Requirements tab lists, each one detected on this PC.
@@ -300,7 +317,9 @@ export type HostJobKind =
   | "setup"
   | "generate_gamedata"
   | "export_gamedata"
-  | "create_invite";
+  | "create_invite"
+  | "update"
+  | "multipliers";
 
 export interface HostJob {
   kind: HostJobKind;
@@ -386,6 +405,8 @@ export const IPC = {
   hostServerStop: "rr:host-server-stop",
   hostSetup: "rr:host-setup",
   hostCreateInvite: "rr:host-create-invite",
+  hostUpdate: "rr:host-update",
+  hostSetMultipliers: "rr:host-set-multipliers",
   copyText: "rr:copy-text",
   windowMinimize: "rr:window-minimize",
   windowMaximize: "rr:window-maximize",

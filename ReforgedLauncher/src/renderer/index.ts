@@ -16,6 +16,7 @@ import {
   GAME_LANGUAGES,
   GRAPHICS_PRESETS,
   LANGUAGES,
+  MAX_MULTIPLIER,
   RUNTIME_PROFILES,
   type Branding,
   type ExternalTarget,
@@ -1207,12 +1208,17 @@ function hostStep(n: number, title: string, stepState: StepState, chipText: stri
 // The Host page's tabs: the server (start, stop, setup, invites), its game data, the builds that need
 // the game (SDK, runtime, CatalogExporter) and what this PC needs installed.
 type HostTab = "server" | "gamedata" | "build" | "requirements";
-const HOST_TABS: HostTab[] = ["server", "gamedata", "build", "requirements"];
+// In the order a new host goes through them: what to install, the builds, the game data, then the server.
+const HOST_TABS: HostTab[] = ["requirements", "build", "gamedata", "server"];
 const HOST_TAB_ICONS: Record<HostTab, IconName> = { server: "server", gamedata: "database", build: "hammer", requirements: "list" };
 
 // The server setup form and the invite note keep what was typed across renders.
 const setupNameInput = h("input", { class: "input", id: "host-setup-name", type: "text", maxlength: 60, spellcheck: "false", autocomplete: "off", "data-fk": "host-setup-name" });
 const setupHostInput = h("input", { class: "input", id: "host-setup-host", type: "text", maxlength: 253, spellcheck: "false", autocomplete: "off", placeholder: "203.0.113.7", "data-fk": "host-setup-host" });
+// Text fields (a number field has no caret position for the page to keep across renders).
+const multXpInput = h("input", { class: "input input-mult", id: "host-mult-xp", type: "text", maxlength: 6, inputmode: "decimal", spellcheck: "false", autocomplete: "off", "data-fk": "host-mult-xp" });
+const multRewardsInput = h("input", { class: "input input-mult", id: "host-mult-rewards", type: "text", maxlength: 6, inputmode: "decimal", spellcheck: "false", autocomplete: "off", "data-fk": "host-mult-rewards" });
+for (const input of [multXpInput, multRewardsInput]) input.addEventListener("input", () => renderHost());
 const inviteForInput = h("input", { class: "input", id: "host-invite-for", type: "text", maxlength: 40, spellcheck: "false", autocomplete: "off", "data-fk": "host-invite-for" });
 inviteForInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") void createInvite();
@@ -1395,6 +1401,7 @@ function serverTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostStep
     });
     return h("label", { class: "radio-row", for: `host-mode-${m}` }, input, h("span", {}, tk(`hsrv_mode_${m}`)));
   };
+  const prepareAt = parts.length;
   parts.push(
     card(
       "",
@@ -1440,6 +1447,9 @@ function serverTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostStep
         : null,
     ),
   );
+  // Then the test multipliers, updating, and the server's settings (which change least).
+  const prepareCard = parts.splice(prepareAt, 1)[0];
+  parts.push(multipliersCard(k, st, jobRunning), updateCard(k, st, jobRunning), prepareCard);
 
   // The output of the server and of the commands started here.
   const consoleBox = h("div", { class: "host-console-wrap", id: "host-console" });
@@ -1451,6 +1461,82 @@ function serverTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostStep
     ),
   );
   return parts;
+}
+
+// A typed multiplier: a number from 1 to 100, or null while it is not one.
+function multiplierValue(input: HTMLInputElement): number | null {
+  const n = Number(input.value.trim().replace(",", ".").replace(/^x/i, ""));
+  return input.value.trim() !== "" && Number.isFinite(n) && n >= 1 && n <= MAX_MULTIPLIER ? Math.round(n * 100) / 100 : null;
+}
+
+// The test multipliers (ReforgedHost's npm run multipliers), private servers only.
+function multipliersCard(k: HostKit, st: HostServerView["state"], jobRunning: boolean): HTMLElement {
+  const current = k.serverConfig.multipliers;
+  const isPrivate = k.serverConfig.mode === "private";
+  // The fields start at what is set (1 when off) and keep what was typed afterwards.
+  for (const [input, value] of [[multXpInput, current?.xp ?? 1], [multRewardsInput, current?.rewards ?? 1]] as const) {
+    if (input.value === "" && document.activeElement !== input) input.value = String(value);
+  }
+  const xp = multiplierValue(multXpInput);
+  const rewards = multiplierValue(multRewardsInput);
+  multXpInput.setAttribute("aria-invalid", xp === null ? "true" : "false");
+  multRewardsInput.setAttribute("aria-invalid", rewards === null ? "true" : "false");
+  const blocked = !k.serverConfig.configured || !isPrivate || jobRunning || st === "external" || st === "starting" || st === "stopping";
+  const same = current !== null && xp === current.xp && rewards === current.rewards;
+  const field = (input: HTMLInputElement, label: string) => h("label", { class: "field mult-field", for: input.id }, h("span", { class: "field-label" }, label), h("span", { class: "mult-input" }, h("span", { class: "mult-x" }, "×"), input));
+  return card(
+    "",
+    h("div", { class: "host-step-head" }, h("h2", { class: "host-step-title" }, t("hmult_title")), current ? chip("warn", t("hmult_on", { xp: current.xp, rewards: current.rewards })) : chip("todo", t("hmult_off"))),
+    h("p", { class: "card-text" }, t("hmult_text")),
+    !k.serverConfig.configured
+      ? h("p", { class: "small-print" }, t("host_err_not_configured"))
+      : !isPrivate
+        ? h("p", { class: "small-print warn-text" }, t("host_err_multipliers_public"))
+        : h(
+            "div",
+            { class: "stack" },
+            h("div", { class: "mult-fields" }, field(multXpInput, t("hmult_xp")), field(multRewardsInput, t("hmult_rewards"))),
+            xp === null || rewards === null ? h("p", { class: "small-print warn-text" }, t("hmult_range", { max: MAX_MULTIPLIER })) : null,
+            h(
+              "div",
+              { class: "card-row" },
+              button(current ? t("hmult_apply") : t("hmult_enable"), () => void api.hostSetMultipliers({ xp: xp!, rewards: rewards! }).then(report).then(hostRefresh), {
+                cls: "btn-primary",
+                icon: "bolt",
+                fk: "host-mult-on",
+                disabled: blocked || xp === null || rewards === null || same || (xp === 1 && rewards === 1),
+              }),
+              button(t("hmult_disable"), () => void api.hostSetMultipliers(null).then(report).then(hostRefresh), { icon: "stop", fk: "host-mult-off", disabled: blocked || current === null }),
+            ),
+            h("p", { class: "small-print" }, st === "external" ? t("hmult_external") : t("hmult_restart")),
+          ),
+  );
+}
+
+// "Update setup": the project folder compared with GitHub and updated (ReforgedHost's npm run update).
+function updateCard(k: HostKit, st: HostServerView["state"], jobRunning: boolean): HTMLElement {
+  const u = k.update;
+  const gitMissing = k.requirements.some((r) => r.id === "git" && r.state !== "ok");
+  const status = u === null ? null : u.state === "up_to_date" ? chip("ok", t("hupd_up_to_date", { head: u.head.slice(0, 7) })) : chip("ok", t("hupd_updated", { n: u.files, head: u.head.slice(0, 7) }));
+  return card(
+    "",
+    h("div", { class: "host-step-head" }, h("h2", { class: "host-step-title" }, t("hupd_title")), status),
+    h("p", { class: "card-text" }, t("hupd_text")),
+    gitMissing ? h("p", { class: "small-print warn-text" }, t("hupd_git")) : null,
+    u?.runtimeChanged ? h("p", { class: "small-print warn-text" }, t("hupd_runtime")) : null,
+    h(
+      "div",
+      { class: "card-row" },
+      button(t("hupd_run"), () => void api.hostUpdate().then(report).then(hostRefresh), {
+        cls: "btn-primary",
+        icon: "refresh",
+        fk: "host-update",
+        disabled: !k.workspaceOk || jobRunning || st === "external" || st === "starting" || st === "stopping",
+      }),
+      u?.runtimeChanged ? linkButton(t("hupd_to_build"), () => setHostTab("build"), { icon: "hammer", fk: "host-upd-build" }) : null,
+    ),
+    h("p", { class: "small-print" }, st === "external" ? t("hupd_external") : t("hupd_note")),
+  );
 }
 
 function renderHostConsole(): void {
@@ -1589,7 +1675,7 @@ function renderHost(): void {
   const snap = state.snap;
   const k = state.host;
   const v = state.hostServer;
-  const sig = JSON.stringify([state.lang, state.hostTab, k, v?.state, v?.message, v?.invite, state.consoleOpen, state.setupMode, state.copied, [...state.reqOpen], [...state.reqClosed], snap?.game ?? null, snap?.running.game ?? false, snap?.busy ?? false, snap?.settings.streamerMode, snap?.app.platform]);
+  const sig = JSON.stringify([state.lang, state.hostTab, k, v?.state, v?.message, v?.invite, multXpInput.value, multRewardsInput.value, state.consoleOpen, state.setupMode, state.copied, [...state.reqOpen], [...state.reqClosed], snap?.game ?? null, snap?.running.game ?? false, snap?.busy ?? false, snap?.settings.streamerMode, snap?.app.platform]);
   renderRegion(container, sig, () => {
     if (!snap || !k) return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "host-title" }, t("host_title")), card("", h("div", { class: "card-row" }, h("div", { class: "spinner" }), t("loading"))))];
     const steps = hostSteps(k);
