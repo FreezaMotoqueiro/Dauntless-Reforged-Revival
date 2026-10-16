@@ -1,8 +1,16 @@
 diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
-index 7e2b0b6..548730f 100644
+index 7e2b0b6..a2eeb3a 100644
 --- a/ParadoxRuntime/dllmain.cpp
 +++ b/ParadoxRuntime/dllmain.cpp
-@@ -2593,6 +2593,323 @@ static void OnLoginScreenEvent(SDK::UObject* Object, const std::string& Function
+@@ -45,6 +45,7 @@
+ 
+ #include "SDK/GameplayAbilities_parameters.hpp"
+ #include "SDK/Archon_parameters.hpp"
++#include "SDK/Engine_parameters.hpp"        // HUD_* (BehemothBars)
+ #include "SDK/lantern_equipped_ab_parameters.hpp"
+ #include "SDK/base_gameobject_bp_parameters.hpp"
+ 
+@@ -2593,6 +2594,323 @@ static void OnLoginScreenEvent(SDK::UObject* Object, const std::string& Function
  
  }  // namespace LoginBranding
  
@@ -170,7 +178,7 @@ index 7e2b0b6..548730f 100644
 +        Size.Scale = 1.0f;
 +        Hud->ProcessEvent(TextSizeFn, &Size);
 +        if (Size.OutHeight <= 0.0f || Size.OutWidth <= 0.0f) return;
-+        const float Scale = std::min((H * 0.9f) / Size.OutHeight, (W - 6.0f) / Size.OutWidth);
++        const float Scale = (std::min)((H * 0.9f) / Size.OutHeight, (W - 6.0f) / Size.OutWidth);
 +        const float TX = X + (W - Size.OutWidth * Scale) * 0.5f;
 +        const float TY = Y + (H - Size.OutHeight * Scale) * 0.5f;
 +        for (int Pass = 0; Pass < 2; Pass++) {
@@ -188,7 +196,7 @@ index 7e2b0b6..548730f 100644
 +};
 +
 +static std::wstring Thousands(float Value) {
-+    long long N = static_cast<long long>(std::max(0.0f, std::ceil(Value)));
++    long long N = static_cast<long long>((std::max)(0.0f, std::ceil(Value)));
 +    std::wstring Digits = std::to_wstring(N);
 +    std::wstring Out;
 +    int Count = 0;
@@ -277,7 +285,7 @@ index 7e2b0b6..548730f 100644
 +            Thousands(Cur) + L" / " + Thousands(Max));
 +
 +        if (Shield > 0.0f) {
-+            E.ShieldPeak = std::max(E.ShieldPeak, Shield);
++            E.ShieldPeak = (std::max)(E.ShieldPeak, Shield);
 +            Bar(P, Left, Top + BarH + std::round(kShieldGap * S), Width, ShieldH, Shield / E.ShieldPeak,
 +                { 0.18f, 0.52f, 1.0f, 0.95f }, Thousands(Shield) + L" / " + Thousands(E.ShieldPeak));
 +        } else {
@@ -326,7 +334,7 @@ index 7e2b0b6..548730f 100644
  static FProperty* FindPropertyByNameInChain(UStruct* Struct, const char* TargetName);   // defined below
  
  // [CLIENT BRANDING 2026-10-09] Credits: a "Mystic Paradox" block above Phoenix Labs. Client only and RVA-free.
-@@ -11840,6 +12157,20 @@ void ProcessEventClientHook(UObject* Object, UFunction* Function, void* Parms) {
+@@ -11840,6 +12158,20 @@ void ProcessEventClientHook(UObject* Object, UFunction* Function, void* Parms) {
      if (FunctionName.find("PressStart") != std::string::npos) {
          PressStartBranding::OnPressStartEvent(Object, FunctionName);
      }
