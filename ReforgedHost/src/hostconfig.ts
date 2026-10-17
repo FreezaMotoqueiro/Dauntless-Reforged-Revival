@@ -220,6 +220,13 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ["APPROVED_EXECUTABLE_SHA256", PINNED_EXE_SHA256],
         ["MATCHMAKING_MODE", "DEPLOYSERVER"],
         ["DEPLOYSERVER_URL", `127.0.0.1:${PORTS.director}`],
+        // After a hunt server is up, the backend holds the player a further random 10-20 s "Go Now"
+        // countdown by default. The game saves and locks the build when the hunt is searched, so for
+        // that whole wait the arsenal shows an empty loadout and the HUD shows its placeholder XP.
+        // The Director only answers once the server is ready, so use the hub's 0-1 s window instead.
+        // (The backend ignores 0, so the minimum is 1 ms.)
+        ["HUNT_GO_NOW_MIN_DELAY_MS", "1"],
+        ["HUNT_GO_NOW_MAX_DELAY_MS", "1000"],
         ["REALTIME_XMPP_ENABLED", "true"],
         ["REALTIME_XMPP_CAPTURE", "false"],
         // The launcher's relay sends the invite's host as Host.
