@@ -258,6 +258,28 @@ distance cleared on the tick, in the graph and in each connection's copy (`[Weap
 position. `DISABLE_WEAPON_CULL_FIX.flag` next to the game exe turns this off. 0015 stays: it is correct for a
 dormant weapon on the spatial route.
 
+### 0017: new and existing characters can quick chat and quick emoji
+
+`ParadoxBackend/src/controllers/starterManifest.ts`, `loadout.ts`. Both radial wheels read nine slots from
+the persistent loadout (`quick_chats`, `emojis`), and the starter loadout saved all of them as `""`, so the
+wheels opened empty and choosing a slot did nothing. Emojis are inventory items as well, and no account owned
+one: the game's own `INITIAL_INVENTORY_BUNDLE` (catalog export) gives a new character `EJ_SYSTEM_TYPING` and
+eight `EJ_PLAYER_*` emojis, which the starter manifest never granted. The game server shows the gap whenever a
+loadout is checked before the inventory arrives (`ValidateLoadout - Unable to set valid Emoji -
+EJ_PLAYER_BOSUN_JOY`, the first of the game's four default emojis).
+
+- The nine emojis are added to the starter stacked items, so new characters own them and existing ones receive
+  them on their next inventory read (the existing starter reconcile; `BOOTSTRAP_VERSION` becomes
+  `starter-1.12-v5`).
+- New characters start with both wheels filled: the eight player emojis (the game's four defaults first) and
+  nine quick chats from `/Game/Gameplay/Backend/Catalogs/QuickChat/quickchat_text_table` (`qc_hello`,
+  `qc_thankyou`, `qc_goodjob`, `qc_help`, `qc_follow_me`, `qc_onmyway`, `qc_yes`, `qc_no`, `qc_sorry`).
+- When the loadout is read, a wheel whose slots are all empty gets those defaults; a wheel with any entry is
+  the player's choice and is left alone. The game saves the persistent loadout back as usual, so the defaults
+  are then stored and can be changed in the Identity menu.
+
+`src/chatWheels.test.ts` covers the grant and the wheel defaults.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
