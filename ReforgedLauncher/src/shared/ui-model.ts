@@ -6,7 +6,7 @@ import type { GraphicsPreset, Language, Phase, Snapshot, TaskProgress } from "./
 import type { InstanceKind, PlayerWhere } from "./status";
 import { formatBytes, formatDuration, formatPercent, formatSpeed } from "./format";
 
-export type PrimaryAction = "join" | "retry" | "new_invite" | "register" | "locate" | "verify" | "trust" | "install_runtime" | "play" | "cancel" | "none";
+export type PrimaryAction = "join" | "retry" | "new_invite" | "register" | "locate" | "verify" | "trust" | "install_runtime" | "revived_install" | "play" | "cancel" | "none";
 
 export interface PrimaryButton {
   labelKey: StringKey;
@@ -39,6 +39,8 @@ export function primaryButton(s: Snapshot, form: FormState): PrimaryButton {
         disabled: busy || !form.usernameValid || s.status?.registration === "NONE",
       };
     case "locate":
+      // Dauntless 1.4.4 (a Dauntless Revived server): download it, or check (and repair) what is there.
+      if (s.revived) return { labelKey: s.revived.problem === "not_set" ? "btn_download" : "btn_check", action: "revived_install", disabled: busy };
       if (s.game.problem === "unverified") return { labelKey: "btn_verify", action: "verify", disabled: busy };
       return { labelKey: "btn_locate", action: "locate", disabled: busy };
     case "runtime":
@@ -93,13 +95,15 @@ export interface TaskView {
 }
 
 export function taskView(t: TaskProgress, lang: Language): TaskView {
-  const titleKey: StringKey = t.kind === "runtime" ? "task_runtime" : "task_verify";
+  const titleKey: StringKey = t.kind === "runtime" ? "task_runtime" : t.kind === "download" ? "task_download" : t.kind === "dlls" ? "task_dlls" : "task_verify";
+  const moving = t.kind === "runtime" || t.kind === "download";
   return {
     titleKey,
     percent: formatPercent(t.doneBytes, t.totalBytes),
-    bytesText: `${formatBytes(t.doneBytes, lang)} / ${formatBytes(t.totalBytes, lang)}`,
-    speedText: t.kind === "runtime" && t.bytesPerSecond > 0 ? formatSpeed(t.bytesPerSecond, lang) : null,
-    etaText: t.kind === "runtime" && t.etaSeconds !== null ? formatDuration(t.etaSeconds, lang) : null,
+    // The quick 1.4.4 check counts files, not bytes.
+    bytesText: t.kind === "dlls" || (t.kind === "verify" && t.totalBytes === t.filesTotal) ? null : `${formatBytes(t.doneBytes, lang)} / ${formatBytes(t.totalBytes, lang)}`,
+    speedText: moving && t.bytesPerSecond > 0 ? formatSpeed(t.bytesPerSecond, lang) : null,
+    etaText: moving && t.etaSeconds !== null ? formatDuration(t.etaSeconds, lang) : null,
     filesText: `${t.filesDone}/${t.filesTotal}`,
   };
 }

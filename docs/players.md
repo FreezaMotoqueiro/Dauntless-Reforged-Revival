@@ -63,6 +63,28 @@ itself from the releases afterwards.
    again if the host publishes different ones.
 5. **PLAY.** Keep the launcher open while you play: it carries the game's connection to the server.
 
+## Dauntless Revived servers (Dauntless 1.4.4)
+
+The launcher also joins [Dauntless Revived](https://github.com/mixutin/dauntless-revived) servers, which
+run Dauntless 1.4.4. Their invites start with `dauntless-revived://`; paste one the same way. It plays
+them the way Dauntless Revived's launcher 0.1.35 does (their later launchers no longer join the private
+servers that run 0.1.35's server side):
+
+- **Game.** Dauntless 1.4.4 (10.9 GB) is downloaded from the server, into the same folder Dauntless
+  Revived's launcher uses (`%LOCALAPPDATA%\DauntlessRevived\Game`), and every file is checked against
+  the list of 1.4.4 files built into the launcher. A 1.4.4 that Dauntless Revived's launcher already
+  downloaded is found and used, after one check. **Choose another folder…** takes a folder that has
+  1.4.4, or an empty one to download it into. **Check and repair** hashes every file again and fetches
+  what is damaged.
+- **Client files.** `dxgi.dll` and `UndauntedInternalServer.dll` from Dauntless Revived's launcher 0.1.35
+  go next to the game, downloaded from that release on GitHub and checked by their SHA-256; the
+  1.14.7 game runtime is not used.
+- **PLAY.** A private server is reached straight over Tailscale; a public one through the launcher's
+  relay, pinned to the invite's certificate. The game needs the Microsoft Visual C++ 2015-2022 (x64)
+  runtime and the DirectX End-User Runtime (June 2010).
+- Not taken over from their launcher: the optional UE4SS client mods, Linux (Proton) and the hardware
+  identifiers 0.1.35 reports to servers that restrict devices.
+
 ## Settings
 
 - **Game**: the game folder, the executable check, and the game's own language.

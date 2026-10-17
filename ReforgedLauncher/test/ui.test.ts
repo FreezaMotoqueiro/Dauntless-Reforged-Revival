@@ -14,6 +14,7 @@ function snap(over: Partial<Snapshot> = {}): Snapshot {
     connect: { checking: false, problem: null, tailscaleInstalled: true, lastCheckedAt: null },
     account: { username: null, hasKey: false, offerBackup: false },
     game: { root: null, problem: "not_set", versionText: null, versionOk: false, exeVerified: false, detected: [] },
+    revived: null,
     runtime: { state: "unavailable", version: null, files: [], localDir: null },
     task: null,
     running: { game: false, relayPort: null },

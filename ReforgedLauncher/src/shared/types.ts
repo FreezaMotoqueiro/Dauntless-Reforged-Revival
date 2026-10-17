@@ -2,9 +2,9 @@
 // The main process owns all state; the renderer only draws a Snapshot and sends intents.
 
 import type { ServerStatus } from "./status";
-import type { ServerMode } from "./invite";
+import type { GameEdition, ServerMode } from "./invite";
 
-export type { ServerMode };
+export type { GameEdition, ServerMode };
 
 // The launcher's own text: English and Brazilian Portuguese.
 export type Language = "en" | "pt-BR";
@@ -29,7 +29,7 @@ export type Phase =
   | "join" // no server yet: paste an invite
   | "connect" // server known, not reachable (or still checking)
   | "register" // server reachable, no account key yet
-  | "locate" // account ready, but no Dauntless 1.14.7 folder chosen, found or accepted
+  | "locate" // account ready, but no Dauntless 1.14.7 folder chosen, found or accepted (1.4.4: not installed or checked)
   | "runtime" // game found; the server's game runtime is not installed, out of date or not trusted yet
   | "installing" // a check or the runtime download is running
   | "ready" // PLAY
@@ -94,10 +94,20 @@ export type ErrorCode =
   | "relay_port_busy"
   | "relay_failed"
   | "host_failed" // a Host tools action failed (detail says which)
+  // Dauntless 1.4.4 (Dauntless Revived servers):
+  | "manifest_mismatch" // the server's list of game files is not the pinned 1.4.4 one
+  | "no_content_server" // the server offers no game download
+  | "file_missing_on_server"
+  | "file_different_on_server"
+  | "dll_failed" // the pinned Undaunted DLLs could not be downloaded or installed
+  | "game_files_invalid" // a 1.4.4 file is missing or not the pinned one: Check and repair
+  | "windows_runtime_missing" // the Visual C++ or DirectX runtime the game needs (detail: the files)
+  | "folder_other_game" // the folder chosen for 1.4.4 holds another Dauntless: never written into
+  | "folder_not_empty" // the folder chosen for 1.4.4 holds other files
   | "unknown";
 
 // Short messages that are not errors.
-export type NoticeCode = "keep_open" | "backup_saved" | "runtime_installed" | "runtime_installed_restart" | "game_verified" | "sdk_imported" | "host_done";
+export type NoticeCode = "keep_open" | "backup_saved" | "runtime_installed" | "runtime_installed_restart" | "game_verified" | "sdk_imported" | "host_done" | "install_done" | "repair_done";
 
 export interface LauncherError {
   code: ErrorCode;
@@ -114,7 +124,8 @@ export type InviteCheck =
   | { ok: true; certificateChanged: boolean; previousFingerprint: string | null; movedFrom: string | null }
   | { ok: false; error: LauncherError };
 
-export type TaskKind = "verify" | "runtime";
+// download, dlls: installing Dauntless 1.4.4 for a Dauntless Revived server.
+export type TaskKind = "verify" | "runtime" | "download" | "dlls";
 
 export interface TaskProgress {
   kind: TaskKind;
@@ -128,6 +139,7 @@ export interface TaskProgress {
 }
 
 export interface ServerInfo {
+  game: GameEdition;
   mode: ServerMode;
   host: string;
   port: number;
@@ -141,6 +153,7 @@ export interface ServerInfo {
 // A server joined before, for switching back to it without the invite.
 export interface SavedServerInfo {
   id: string; // the account key slot id (not secret)
+  game: GameEdition;
   mode: ServerMode;
   host: string;
   port: number;
@@ -149,7 +162,7 @@ export interface SavedServerInfo {
   username: string | null;
 }
 
-export type GameSource = "epic" | "legendary" | "heroic" | "chosen";
+export type GameSource = "epic" | "legendary" | "heroic" | "chosen" | "revived";
 
 export interface DetectedGame {
   root: string;
@@ -170,6 +183,18 @@ export interface RuntimeFileInfo {
   name: string;
   size: number;
   sha256: string;
+}
+
+// Dauntless 1.4.4, for a Dauntless Revived server (src/main/revived/): the folder it is in (or goes
+// into), and whether every file is the pinned one.
+export interface RevivedInfo {
+  root: string; // the chosen folder, or where a download goes when none is chosen
+  chosen: boolean; // the player chose it (or it was found), rather than the default
+  problem: GameProblem; // not_set: nothing there yet; unverified: there, but not every file checked
+  missingFiles: number; // known after a check: files to download
+  totalBytes: number; // the whole game
+  dllsOk: boolean; // the pinned Undaunted DLLs are next to the game
+  detected: DetectedGame[]; // 1.4.4 installs found on this PC (Dauntless Revived's launcher)
 }
 
 export interface RuntimeInfo {
@@ -206,6 +231,7 @@ export interface Snapshot {
     offerBackup: boolean;
   };
   game: GameInfo;
+  revived: RevivedInfo | null; // the current server is a Dauntless Revived one
   runtime: RuntimeInfo;
   task: TaskProgress | null;
   running: { game: boolean; relayPort: number | null };
@@ -382,6 +408,9 @@ export const IPC = {
   useGamePath: "rr:use-game-path",
   useDetectedGame: "rr:use-detected-game",
   verifyGame: "rr:verify-game",
+  revivedInstall: "rr:revived-install",
+  revivedChooseFolder: "rr:revived-choose-folder",
+  revivedUseDetected: "rr:revived-use-detected",
   trustRuntime: "rr:trust-runtime",
   installRuntime: "rr:install-runtime",
   chooseLocalRuntime: "rr:choose-local-runtime",

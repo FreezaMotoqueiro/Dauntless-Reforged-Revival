@@ -15,6 +15,15 @@ import { UNSAFE_CHARS_MULTILINE } from "../shared/text";
 
 export const KEY_HEADER = "x-reforged-user-api-key";
 
+// Where a server's launcher API is and the header its account key goes in: this project's servers, or
+// Dauntless Revived's (Dauntless 1.4.4, src/main/revived/), whose API is the same contract.
+export interface ApiFlavor {
+  base: string;
+  keyHeader: string;
+}
+export const REFORGED_FLAVOR: ApiFlavor = { base: "/reforged/api", keyHeader: KEY_HEADER };
+export const REVIVED_FLAVOR: ApiFlavor = { base: "/undaunted/api", keyHeader: "x-undaunted-user-api-key" };
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -26,10 +35,10 @@ function isPin(e: unknown): boolean {
 // The key goes only where every other key-carrying request goes: to the invite's host, over the TLS
 // connection pinned to the invite's certificate (public mode) or plain HTTP inside the tailnet or
 // to this PC (private mode, which request() enforces as well).
-export function keyHeaders(ep: Endpoint, key: string | null | undefined): Record<string, string> {
+export function keyHeaders(ep: Endpoint, key: string | null | undefined, flavor: ApiFlavor = REFORGED_FLAVOR): Record<string, string> {
   if (!isPlausibleAccountKey(key)) return {};
   if (ep.pin === null && !isPrivateModeHost(ep.host)) return {};
-  return { [KEY_HEADER]: key };
+  return { [flavor.keyHeader]: key };
 }
 
 // ---------------------------------------------------------------- ServerStatus
@@ -46,13 +55,15 @@ export interface StatusOptions {
   // without a key (or with one it does not accept) it answers the same status with "limited": true.
   key?: string | null;
   timeoutMs?: number;
+  flavor?: ApiFlavor;
 }
 
 export async function fetchServerStatus(ep: Endpoint, opts: StatusOptions = {}): Promise<StatusResult> {
   const timeoutMs = opts.timeoutMs ?? CONNECT_TIMEOUT_MS;
   let res: HttpResponse;
   try {
-    res = await request(ep, "/reforged/api/ServerStatus", { headers: keyHeaders(ep, opts.key), timeoutMs, maxBytes: 1024 * 1024 });
+    const flavor = opts.flavor ?? REFORGED_FLAVOR;
+    res = await request(ep, `${flavor.base}/ServerStatus`, { headers: keyHeaders(ep, opts.key, flavor), timeoutMs, maxBytes: 1024 * 1024 });
   } catch (e) {
     return isPin(e) ? { kind: "cert_mismatch" } : { kind: "unreachable" };
   }
@@ -76,10 +87,10 @@ export async function fetchServerStatus(ep: Endpoint, opts: StatusOptions = {}):
 
 export type RegisterResult = { ok: true; key: string } | { ok: false; error: ErrorCode; message?: string };
 
-export async function registerAccount(ep: Endpoint, username: string, inviteCode: string): Promise<RegisterResult> {
+export async function registerAccount(ep: Endpoint, username: string, inviteCode: string, flavor: ApiFlavor = REFORGED_FLAVOR): Promise<RegisterResult> {
   let res: HttpResponse;
   try {
-    res = await request(ep, "/reforged/api/Register", {
+    res = await request(ep, `${flavor.base}/Register`, {
       method: "POST",
       body: JSON.stringify({ Username: username, InviteCode: inviteCode }),
       timeoutMs: 20000,
@@ -124,11 +135,11 @@ export type UserInfoResult =
   | { ok: true; info: UserInfo }
   | { ok: false; error: "account_banned" | "key_rejected" | "server_unreachable" | "server_error" | "cert_mismatch" | "rate_limited"; detail?: string };
 
-export async function fetchUserInfo(ep: Endpoint, key: string): Promise<UserInfoResult> {
+export async function fetchUserInfo(ep: Endpoint, key: string, flavor: ApiFlavor = REFORGED_FLAVOR): Promise<UserInfoResult> {
   if (!isPlausibleAccountKey(key)) return { ok: false, error: "key_rejected" };
   let res: HttpResponse;
   try {
-    res = await request(ep, "/reforged/api/GetUserInfo", { headers: keyHeaders(ep, key), timeoutMs: 10000, maxBytes: 64 * 1024 });
+    res = await request(ep, `${flavor.base}/GetUserInfo`, { headers: keyHeaders(ep, key, flavor), timeoutMs: 10000, maxBytes: 64 * 1024 });
   } catch (e) {
     return { ok: false, error: isPin(e) ? "cert_mismatch" : "server_unreachable" };
   }

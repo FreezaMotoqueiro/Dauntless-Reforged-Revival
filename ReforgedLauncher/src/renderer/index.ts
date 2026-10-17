@@ -373,6 +373,8 @@ function errorText(e: LauncherError): string {
       return e.detail && isStringKey(`host_err_${e.detail}`) ? tk(`host_err_${e.detail}`) : t("err_host_failed", { detail: e.detail ?? "" });
     case "local_runtime_invalid":
       return t("err_local_runtime_invalid");
+    case "windows_runtime_missing":
+      return `${t("err_windows_runtime_missing")}${e.detail ? ` (${e.detail})` : ""}`;
     default:
       return tk(`err_${e.code}`);
   }
@@ -384,8 +386,13 @@ function vcWarning(): HTMLElement | null {
   return null;
 }
 
+// A Dauntless Revived server runs Dauntless 1.4.4: said next to its name wherever servers are listed.
+function editionBadge(game: Snapshot["savedServers"][number]["game"]): HTMLElement | null {
+  return game === "revived" ? h("span", { class: "badge badge-revived" }, icon("gamepad"), t("edition_revived")) : null;
+}
+
 function eyebrow(snap: Snapshot): HTMLElement {
-  return h("div", { class: "eyebrow" }, snap.server ? serverName() : t("join_eyebrow"), snap.server ? modeBadge(snap.server.mode) : null);
+  return h("div", { class: "eyebrow" }, snap.server ? serverName() : t("join_eyebrow"), snap.server ? modeBadge(snap.server.mode) : null, snap.server ? editionBadge(snap.server.game) : null);
 }
 
 function heading(title: string, text: string | null): HTMLElement[] {
@@ -410,7 +417,8 @@ async function switchTo(id: string): Promise<void> {
 
 function savedServerSub(sv: Snapshot["savedServers"][number]): HTMLElement {
   const address = blurred(`${sv.host}:${sv.port}`);
-  return sv.username ? h("span", {}, `${t("saved_account", { name: sv.username })} · `, address) : h("span", {}, address);
+  const edition = sv.game === "revived" ? `${t("edition_revived")} · ` : "";
+  return sv.username ? h("span", {}, `${edition}${t("saved_account", { name: sv.username })} · `, address) : h("span", {}, edition, address);
 }
 
 function savedServersCard(snap: Snapshot): HTMLElement | null {
@@ -640,7 +648,29 @@ function detectedCard(snap: Snapshot): HTMLElement | null {
   );
 }
 
+// Dauntless 1.4.4, for a Dauntless Revived server: where it is (or goes), and download or check it.
+function playLocateRevived(snap: Snapshot): HTMLElement[] {
+  const r = snap.revived!;
+  const out: HTMLElement[] = [eyebrow(snap)];
+  if (r.problem === "not_set") out.push(...heading(t("revived_download_title"), t("revived_download_text", { size: formatBytes(r.totalBytes, state.lang) })));
+  else out.push(...heading(t("revived_check_title"), r.missingFiles > 0 ? t("revived_check_missing", { n: r.missingFiles }) : t("revived_check_text")));
+  out.push(
+    card(
+      "",
+      h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, r.problem === "not_set" ? t("revived_folder_target") : t("revived_folder_current")), h("span", { class: "settings-row-sub selectable" }, secret(r.root, "revived-root")))),
+      h("div", { class: "card-row" }, button(t("revived_choose"), () => void api.revivedChooseFolder().then(report), { icon: "folder", fk: "revived-choose" })),
+      h("p", { class: "small-print" }, t("revived_choose_hint")),
+    ),
+  );
+  if (r.detected.length > 0 && !r.detected.some((d) => d.root === r.root)) {
+    out.push(card("card-accent", h("h3", { class: "card-title" }, icon("check"), t("revived_detected_title")), ...r.detected.map((d, i) => h("div", { class: "card-row" }, h("span", { class: "selectable" }, secret(d.root, `revived-detected-${i}`)), button(t("locate_use"), () => void api.revivedUseDetected(i).then(report), { cls: "btn-primary", fk: `revived-detected-${i}`, disabled: snap.busy })))));
+  }
+  out.push(card("card-warn", h("p", { class: "card-text" }, icon("info"), " ", t("revived_about"))));
+  return out;
+}
+
 function playLocate(snap: Snapshot): HTMLElement[] {
+  if (snap.revived) return playLocateRevived(snap);
   const g = snap.game;
   const out: HTMLElement[] = [eyebrow(snap)];
   switch (g.problem) {
@@ -713,6 +743,7 @@ function playRuntime(snap: Snapshot): HTMLElement[] {
 
 function playInstalling(snap: Snapshot): HTMLElement[] {
   const kind = state.task?.kind ?? snap.task?.kind ?? "verify";
+  if (snap.revived) return [eyebrow(snap), ...heading(t(kind === "download" ? "revived_installing_download" : kind === "dlls" ? "revived_installing_dlls" : "revived_installing_verify"), t("revived_installing_text"))];
   return [eyebrow(snap), ...heading(kind === "runtime" ? t("installing_runtime_title") : t("installing_verify_title"), t(kind === "runtime" ? "installing_runtime_text" : "installing_verify_text"))];
 }
 
@@ -739,11 +770,13 @@ function playReady(snap: Snapshot): HTMLElement[] {
       h(
         "div",
         { class: "card-row" },
-        h("span", { class: "badge" }, icon("gamepad"), t("ready_build")),
+        h("span", { class: "badge" }, icon("gamepad"), t(snap.revived ? "ready_build_revived" : "ready_build")),
         h("span", { class: "badge" }, icon("settings"), t("ready_graphics", { preset: t(graphicsKey(snap.settings.graphics)) })),
         h("span", { class: "badge" }, t(snap.settings.windowed ? "ready_windowed" : "ready_fullscreen")),
         snap.runtime.state === "local" ? h("span", { class: "badge badge-ember" }, icon("anvil"), t("ready_local_runtime")) : null,
         linkButton(t("ready_change"), () => setView("settings"), { fk: "ready-change" }),
+        // Dauntless 1.4.4: every file hashed again, and anything damaged downloaded again.
+        snap.revived ? linkButton(t("revived_repair"), () => void api.revivedInstall("repair").then(report), { icon: "refresh", fk: "revived-repair", disabled: snap.busy }) : null,
       ),
     ),
   );
@@ -876,6 +909,7 @@ function actionHint(snap: Snapshot): string {
     case "register":
       return t("hint_register");
     case "locate":
+      if (snap.revived) return snap.revived.problem === "not_set" ? t("hint_revived_download") : t("hint_revived_check");
       return snap.game.problem === "unverified" ? t("hint_verify") : t("hint_locate");
     case "runtime":
       return snap.runtime.state === "unavailable" ? t("hint_runtime_none") : snap.runtime.state === "untrusted" ? t("hint_trust") : t("hint_runtime");
@@ -914,7 +948,7 @@ function renderActionBar(): void {
     const v = taskView(task, state.lang);
     announce(`${t(v.titleKey)}: ${Math.floor(v.percent / 10) * 10} %`);
   } else {
-    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.game.problem, snap.runtime.state]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
+    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.game.problem, snap.runtime.state, snap.revived?.problem ?? null]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
     announce(actionHint(snap));
   }
 }
@@ -970,6 +1004,9 @@ async function onPrimary(): Promise<void> {
       break;
     case "verify":
       result = await api.verifyGame();
+      break;
+    case "revived_install":
+      result = await api.revivedInstall("install");
       break;
     case "trust":
       showModal({ kind: "trust_runtime" });

@@ -17,7 +17,9 @@ import { formatInvite } from "../src/shared/invite";
 import { setSink } from "../src/main/log";
 import type { SpawnFn } from "../src/main/launch";
 import type { Snapshot } from "../src/shared/types";
-import { FakeServer, makeRuntime, sha256 } from "./fakes";
+import { FakeServer, makeRuntime, pattern, sha256 } from "./fakes";
+import { validateManifest } from "../src/main/revived/manifest";
+import { REVIVED_BUILD, REVIVED_EXE_RELATIVE_PATH } from "../src/main/revived/constants";
 import { makeTestCert, type TestCert } from "./certs";
 import { GAME_VERSION_TEXT } from "../src/main/constants";
 
@@ -512,4 +514,90 @@ test("Import SDK works before the server is set up: Mystic Paradox is downloaded
   assert.equal(kit.sdk.present, true);
   assert.equal(kit.sdk.functionFiles, 1);
   await hx.c.shutdown();
+});
+
+test("a Dauntless Revived server: Dauntless 1.4.4 downloaded, checked and played the way their launcher 0.1.35 does", async () => {
+  // A tiny stand-in for 1.4.4: the executable and two other files, and two client DLLs.
+  const files = new Map<string, Buffer>([
+    [REVIVED_EXE_RELATIVE_PATH, pattern(5000, 3)],
+    ["Archon/Content/Paks/pakchunk0-WindowsNoEditor.pak", pattern(70000, 4)],
+    ["Engine/Binaries/ThirdParty/x.txt", Buffer.from("hello")],
+  ]);
+  const raw = { build: REVIVED_BUILD, totalBytes: [...files.values()].reduce((a, b) => a + b.length, 0), files: [...files].map(([p, d]) => ({ path: p, size: d.length, sha256: sha256(d) })) };
+  const check = validateManifest(raw, REVIVED_BUILD, false);
+  assert.ok(check.ok);
+  const dllData = new Map([
+    ["dxgi.dll", pattern(1100, 8)],
+    ["UndauntedInternalServer.dll", pattern(2100, 9)],
+  ]);
+  const dlls = [...dllData].map(([name, d]) => ({ name, sha256: sha256(d), size: d.length, url: `https://raw.example.invalid/${name}` }));
+  const fetched: string[] = [];
+  const revived = new FakeServer({ name: "Revived Fridays", registration: "OPEN", revived: { manifest: raw, files, regions: { region: "main", probes: [] } } });
+  const port = await revived.start();
+  const root = path.join(temp("rr-ctl-144-"), "Game");
+  try {
+    const hx = await harness(async () => null, {
+      revivedDefaultDir: root,
+      revivedManifest: check.ok ? check.manifest : null,
+      revivedDlls: dlls,
+      revivedDllFetch: async (url) => {
+        fetched.push(url);
+        return dllData.get(url.split("/").pop()!)!;
+      },
+    });
+    await hx.c.init();
+    const invite = formatInvite({ game: "revived", mode: "private", host: "127.0.0.1", port, fp: null, code: "OPEN-ANYONE", name: "Revived Fridays", share: null });
+    assert.ok(invite.startsWith("dauntless-revived://"));
+    assert.deepEqual(await hx.c.submitInvite(invite), { ok: true });
+    assert.equal(hx.last().server?.game, "revived");
+    assert.deepEqual(await hx.c.register("Wanderer"), { ok: true, username: "Wanderer" });
+    assert.ok(revived.seen.some((r) => r.path === "/undaunted/api/Register"), "their API, not ours");
+    let s = hx.last();
+    assert.equal(s.phase, "locate");
+    assert.equal(s.revived?.problem, "not_set");
+    assert.equal(s.revived?.root, root);
+
+    // Install: everything downloaded from the server (with their key header), checked, the DLLs added.
+    assert.deepEqual(await hx.c.installRevived("install"), { ok: true });
+    for (const [rel, data] of files) assert.deepEqual(readFileSync(path.join(root, ...rel.split("/"))), data);
+    const win64 = path.join(root, "Archon", "Binaries", "Win64");
+    for (const [name, data] of dllData) assert.deepEqual(readFileSync(path.join(win64, name)), data);
+    assert.deepEqual(fetched.sort(), dlls.map((d) => d.url).sort());
+    assert.ok(revived.seen.some((r) => r.path.startsWith("/content/v1/files/") && r.key !== undefined && r.status === 200));
+    s = hx.last();
+    assert.equal(s.phase, "ready");
+    assert.equal(s.notice, "install_done");
+
+    // PLAY: private mode connects straight to the host; the server address comes first.
+    assert.deepEqual(await hx.c.play(), { ok: true });
+    const run = hx.spawns[hx.spawns.length - 1];
+    assert.equal(run.exe, path.join(win64, "Dauntless-Win64-Shipping.exe"));
+    assert.equal(run.args[0], `127.0.0.1:${port}`);
+    assert.ok(run.args[1].startsWith("-AUTH_PASSWORD=RRK_") || run.args[1].startsWith("-AUTH_PASSWORD="));
+    assert.ok(run.args.includes("-NoEAC") && run.args.includes("-AUTH_TYPE=exchangecode"));
+    assert.equal(run.env?.REFORGED_BACKEND_URL, undefined, "none of the 1.14.7 runtime's environment");
+    assert.ok(revived.seen.some((r) => r.path === "/undaunted/api/HuntRegion" && r.status === 200));
+    const engineIni = readFileSync(path.join(hx.configDir, "Engine.ini"), "latin1");
+    assert.match(engineIni, /r\.Streaming\.PoolSize=3000/);
+    assert.match(engineIni, /ServerAddr="ws:\/\/127\.0\.0\.1"\r\nServerPort=61099/);
+    assert.equal(hx.last().running.relayPort, null, "no relay in private mode");
+    hx.child()!.emit("exit", 0);
+    await waitFor(() => revived.seen.some((r) => r.path === "/undaunted/api/PlayingEnded"));
+
+    // Another game's folder, or one with other files, is never chosen for 1.4.4.
+    assert.deepEqual(await hx.c.useRevivedPath(fakeGame()), { ok: false, error: { code: "folder_other_game" } });
+    const junk = temp("rr-ctl-junk-");
+    writeFileSync(path.join(junk, "notes.txt"), "mine");
+    assert.deepEqual(await hx.c.useRevivedPath(junk), { ok: false, error: { code: "folder_not_empty" } });
+    assert.equal(hx.last().revived?.root, root);
+
+    // A damaged file: CHECK finds it and fetches it again.
+    writeFileSync(path.join(root, "Engine", "Binaries", "ThirdParty", "x.txt"), "hellO");
+    assert.deepEqual(await hx.c.installRevived("repair"), { ok: true });
+    assert.equal(readFileSync(path.join(root, "Engine", "Binaries", "ThirdParty", "x.txt"), "utf8"), "hello");
+    assert.equal(hx.last().notice, "repair_done");
+    await hx.c.shutdown();
+  } finally {
+    await revived.stop();
+  }
 });

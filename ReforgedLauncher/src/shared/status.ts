@@ -47,6 +47,9 @@ export interface ServerStatus {
   game: StatusGame | null;
   gameData: GameDataKind;
   chat: boolean;
+  // Dauntless Revived servers in private mode: the port of the content server the 1.4.4 game is
+  // downloaded from (public mode: behind the gateway). Null when the server names none.
+  contentPort: number | null;
   // The server hid who is online (playersOnline 0, no players, no instances): its answer to a
   // launcher without an account key there, or with one it did not accept.
   limited: boolean;
@@ -162,6 +165,7 @@ export function parseServerStatus(raw: unknown): ServerStatus | null {
     game: cleanGame(raw.game),
     gameData: GAME_DATA.includes(raw.gameData as GameDataKind) ? (raw.gameData as GameDataKind) : "unknown",
     chat: raw.chat === true,
+    contentPort: ((p) => (p !== null && p >= 1 ? p : null))(cleanInt(raw.contentPort, 0, 65535)),
     // Only an explicit true: an older server without the field lists everyone.
     limited: raw.limited === true,
   };

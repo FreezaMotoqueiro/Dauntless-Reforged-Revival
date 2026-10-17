@@ -27,6 +27,12 @@ Players: see [docs/players.md](../docs/players.md). Hosts: see [docs/hosting.md]
    command line (`-AUTH_TYPE=exchangecode -AUTH_PASSWORD=<key> ...`) and
    `REFORGED_BACKEND_URL=http://127.0.0.1:61100` for the runtime.
 
+**Dauntless Revived servers** (`dauntless-revived://` invites, Dauntless 1.4.4) are played the way
+Dauntless Revived's launcher 0.1.35 plays them (`src/main/revived/`): their `/undaunted/api`, the 1.4.4
+game downloaded from the server's content server and checked against the built-in list of files, their
+two client DLLs (downloaded from that release, checked by SHA-256) and their command line. See
+[docs/players.md](../docs/players.md#dauntless-revived-servers-dauntless-144).
+
 The **Host** page (Settings > Advanced > Host tools) does a host's work without a terminal, in four
 tabs, in the order a new host goes through them: **Requirements** (what this PC needs, detected, with
 downloads and install steps), **Build** (the SDK with Dumper-7, the runtime, CatalogExporter,
@@ -86,6 +92,7 @@ A release can also be published by hand, and then builds the launcher and attach
 | `src/main/hostapi.ts`, `runtime-files.ts` | server API calls and the runtime install |
 | `src/main/game-folder.ts`, `launch.ts`, `engineini.ts` | finding, configuring and starting the game |
 | `src/main/hostkit.ts`, `injector.ts` | the Host page's checks and actions |
+| `src/main/revived/` | Dauntless 1.4.4 for Dauntless Revived servers, as their launcher 0.1.35 plays it |
 | `src/main/hostserver.ts`, `requirements.ts` | the host kit's commands and the server run from the Host page; the Requirements tab's checks |
 | `src/shared/` | code shared with the page: types, invite parser, text (`i18n.ts`), UI model |
 | `src/renderer/` | the page: plain TypeScript and CSS, Dauntless Revived's design |

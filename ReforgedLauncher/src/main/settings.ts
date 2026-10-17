@@ -2,7 +2,7 @@
 
 import { promises as fsp, readFileSync } from "node:fs";
 import path from "node:path";
-import { isPrivateModeHost, isValidFingerprint, isValidHost, isValidInviteCode, isValidShareUrl, cleanServerName, type ServerMode } from "../shared/invite";
+import { isPrivateModeHost, isValidFingerprint, isValidHost, isValidInviteCode, isValidShareUrl, cleanServerName, type GameEdition, type ServerMode } from "../shared/invite";
 import { isValidUsername } from "../shared/username";
 import {
   DEFAULT_GRAPHICS,
@@ -17,6 +17,7 @@ import {
 } from "../shared/types";
 
 export interface StoredServer {
+  game: GameEdition; // "revived": a Dauntless Revived server (Dauntless 1.4.4); older settings have none: "reforged"
   mode: ServerMode;
   host: string;
   port: number;
@@ -31,6 +32,8 @@ export interface StoredSettings {
   server: StoredServer | null;
   savedServers: StoredServer[]; // servers joined before, to switch back without the invite
   gameRoot: string | null; // the "Dauntless" folder (the one that holds Archon\)
+  revivedRoot: string | null; // Dauntless 1.4.4, for Dauntless Revived servers: the folder that holds Archon\
+  revivedVerified: string | null; // the 1.4.4 folder whose every file was last checked against the manifest
   graphics: GraphicsPreset;
   windowed: boolean;
   streamerMode: boolean; // hide addresses, fingerprints, paths and player names on screen
@@ -52,6 +55,8 @@ export function defaultSettings(language: Language): StoredSettings {
     server: null,
     savedServers: [],
     gameRoot: null,
+    revivedRoot: null,
+    revivedVerified: null,
     graphics: DEFAULT_GRAPHICS,
     windowed: false,
     streamerMode: false,
@@ -97,6 +102,7 @@ function sanitizeServer(sv: unknown): StoredServer | null {
   const fpOk = mode === "private" || isValidFingerprint(sv.fp);
   if (!hostOk || !portOk || !fpOk || !name) return null;
   return {
+    game: sv.game === "revived" ? "revived" : "reforged",
     mode,
     host: sv.host as string,
     port: sv.port as number,
@@ -131,6 +137,8 @@ export function sanitizeSettings(raw: unknown, language: Language, platform: Nod
     s.savedServers = s.savedServers.slice(0, MAX_SAVED_SERVERS);
   }
   s.gameRoot = validDir(raw.gameRoot, platform);
+  s.revivedRoot = validDir(raw.revivedRoot, platform);
+  s.revivedVerified = validDir(raw.revivedVerified, platform);
   if (GRAPHICS_PRESETS.includes(raw.graphics as GraphicsPreset)) s.graphics = raw.graphics as GraphicsPreset;
   s.windowed = raw.windowed === true;
   s.streamerMode = raw.streamerMode === true;

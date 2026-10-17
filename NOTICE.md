@@ -31,6 +31,15 @@ Undaunted or any other project named here, and none of them endorses it.
     Paradox backend and its `/__origin/` paths, a plain-HTTP private mode).
   - `ReforgedContent/` is based on `UndauntedContent/` (the key check, limits, news and art pack;
     it serves the game runtime instead of game files).
+  - `ReforgedLauncher/src/main/revived/` plays Dauntless Revived's own servers (Dauntless 1.4.4) the
+    way their launcher 0.1.35 does ([tag `launcher-v0.1.35`](https://github.com/mixutin/dauntless-revived/releases/tag/launcher-v0.1.35),
+    commit `0e2b1e6730b9f14f1020d7c903a6955464fa4586`). Taken over from that release: the game
+    manifest check and the list itself (`UndauntedContent/data/dauntless-1.4.4.json`, copied as
+    `dauntless-1.4.4.json`), the file checks, the game downloader, the hunt-region choice, the client
+    DLL pins and install, and the 1.4.4 command line and config lines. Its two client DLLs
+    (`dxgi.dll`, `UndauntedInternalServer.dll`, built from Undaunted's sources) are not in this
+    repository: the launcher downloads them from that commit and keeps them only if their SHA-256 is
+    the pinned one.
   - Files and functions taken over say so in their comments.
 
 ### Mystic Paradox
