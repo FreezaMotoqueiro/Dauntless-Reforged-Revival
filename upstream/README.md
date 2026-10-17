@@ -223,6 +223,25 @@ channel, the cull distance the graph uses, and the frame the channel is due to c
 `[WeaponGap]` item lines also gain the cull distance and attachment. `DISABLE_SERVER_WEAPON_GAP_LOG.flag` next
 to the game exe turns the server lines off. It changes nothing in the game.
 
+### 0015: a hammer reaches the player in a hunt
+
+`ParadoxRuntime/dllmain.cpp`, server side. 0014's `[ServerWeaponGap]` lines from a hunt on a new account
+(17 Oct, `WP_IH_BEGINNER`) show the hammer equipped and attached to the character, 150 units from it, while
+that player's connection has no actor channel for it and has never replicated it, for the whole 30 seconds;
+the armour and lantern, with the same cull distance, replicate every frame. The replication graph files a
+dormant actor in the spatial grid as a static actor: `AddNetworkActor` sets `bWantsToBeDormant` from
+`NetDormancy > DORM_Awake`, and the grid's `AddActor_Dormancy` then picks the actor's cells once, from where it
+is at that moment, and never updates them. A weapon is registered before it is attached to its character, so a
+dormant weapon stays filed at its spawn point and is only sent to a player whose view is within its cull
+distance of that point; on a hunt map the player starts far from it. The runtime now files a weapon on the
+spatial route as awake (`NetDormancy` `DORM_Awake`, `bWantsToBeDormant` 0, what the engine writes for an actor
+that is awake from the start), so the grid moves it with the character. As a second net, each player's current
+weapon that is still dormant and has never been sent to that player is woken with the engine's
+`AActor::SetNetDormancy(DORM_Awake)`, which makes the grid move it itself. The server log gains a `[WeaponRoute]`
+line per weapon registered (dormancy, flags, location, the route taken) and a `[WeaponDormancyWake]` line per
+weapon woken, and the `[ServerWeaponGap]` item lines gain the dormancy and route flags.
+`DISABLE_WEAPON_DORMANCY_FIX.flag` next to the game exe turns both changes off.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
