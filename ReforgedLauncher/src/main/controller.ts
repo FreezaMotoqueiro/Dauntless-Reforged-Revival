@@ -73,7 +73,7 @@ import { missingVcRuntime } from "./system";
 import { fixedLinkUrl, isAllowedExternalUrl } from "./links";
 import { describeError, log } from "./log";
 import { Relay, RelayError } from "./relay";
-import { DEFAULT_RELAY_PORT, EXE_NAME, EXE_RELATIVE_PATH, PINNED_EXE_SHA256, PROJECT_URL, RUNTIME_FILE_NAMES, STATUS_POLL_MS, WIN64_RELATIVE_DIR } from "./constants";
+import { DEFAULT_RELAY_PORT, EXE_NAME, EXE_RELATIVE_PATH, PINNED_EXE_SHA256, PROJECT_FOLDER_NAME, PROJECT_GIT_URL, PROJECT_URL, RUNTIME_FILE_NAMES, STATUS_POLL_MS, WIN64_RELATIVE_DIR } from "./constants";
 import {
   BACKEND_GAME_DATA,
   DIRECTOR_GAME_DATA,
@@ -98,7 +98,7 @@ import { HostKitError, HostServer, type HostServerOptions } from "./hostserver";
 import { detectRequirements, findGit } from "./requirements";
 import type { InjectEvent, InjectOptions } from "./injector";
 
-export type FolderPurpose = "game" | "runtime" | "workspace";
+export type FolderPurpose = "game" | "runtime" | "workspace" | "sdk";
 
 export interface Platform {
   userDataDir: string;
@@ -120,6 +120,7 @@ export interface Platform {
   // The executable's pinned hash (tests use a fake game).
   exePin?: string;
   dumpRoot?: string;
+  projectGitUrl?: string; // tests: a local repository in place of the project's on GitHub
   runtimeFilesExist?: (file: string) => boolean;
   chooseFolder(purpose: FolderPurpose, defaultPath: string): Promise<string | null>;
   chooseDll(defaultPath: string): Promise<string | null>;
@@ -278,6 +279,8 @@ export class Controller {
     if (this.s.server) void this.connect();
     // A game found but never checked: check it now (the executable is hashed once per change).
     if (this.gameInfo.problem === "unverified") void this.verifyGame();
+    // A host's project folder: found or downloaded beside the game (Host tools on).
+    void this.ensureHostWorkspace({ auto: true });
   }
 
   private computePhase(): Phase {
@@ -1306,19 +1309,24 @@ export class Controller {
   // ------------------------------------------------------------------ settings / links
 
   async setSettings(patch: unknown): Promise<Settings> {
+    let turnedOn = false;
     if (typeof patch === "object" && patch !== null) {
       const p = patch as Record<string, unknown>;
       await this.settings.update((s) => {
         if (GRAPHICS_PRESETS.includes(p.graphics as GraphicsPreset)) s.graphics = p.graphics as GraphicsPreset;
         if (typeof p.windowed === "boolean") s.windowed = p.windowed;
         if (typeof p.streamerMode === "boolean") s.streamerMode = p.streamerMode;
-        if (typeof p.hostTools === "boolean") s.hostTools = p.hostTools;
+        if (typeof p.hostTools === "boolean") {
+          if (p.hostTools && !s.hostTools) turnedOn = true;
+          s.hostTools = p.hostTools;
+        }
         if (LANGUAGES.includes(p.language as Language)) s.language = p.language as Language;
         if (GAME_LANGUAGES.includes(p.gameLanguage as GameLanguage)) s.gameLanguage = p.gameLanguage as GameLanguage;
         if (RUNTIME_PROFILES.includes(p.runtimeProfile as RuntimeProfile)) s.runtimeProfile = p.runtimeProfile as RuntimeProfile;
       });
     }
     this.publish();
+    if (turnedOn) void this.ensureHostWorkspace({ auto: true });
     return this.currentSettings();
   }
 
@@ -1371,7 +1379,7 @@ export class Controller {
     }
     const win64 = this.win64Dir();
     const exports = { ...kit.exports, inGame: win64 !== null && existsSync(path.join(win64, "Items_Analysis")) };
-    return { ...kit, exports, requirements: list, dumperDll: this.s.dumperDll, job: this.hostJob, update: this.hostUpdateResult };
+    return { ...kit, exports, requirements: list, dumperDll: this.s.dumperDll, job: this.hostJob, update: this.hostUpdateResult, projectTarget: this.projectTarget() };
   }
 
   // ------------------------------------------------------------------ the Host page's server
@@ -1533,7 +1541,7 @@ export class Controller {
     const env = this.p.env ?? process.env;
     const git = this.hostPlatform === "win32" ? findGit(env) : "git";
     if (!git) return this.finishJob("update", false, "git_missing", logFile);
-    const run = (args: string[]) => this.server.program(git, args, ws, "update");
+    const run = (args: string[]) => this.server.program(git, args, ws, logFile);
     const rev = async (ref: string) => {
       const r = await run(["rev-parse", ref]);
       return r.code === 0 ? (r.lines.find((l) => /^[0-9a-f]{40}$/.test(l.trim()))?.trim() ?? null) : null;
@@ -1619,6 +1627,66 @@ export class Controller {
     }
   }
 
+  // Where the project folder goes when it is downloaded: beside the game's folder, in the folder that holds
+  // it (D:\Games\D1147\Dauntless -> D:\Games\D1147\Reforged). Null without a game folder.
+  private projectTarget(): string | null {
+    const root = this.gameInfo.root;
+    if (!root || this.gameInfo.problem === "not_found" || this.gameInfo.problem === "not_set") return null;
+    const parent = path.dirname(root);
+    return parent === root ? null : path.join(parent, PROJECT_FOLDER_NAME);
+  }
+
+  // The project folder a host's server runs from (this repository). With Host tools on and none chosen
+  // yet, the one beside the game is taken when it is there, and otherwise cloned there with git (once per
+  // start: auto never shows an error, the Host page has a button that does it again and says why).
+  async ensureHostWorkspace(opts: { auto?: boolean } = {}): Promise<ActionResult> {
+    if (opts.auto && !this.s.hostTools) return OK;
+    if (this.workspaceOrNull()) return OK;
+    if (this.hostJob?.state === "running") return err("busy");
+    const target = this.projectTarget();
+    if (!target) return opts.auto ? OK : this.fail("host_failed", "project_no_game");
+    const use = async (): Promise<ActionResult> => {
+      await this.settings.update((s) => {
+        s.hostWorkspace = target;
+      });
+      log.info(`host: project folder ${target}`);
+      await this.emitHostKit();
+      this.publish();
+      return OK;
+    };
+    if (existsSync(path.join(target, "ReforgedHost", "package.json"))) return use();
+    // Never into a folder that already holds something else.
+    let taken = false;
+    try {
+      taken = existsSync(target) && (await fsp.readdir(target)).length > 0;
+    } catch {
+      taken = true;
+    }
+    if (taken) return opts.auto ? OK : this.fail("host_failed", "project_folder_taken");
+    const git = this.hostPlatform === "win32" ? findGit(this.p.env ?? process.env) : "git";
+    if (!git) return opts.auto ? OK : this.fail("host_failed", "git_missing");
+    const logFile = path.join(this.p.userDataDir, "logs", "host-download.log");
+    this.setJob({ kind: "download_project", state: "running", message: target, logFile });
+    try {
+      const r = await this.server.program(git, ["clone", "--quiet", this.p.projectGitUrl ?? PROJECT_GIT_URL, target], path.dirname(target), logFile);
+      if (r.code !== 0 || !existsSync(path.join(target, "ReforgedHost", "package.json"))) {
+        log.warn(`host: project not downloaded to ${target} (git exit ${r.code})`);
+        const failed = { kind: "download_project" as const, state: "failed" as const, message: r.lines.filter(Boolean).pop() ?? `exit ${r.code}`, logFile };
+        if (opts.auto) {
+          this.setJob(failed);
+          return OK;
+        }
+        return this.finishJob("download_project", false, failed.message, logFile);
+      }
+      await use();
+      return this.finishJob("download_project", true, target, logFile);
+    } catch (e) {
+      this.setJob(null);
+      log.error(`host: project download failed: ${describeError(e)}`);
+      return opts.auto ? OK : this.fail("host_failed", describeError(e));
+    }
+  }
+
   async hostChooseWorkspace(): Promise<ActionResult> {
     const picked = await this.p.chooseFolder("workspace", this.s.hostWorkspace ?? "");
     if (!picked) return err("cancelled");
@@ -1696,6 +1764,49 @@ export class Controller {
     return this.fail("host_failed", message ?? kind);
   }
 
+  // Mystic Paradox, downloaded and patched in .workspace (ReforgedHost's npm run upstream, setup's first
+  // step): the SDK, the loader and the game data go into it, so those steps do not wait for the server's setup.
+  private async ensureUpstream(ws: string): Promise<void> {
+    const w = workspacePaths(ws);
+    if (existsSync(path.join(w.runtimeSource, "dllmain.cpp"))) return;
+    this.setJob({ kind: "upstream", state: "running", message: null, logFile: path.join(ws, ".workspace", "logs", "launcher-upstream.log") });
+    const r = await this.server.command(ws, ["upstream"], "upstream");
+    if (r.code !== 0) throw new Error(r.failure ?? "upstream");
+    // A project from before npm run upstream answers with its help text: its setup does it.
+    if (!existsSync(path.join(w.runtimeSource, "dllmain.cpp"))) throw new HostKitError("upstream_old");
+    log.info("host: Mystic Paradox downloaded and patched for the Build tab");
+  }
+
+  private async importSdkFrom(w: ReturnType<typeof workspacePaths>, dir: string, name: string): Promise<ActionResult> {
+    this.setJob({ kind: "import_sdk", state: "running", message: name, logFile: null });
+    const n = await importSdk(dir, w.runtimeSource);
+    log.info(`host: imported ${n} SDK files from ${name}`);
+    return this.finishJob("import_sdk", true, `${n} files`);
+  }
+
+  // A Dumper-7 output that is not under C:\Dumper-7 (another output folder in its ini, or copied from
+  // another PC): the CppSDK folder itself, or the folder that holds it.
+  async hostImportSdkFolder(): Promise<ActionResult> {
+    if (this.hostJob?.state === "running") return err("busy");
+    const ws = this.workspaceOrNull();
+    if (!ws) return this.fail("host_failed", "workspace");
+    const picked = await this.p.chooseFolder("sdk", this.p.dumpRoot ?? DUMPER_OUTPUT_ROOT);
+    if (!picked) return err("cancelled");
+    const dir = existsSync(path.join(picked, "SDK.hpp")) ? picked : existsSync(path.join(picked, "CppSDK", "SDK.hpp")) ? path.join(picked, "CppSDK") : null;
+    if (!dir) return this.fail("host_failed", "sdk_folder");
+    try {
+      await this.ensureUpstream(ws);
+      return await this.importSdkFrom(workspacePaths(ws), dir, path.basename(path.dirname(dir)) || path.basename(dir));
+    } catch (e) {
+      if (e instanceof HostKitError) {
+        this.setJob(null);
+        return this.hostKitFailure(e);
+      }
+      log.error(`host: SDK import failed: ${describeError(e)}`);
+      return this.finishJob("import_sdk", false, describeError(e));
+    }
+  }
+
   async hostAction(action: HostAction): Promise<ActionResult> {
     if (this.hostJob?.state === "running") return err("busy");
     const ws = this.s.hostWorkspace;
@@ -1703,6 +1814,7 @@ export class Controller {
     if (needsWorkspace && !ws) return this.fail("host_failed", "workspace");
     const w = ws ? workspacePaths(ws) : null;
     try {
+      if (ws && NEEDS_UPSTREAM.has(action)) await this.ensureUpstream(ws);
       switch (action) {
         case "inject_dumper":
           return await this.startDump();
@@ -1711,10 +1823,7 @@ export class Controller {
         case "import_sdk": {
           const dumps = await findDumps(this.p.dumpRoot ?? DUMPER_OUTPUT_ROOT);
           if (dumps.length === 0) return this.fail("host_failed", "no_dump");
-          this.setJob({ kind: "import_sdk", state: "running", message: dumps[0].name, logFile: null });
-          const n = await importSdk(dumps[0].dir, w!.runtimeSource);
-          log.info(`host: imported ${n} SDK files from ${dumps[0].name}`);
-          return this.finishJob("import_sdk", true, `${n} files`);
+          return await this.importSdkFrom(w!, dumps[0].dir, dumps[0].name);
         }
         case "build_runtime":
         case "build_exporter": {
@@ -1862,3 +1971,6 @@ function updateFailure(json: Record<string, unknown> | null, failure: string | n
   const code = typeof json?.error === "string" && /^[a-z_]{1,40}$/.test(json.error) ? json.error : null;
   return code ? `update_${code}` : failure ?? "update";
 }
+
+// The Host page's steps that work in the downloaded Mystic Paradox (ensureUpstream).
+const NEEDS_UPSTREAM: ReadonlySet<HostAction> = new Set<HostAction>(["import_sdk", "build_loader", "synthetic_data", "generate_gamedata"]);

@@ -28,6 +28,8 @@
     "preset": "node dist/cli.js preset",
     "premultipliers": "npm run build --silent",
     "multipliers": "node dist/cli.js multipliers",
+    "preupstream": "npm run build --silent",
+    "upstream": "node dist/cli.js upstream",
     "preupdate": "npm run build --silent",
     "update": "node dist/cli.js update",
     "test": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && node --test --test-concurrency=1 \"build/ReforgedHost/test/*.test.js\""

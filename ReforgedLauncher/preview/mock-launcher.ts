@@ -115,8 +115,8 @@ const news: NewsItem[] = [
 ];
 
 const hostKit: HostKit = {
-  workspace: "C:\\Users\\host\\Dauntless-Reforged-Revival",
-  workspaceOk: true,
+  workspace: scene === "host-noproject" ? null : "C:\\Users\\host\\Dauntless-Reforged-Revival",
+  workspaceOk: scene !== "host-noproject",
   upstream: { present: scene !== "host-empty", patched: scene !== "host-empty" },
   sdk: { present: scene !== "host-empty", functionFiles: scene !== "host-empty" ? 412 : 0 },
   dumps: [{ dir: "C:\\Dumper-7\\4.26.2-647472-Dauntless\\CppSDK", name: "4.26.2-647472-Dauntless", modified: new Date(now - 3600_000).toISOString() }],
@@ -137,6 +137,7 @@ const hostKit: HostKit = {
     { id: "dumper7", state: "ok", detail: "Dumper-7.dll", problem: null },
     { id: "vc_redist", state: "ok", detail: null, problem: null },
   ],
+  projectTarget: "D:\\Games\\D1147\\Reforged",
   update: scene === "host-running" ? { state: "updated", head: "9377a20c41f6", files: 12, runtimeChanged: true } : null,
   job: scene === "host-empty" ? null : { kind: "build_loader", state: "done", message: "Finished `release` profile [optimized] target(s) in 41.2s", logFile: "C:\\Users\\host\\Dauntless-Reforged-Revival\\.workspace\\logs\\build_loader.log" },
 };
@@ -204,6 +205,8 @@ const mock: LauncherApi = {
   hostChooseWorkspace: ok,
   hostChooseDumper: ok,
   hostImportGameData: ok,
+  hostImportSdkFolder: ok,
+  hostDownloadProject: ok,
   hostAction: ok,
   hostOpen: ok,
   hostServerGet: async () => hostServer,

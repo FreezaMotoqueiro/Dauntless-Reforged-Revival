@@ -32,7 +32,8 @@ tabs, in the order a new host goes through them: **Requirements** (what this PC 
 downloads and install steps), **Build** (the SDK with Dumper-7, the runtime, CatalogExporter,
 publishing the runtime), **Game data** (generate it from CatalogExporter's export, save and import
 packs) and **Server** (start and stop it, create invites, the test multipliers, update the project
-from GitHub with `npm run update`, prepare it with `npm run setup`, its output). It runs ReforgedHost's commands with the
+from GitHub with `npm run update`, prepare it with `npm run setup`, its output). With Host tools on and
+no project folder chosen, it clones the project into a `Reforged` folder beside the game's folder. It runs ReforgedHost's commands with the
 host's own Node.js (`src/main/hostserver.ts`); the server stops when the launcher closes. See
 [docs/hosting.md](../docs/hosting.md) and [docs/sdk-and-game-data.md](../docs/sdk-and-game-data.md).
 

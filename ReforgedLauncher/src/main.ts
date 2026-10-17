@@ -302,6 +302,8 @@ function registerIpc(c: Controller): void {
   handle(IPC.hostChooseWorkspace, () => c.hostChooseWorkspace());
   handle(IPC.hostChooseDumper, () => c.hostChooseDumper());
   handle(IPC.hostImportGameData, () => c.hostImportGameData());
+  handle(IPC.hostImportSdkFolder, () => c.hostImportSdkFolder());
+  handle(IPC.hostDownloadProject, () => c.ensureHostWorkspace());
   handle(IPC.hostAction, (_e, action) => {
     const a = hostAction(action);
     return a === null ? { ok: false, error: { code: "unknown" } } : c.hostAction(a);
@@ -376,7 +378,7 @@ function makePlatform(): Platform {
     },
     chooseFolder: async (purpose, defaultPath) => {
       if (!mainWindow) return null;
-      const title = purpose === "game" ? "dialog_game_folder" : purpose === "runtime" ? "dialog_runtime_folder" : "dialog_workspace_folder";
+      const title = purpose === "game" ? "dialog_game_folder" : purpose === "runtime" ? "dialog_runtime_folder" : purpose === "sdk" ? "dialog_sdk_folder" : "dialog_workspace_folder";
       const r = await dialog.showOpenDialog(mainWindow, {
         title: translate(lang(), title),
         defaultPath: defaultPath && existsSync(defaultPath) ? defaultPath : undefined,

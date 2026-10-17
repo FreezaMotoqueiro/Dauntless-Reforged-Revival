@@ -266,6 +266,7 @@ export interface HostKit {
   requirements: Requirement[];
   job: HostJob | null;
   update: HostUpdateView | null; // what the last "Update" found, since the launcher started
+  projectTarget: string | null; // where the project folder is downloaded to: beside the game's folder
 }
 
 // XP and reward multipliers for a private test server (ReforgedHost's npm run multipliers): 1 to 100 each.
@@ -320,7 +321,9 @@ export type HostJobKind =
   | "export_gamedata"
   | "create_invite"
   | "update"
-  | "multipliers";
+  | "multipliers"
+  | "upstream"
+  | "download_project";
 
 export interface HostJob {
   kind: HostJobKind;
@@ -399,6 +402,8 @@ export const IPC = {
   hostChooseWorkspace: "rr:host-choose-workspace",
   hostChooseDumper: "rr:host-choose-dumper",
   hostImportGameData: "rr:host-import-gamedata",
+  hostImportSdkFolder: "rr:host-import-sdk-folder",
+  hostDownloadProject: "rr:host-download-project",
   hostAction: "rr:host-action",
   hostOpen: "rr:host-open",
   hostServerGet: "rr:host-server-get",

@@ -313,10 +313,10 @@ export class HostServer {
   }
 
   // Another program (git) run the same way, its output on the page and in a log file.
-  async program(file: string, args: string[], cwd: string, logName: string): Promise<{ code: number; lines: string[] }> {
+  async program(file: string, args: string[], cwd: string, logFile: string): Promise<{ code: number; lines: string[] }> {
     const own: string[] = [];
     const env: NodeJS.ProcessEnv = { ...this.o.env, GIT_TERMINAL_PROMPT: "0" };
-    const { done } = this.exec(file, args, cwd, env, path.join(cwd, ".workspace", "logs", `launcher-${logName}.log`), (line) => {
+    const { done } = this.exec(file, args, cwd, env, logFile, (line) => {
       own.push(cleanLine(line));
       return true;
     });

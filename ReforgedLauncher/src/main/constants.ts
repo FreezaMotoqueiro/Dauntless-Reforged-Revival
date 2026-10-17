@@ -4,6 +4,9 @@
 export const APP_ID = "io.github.freezamotoqueiro.dauntlessreforgedrevival";
 export const SQUIRREL_NAME = "ReforgedRevivalLauncher";
 export const PROJECT_URL = "https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival";
+// A host's project folder is a git clone of it, named so, beside the game's folder (Host page).
+export const PROJECT_GIT_URL = `${PROJECT_URL}.git`;
+export const PROJECT_FOLDER_NAME = "Reforged";
 export const PROJECT_LICENSE_URL = `${PROJECT_URL}/blob/main/LICENSE.txt`;
 export const PROJECT_ISSUES_URL = `${PROJECT_URL}/issues`;
 export const PROJECT_DOCS_PLAYERS_URL = `${PROJECT_URL}/blob/main/docs/players.md`;

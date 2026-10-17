@@ -1340,8 +1340,15 @@ function workspaceCard(k: HostKit, steps: ReturnType<typeof hostSteps>): HTMLEle
     steps.workspace === "done" ? t("host_ws_ready") : k.workspaceOk ? t("host_ws_unpatched") : t("host_ws_missing"),
     h("p", { class: "card-text" }, t("host_ws_text")),
     k.workspace ? h("p", { class: "small-print selectable" }, secret(k.workspace, "host-ws")) : null,
-    h("div", { class: "card-row" }, button(t("host_ws_choose"), () => void api.hostChooseWorkspace().then(report).then(hostRefresh), { cls: k.workspaceOk ? "" : "btn-primary", icon: "folder", fk: "host-ws" }), k.workspace ? linkButton(t("host_open"), () => hostOpen("workspace"), { icon: "folder", fk: "host-ws-open" }) : null),
-    !k.workspaceOk ? cmd("git clone https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival") : null,
+    // Without one, the launcher downloads it beside the game (it does on its own when Host tools turn on).
+    !k.workspaceOk ? h("p", { class: "small-print" }, k.projectTarget ? t("host_ws_download_to", { folder: k.projectTarget }) : t("host_ws_download_no_game")) : null,
+    h(
+      "div",
+      { class: "card-row" },
+      !k.workspaceOk ? button(t("host_ws_download"), () => void api.hostDownloadProject().then(report).then(hostRefresh), { cls: "btn-primary", icon: "download", fk: "host-ws-download", disabled: k.job?.state === "running" || !k.projectTarget }) : null,
+      button(t("host_ws_choose"), () => void api.hostChooseWorkspace().then(report).then(hostRefresh), { icon: "folder", fk: "host-ws" }),
+      k.workspace ? linkButton(t("host_open"), () => hostOpen("workspace"), { icon: "folder", fk: "host-ws-open" }) : null,
+    ),
   );
 }
 
@@ -1563,7 +1570,7 @@ function gameDataTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSt
       h("p", { class: "card-text" }, t("hgd_intro")),
       h("div", { class: "card-row" }, chip(gd.backend === "real" ? "ok" : gd.backend === "synthetic" ? "warn" : "todo", t("host_data_backend", { state: tk(`gamedata_kind_${gd.backend}`) })), chip(gd.director === "real" ? "ok" : gd.director === "synthetic" ? "warn" : "todo", t("host_data_director", { state: tk(`gamedata_kind_${gd.director}`) })), chip(hasExport ? "ok" : "todo", hasExport ? t("hgd_export_found") : t("hgd_export_none"))),
       h("p", { class: "card-text" }, t("hgd_generate_text")),
-      h("div", { class: "card-row" }, button(t("hgd_generate"), () => hostAct("generate_gamedata"), { cls: "btn-primary btn-big", icon: "database", fk: "host-generate", disabled: running || !k.workspaceOk || !k.upstream.present || !hasExport })),
+      h("div", { class: "card-row" }, button(t("hgd_generate"), () => hostAct("generate_gamedata"), { cls: "btn-primary btn-big", icon: "database", fk: "host-generate", disabled: running || !k.workspaceOk || !hasExport })),
       done && k.job?.message === "restart" ? h("p", { class: "small-print warn-text" }, t("hgd_restart")) : null,
     ),
     card(
@@ -1594,7 +1601,7 @@ function gameDataTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSt
       "",
       h("h2", { class: "card-title" }, t("hgd_example_title")),
       h("p", { class: "card-text" }, t("host_data_step_synthetic")),
-      h("div", { class: "card-row" }, button(t("host_data_synthetic"), () => hostAct("synthetic_data"), { icon: "database", fk: "host-synthetic", disabled: running || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })),
+      h("div", { class: "card-row" }, button(t("host_data_synthetic"), () => hostAct("synthetic_data"), { icon: "database", fk: "host-synthetic", disabled: running || !k.workspaceOk }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })),
     ),
   ];
 }
@@ -1625,8 +1632,15 @@ function buildTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSteps
             {},
             h("div", {}, t("host_sdk_step_import")),
             k.dumps.length ? h("p", { class: "small-print" }, t("host_sdk_found", { name: k.dumps[0].name, date: formatDate(k.dumps[0].modified, state.lang) })) : h("p", { class: "small-print" }, t("host_sdk_none")),
-            h("div", { class: "card-row" }, button(t("host_sdk_import"), () => hostAct("import_sdk"), { icon: "download", fk: "host-import", disabled: running || !k.dumps.length || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("dumps"), { icon: "folder", fk: "host-dumps-open" })),
-            k.upstream.present ? null : h("p", { class: "small-print" }, t("host_sdk_need_setup")),
+            // Mystic Paradox is downloaded first when the server is not set up yet: only a dump and the project folder are needed.
+            h(
+              "div",
+              { class: "card-row" },
+              button(t("host_sdk_import"), () => hostAct("import_sdk"), { cls: k.dumps.length && !k.sdk.present ? "btn-primary" : "", icon: "download", fk: "host-import", disabled: running || !k.dumps.length || !k.workspaceOk }),
+              linkButton(t("host_sdk_choose_folder"), () => void api.hostImportSdkFolder().then(report).then(hostRefresh), { icon: "folder", fk: "host-import-folder", disabled: running || !k.workspaceOk }),
+              linkButton(t("host_open"), () => hostOpen("dumps"), { icon: "folder", fk: "host-dumps-open" }),
+            ),
+            !k.workspaceOk ? h("p", { class: "small-print warn-text" }, t("host_err_workspace")) : k.upstream.present ? null : h("p", { class: "small-print" }, t("host_sdk_need_setup")),
           ),
         ),
       ),
@@ -1642,7 +1656,7 @@ function buildTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSteps
         "div",
         { class: "stack" },
         h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "MysticParadox.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.runtime ? "host_built" : "host_not_built"))), button(t("host_build_runtime"), () => hostAct("build_runtime"), { icon: "cpu", fk: "host-build-runtime", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
-        h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "winmm.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.loader ? "host_built" : "host_not_built"))), button(t("host_build_loader"), () => hostAct("build_loader"), { icon: "cpu", fk: "host-build-loader", disabled: running || !windows || !tc.cargo || !k.upstream.present })),
+        h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "winmm.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.loader ? "host_built" : "host_not_built"))), button(t("host_build_loader"), () => hostAct("build_loader"), { icon: "cpu", fk: "host-build-loader", disabled: running || !windows || !tc.cargo || !k.workspaceOk })),
         h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "CatalogExporter.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.exporter ? "host_built" : "host_not_built"))), button(t("host_build_exporter"), () => hostAct("build_exporter"), { icon: "cpu", fk: "host-build-exporter", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
       ),
       !tc.visualStudio || !tc.cargo ? h("div", { class: "card-row" }, linkButton(t("host_tab_requirements"), () => setHostTab("requirements"), { icon: "list", fk: "host-build-reqs" })) : null,

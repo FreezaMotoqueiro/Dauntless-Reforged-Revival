@@ -39,6 +39,11 @@ cd D:\Reforged\ReforgedHost
 npm install
 ```
 
+With the launcher, this happens by itself: when Host tools are turned on (and at every start while
+no project folder is chosen), it looks for a `Reforged` folder beside the game's folder and, when it is
+not there, clones the project into it with Git (a game in `D:\Games\D1147\Dauntless` gets
+`D:\Games\D1147\Reforged`). A `Reforged` folder that holds other files is never written into.
+
 ## 2. Set up the server
 
 Private (finds your Tailscale IP itself):
@@ -88,7 +93,10 @@ page (Settings > Launcher > Advanced > Host tools), choosing `D:\Reforged` as th
 
 Everything below can also be done from the launcher's Host page (Settings > Launcher > Advanced >
 Host tools), without opening a terminal. Its tabs are in the order a new host goes through them:
-Requirements, Build, Game data, Server.
+Requirements, Build, Game data, Server. Importing the SDK, building winmm.dll and the game data
+steps download Mystic Paradox first (`npm run upstream`, setup's first step) when the server is not
+set up yet, so they can be done before it; **Choose the SDK folder** imports a Dumper-7 output that is
+not under `C:\Dumper-7`.
 
 - **Requirements** tab: what this PC needs (Git, Node.js, MongoDB, Tailscale, Visual Studio, Rust,
   Dumper-7, the Visual C++ runtime), each one detected, with its download and the install steps that

@@ -9,6 +9,7 @@
 //   npm run publish-runtime
 //   npm run preset [-- --create [--generate] [--name "<name>"] | --apply [--force]]
 //   npm run multipliers [-- --xp 5 --rewards 5 | --off]   (private test servers only)
+//   npm run upstream   (only downloads and patches Mystic Paradox: what importing the SDK needs)
 //   npm run update [-- --check] [--json] [--no-setup]   (fast-forwards this checkout to GitHub, then runs setup again)
 
 import fs from "node:fs";
@@ -443,6 +444,21 @@ function multipliers(p: Paths, args: Args): void {
     if (asked) say("Restart the server (Ctrl+C, then npm run start) for the backend to use them. Its log says [TestMultiplier] ON or off.");
 }
 
+// ------------------------------------------------------------------ Mystic Paradox only
+
+// Setup's first step alone: the pinned Mystic Paradox, patched, in .workspace. Importing the SDK (and
+// building the runtime) needs only this, so a host can do those before the server is set up.
+async function upstream(p: Paths): Promise<void> {
+    if (!gitAvailable()) fail("git is needed (it downloads Mystic Paradox at the pinned commit): install Git for Windows from https://git-scm.com");
+    const pin = readPin(p.upstreamPin);
+    try {
+        const result = await ensureUpstream({ dir: p.upstream, markerFile: p.marker, pin, patchesRoot: p.patchesDir, logFile: path.join(p.logs, "upstream.log") });
+        say(`Mystic Paradox ${result === "already_ready" ? "already in place" : result === "fetched" ? "downloaded and patched" : "updated and patched (your SDK, game data and exports were kept)"}: ${pin.commit.slice(0, 12)} in ${p.upstream}`);
+    } catch (e) {
+        fail(e instanceof Error ? e.message : String(e));
+    }
+}
+
 // ------------------------------------------------------------------ updating the project
 
 const UPDATE_PROBLEMS: Record<UpdateError["code"], string> = {
@@ -679,6 +695,8 @@ async function main(): Promise<void> {
             return multipliers(p, args);
         case "update":
             return update(p, args);
+        case "upstream":
+            return upstream(p);
         default:
             say("Dauntless Reforged Revival host kit. Commands (from the ReforgedHost folder):");
             say("  npm run setup -- --mode private|public [--host <address>] --name \"<server name>\" --game \"<Dauntless 1.14.7 folder>\"");
@@ -691,6 +709,7 @@ async function main(): Promise<void> {
             say("  npm run publish-runtime");
             say("  npm run preset [-- --create [--generate] [--name \"<name>\"] | --apply [--force]]");
             say("  npm run multipliers [-- --xp 1-100 --rewards 1-100 | --off]   (private test servers; also setup's --xp-multiplier/--reward-multiplier)");
+            say("  npm run upstream   (downloads and patches Mystic Paradox only)");
             say("  npm run update [-- --check]   (compares this project with GitHub, updates it and runs setup again)");
             say("See README.md and ../docs/hosting.md.");
     }

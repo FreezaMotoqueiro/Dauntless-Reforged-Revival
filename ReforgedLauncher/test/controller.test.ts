@@ -357,6 +357,10 @@ if (a === "update --check --json") {
   console.log(JSON.stringify({ branch: "main", upstream: "origin/main", head: "bbbbbbbbbbbb", remoteHead: "bbbbbbbbbbbb", behind: 0, ahead: 0, updated: true, from: "aaaaaaaaaaaa", to: "bbbbbbbbbbbb", files: 4, runtimeChanged: true, hostKitDeps: false }));
 } else if (a === "setup") {
   console.log("setup again");
+} else if (a === "upstream") {
+  const src = path.join(ws, ".workspace", "Mystic-Paradox", "ParadoxRuntime");
+  fs.mkdirSync(src, { recursive: true });
+  fs.writeFileSync(path.join(src, "dllmain.cpp"), "int main() {}\\n");
 } else if (process.argv[2] === "multipliers") {
   const file = path.join(ws, ".workspace", "config", "host.json");
   const c = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -441,5 +445,71 @@ test("a project from before npm run update is updated with git, once", async () 
   assert.deepEqual((await hx.c.hostKit()).update, { state: "updated", head: git(dev, "rev-parse", "HEAD").slice(0, 12), files: 1, runtimeChanged: true });
   assert.equal(git(ws, "rev-parse", "HEAD"), git(dev, "rev-parse", "HEAD"));
   assert.deepEqual(readFileSync(path.join(ws, "calls.log"), "utf8").trim().split("\n"), ["setup"], "setup ran again; the host kit was not asked to update");
+  await hx.c.shutdown();
+});
+
+async function eventually(check: () => Promise<boolean>, ms = 8000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!(await check())) {
+    if (Date.now() > end) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+test("Host tools on: the project folder is downloaded beside the game and chosen; a folder with other files is left alone", async () => {
+  const remote = temp("rr-ctl-proj-");
+  git(remote, "init", "--quiet", "--bare", "--initial-branch=main");
+  const dev = temp("rr-ctl-projdev-");
+  git(dev, "clone", "--quiet", remote, ".");
+  git(dev, "checkout", "--quiet", "-b", "main");
+  mkdirSync(path.join(dev, "ReforgedHost"), { recursive: true });
+  writeFileSync(path.join(dev, "ReforgedHost", "package.json"), "{}");
+  git(dev, "add", "-A");
+  git(dev, "commit", "--quiet", "-m", "project");
+  git(dev, "push", "--quiet", "origin", "main");
+
+  const hx = await harness(async () => null, { projectGitUrl: remote, hostServer: { findNode: () => ({ node: process.execPath, npmCli: null }), probe: async () => false } });
+  await hx.c.init();
+  const game = fakeGame();
+  assert.deepEqual(await hx.c.useGamePath(game), { ok: true });
+  const target = path.join(path.dirname(game), "Reforged");
+  assert.equal((await hx.c.hostKit()).projectTarget, target);
+  assert.equal(existsSync(target), false, "nothing is downloaded while Host tools are off");
+  await hx.c.setSettings({ hostTools: true });
+  await eventually(async () => (await hx.c.hostKit()).workspace === target);
+  assert.ok(existsSync(path.join(target, "ReforgedHost", "package.json")));
+  assert.equal(git(target, "rev-parse", "--abbrev-ref", "@{u}"), "origin/main", "a git clone, so Update setup works");
+  assert.equal((await hx.c.hostKit()).job?.kind, "download_project");
+  await hx.c.shutdown();
+
+  // Another game whose Reforged folder holds something else: never written into.
+  const other = await harness(async () => null, { projectGitUrl: remote });
+  await other.c.init();
+  const game2 = fakeGame();
+  mkdirSync(path.join(path.dirname(game2), "Reforged"));
+  writeFileSync(path.join(path.dirname(game2), "Reforged", "notes.txt"), "mine");
+  assert.deepEqual(await other.c.useGamePath(game2), { ok: true });
+  await other.c.setSettings({ hostTools: true });
+  assert.deepEqual(await other.c.ensureHostWorkspace(), { ok: false, error: { code: "host_failed", detail: "project_folder_taken" } });
+  assert.equal((await other.c.hostKit()).workspace, null);
+  await other.c.shutdown();
+});
+
+test("Import SDK works before the server is set up: Mystic Paradox is downloaded first", async () => {
+  const ws = hostWorkspace();
+  const dumps = temp("rr-ctl-dumps-");
+  const sdk = path.join(dumps, "4.26.2-647472-Dauntless", "CppSDK");
+  mkdirSync(path.join(sdk, "SDK"), { recursive: true });
+  writeFileSync(path.join(sdk, "SDK.hpp"), "#pragma once\n");
+  writeFileSync(path.join(sdk, "SDK", "Engine_functions.cpp"), "\n");
+  const hx = await harness(async () => ws, { dumpRoot: dumps, hostServer: { findNode: () => ({ node: process.execPath, npmCli: null }), probe: async () => false } });
+  await hx.c.init();
+  assert.deepEqual(await hx.c.hostChooseWorkspace(), { ok: true });
+  assert.equal((await hx.c.hostKit()).upstream.present, false);
+  assert.deepEqual(await hx.c.hostAction("import_sdk"), { ok: true });
+  assert.deepEqual(readFileSync(path.join(ws, "calls.log"), "utf8").trim().split("\n"), ["upstream"]);
+  const kit = await hx.c.hostKit();
+  assert.equal(kit.sdk.present, true);
+  assert.equal(kit.sdk.functionFiles, 1);
   await hx.c.shutdown();
 });
