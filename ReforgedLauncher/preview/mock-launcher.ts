@@ -36,6 +36,7 @@ const status: ServerStatus = {
   game: { build: "rel-1.14.7-Archon", changelist: 647472 },
   gameData: scene === "synthetic" ? "synthetic" : "real",
   chat: true,
+  contentPort: null,
   limited: false,
 };
 
@@ -48,10 +49,11 @@ function base(phase: Phase): Snapshot {
   return {
     phase,
     busy: false,
-    server: { mode: "public", host: "hunts.example.net", port: 443, name: status.name, hasShare: false, hasPendingInvite: true, loopback: false, fingerprint: FP },
+    server: { game: "reforged", mode: "public", host: "hunts.example.net", port: 443, name: status.name, hasShare: false, hasPendingInvite: true, loopback: false, fingerprint: FP },
     savedServers: [
-      { id: "aaaaaaaaaaaaaaaaaaaaaaaa", mode: "public", host: "hunts.example.net", port: 443, name: status.name, current: true, username: "Slayer_42" },
-      { id: "bbbbbbbbbbbbbbbbbbbbbbbb", mode: "private", host: "100.101.102.103", port: 61000, name: "LAN Party", current: false, username: "Slayer_42" },
+      { id: "aaaaaaaaaaaaaaaaaaaaaaaa", game: "reforged", mode: "public", host: "hunts.example.net", port: 443, name: status.name, current: true, username: "Slayer_42" },
+      { id: "bbbbbbbbbbbbbbbbbbbbbbbb", game: "reforged", mode: "private", host: "100.101.102.103", port: 61000, name: "LAN Party", current: false, username: "Slayer_42" },
+      { id: "cccccccccccccccccccccccc", game: "revived", mode: "private", host: "100.88.12.40", port: 61000, name: "Revived Fridays", current: false, username: "Slayer_42" },
     ],
     connect: { checking: false, problem: null, tailscaleInstalled: true, lastCheckedAt: new Date(now - 30_000).toISOString() },
     account: { username: "Slayer_42", hasKey: true, offerBackup: false },
@@ -63,6 +65,7 @@ function base(phase: Phase): Snapshot {
       exeVerified: true,
       detected: [{ root: "C:\\Games\\Dauntless", source: "legendary", version: "1.14.7" }],
     },
+    revived: null,
     runtime: { state: "ok", version: "20261014-1a2b3c4d", files: runtimeFiles, localDir: null },
     task: null,
     running: { game: false, relayPort: null },
@@ -102,6 +105,26 @@ function sceneSnapshot(): Snapshot {
       return { ...s, account: { ...s.account, offerBackup: true } };
     case "error":
       return { ...s, lastError: { code: "game_wrong_version" } };
+    // A Dauntless Revived server (Dauntless 1.4.4): nothing downloaded, partly there, being downloaded, ready.
+    case "revived":
+    case "revived-repair":
+    case "revived-download":
+    case "revived-ready": {
+      const server = { ...s.server!, game: "revived" as const, mode: "private" as const, host: "100.88.12.40", port: 61000, fingerprint: null, name: "Revived Fridays" };
+      const savedServers = s.savedServers.map((v) => ({ ...v, current: v.game === "revived" }));
+      const revived = {
+        root: "C:\\Users\\Slayer\\AppData\\Local\\DauntlessRevived\\Game",
+        chosen: scene !== "revived",
+        problem: scene === "revived-ready" ? null : scene === "revived" ? ("not_set" as const) : ("unverified" as const),
+        missingFiles: scene === "revived-repair" ? 12 : scene === "revived" ? 410 : 0,
+        totalBytes: 10_893_512_875,
+        dllsOk: scene === "revived-ready",
+        detected: [],
+      };
+      const st = { ...status, name: "Revived Fridays", game: { build: "dauntless_rel-1.4.4", changelist: null } };
+      if (scene === "revived-download") return { ...s, phase: "installing", server, savedServers, revived, status: st, task: { kind: "download", totalBytes: 10_893_512_875, doneBytes: 3_402_000_000, filesTotal: 410, filesDone: 131, bytesPerSecond: 28_400_000, etaSeconds: 263, currentFile: "Archon/Content/Paks/pakchunk0-WindowsNoEditor.pak" } };
+      return { ...s, phase: scene === "revived-ready" ? "ready" : "locate", server, savedServers, revived, status: st };
+    }
     default:
       return s;
   }
@@ -115,8 +138,8 @@ const news: NewsItem[] = [
 ];
 
 const hostKit: HostKit = {
-  workspace: "C:\\Users\\host\\Dauntless-Reforged-Revival",
-  workspaceOk: true,
+  workspace: scene === "host-noproject" ? null : "C:\\Users\\host\\Dauntless-Reforged-Revival",
+  workspaceOk: scene !== "host-noproject",
   upstream: { present: scene !== "host-empty", patched: scene !== "host-empty" },
   sdk: { present: scene !== "host-empty", functionFiles: scene !== "host-empty" ? 412 : 0 },
   dumps: [{ dir: "C:\\Dumper-7\\4.26.2-647472-Dauntless\\CppSDK", name: "4.26.2-647472-Dauntless", modified: new Date(now - 3600_000).toISOString() }],
@@ -137,6 +160,7 @@ const hostKit: HostKit = {
     { id: "dumper7", state: "ok", detail: "Dumper-7.dll", problem: null },
     { id: "vc_redist", state: "ok", detail: null, problem: null },
   ],
+  projectTarget: "D:\\Games\\D1147\\Reforged",
   update: scene === "host-running" ? { state: "updated", head: "9377a20c41f6", files: 12, runtimeChanged: true } : null,
   job: scene === "host-empty" ? null : { kind: "build_loader", state: "done", message: "Finished `release` profile [optimized] target(s) in 41.2s", logFile: "C:\\Users\\host\\Dauntless-Reforged-Revival\\.workspace\\logs\\build_loader.log" },
 };
@@ -204,6 +228,11 @@ const mock: LauncherApi = {
   hostChooseWorkspace: ok,
   hostChooseDumper: ok,
   hostImportGameData: ok,
+  hostImportSdkFolder: ok,
+  revivedInstall: ok,
+  revivedChooseFolder: ok,
+  revivedUseDetected: ok,
+  hostDownloadProject: ok,
   hostAction: ok,
   hostOpen: ok,
   hostServerGet: async () => hostServer,

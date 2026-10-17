@@ -11,6 +11,10 @@
 //     &fp=<SHA-256 of the server's TLS certificate (DER), 64 lower-case hex>&code=<invite code>
 //     &name=<url-encoded server name>
 //
+// Dauntless Revived's own invites (dauntless-revived://join?..., the same two shapes) are read too:
+// those servers run Dauntless 1.4.4 (Undaunted), and the launcher plays them the way Dauntless Revived's
+// launcher 0.1.35 does (src/main/revived/). The scheme decides which game a server is for.
+//
 // The same string arrives either pasted by the friend or through the reforged-revival: protocol
 // handler. It is parsed strictly: anything that is not exactly one of these shapes is rejected,
 // because the host, port and fingerprint decide where the account key is sent later.
@@ -18,11 +22,18 @@
 import { UNSAFE_CHAR } from "./text";
 
 export const INVITE_SCHEME = "reforged-revival";
+export const REVIVED_INVITE_SCHEME = "dauntless-revived";
+
+// Which game a server is for: "reforged", Dauntless 1.14.7 with Mystic Paradox (this project's
+// servers); "revived", Dauntless 1.4.4 with Undaunted (Dauntless Revived's servers).
+export type GameEdition = "reforged" | "revived";
+export const GAME_EDITIONS: readonly GameEdition[] = ["reforged", "revived"];
 export const DEFAULT_PUBLIC_PORT = 443;
 
 export type ServerMode = "private" | "public";
 
 export interface Invite {
+  game: GameEdition;
   mode: ServerMode;
   host: string;
   port: number;
@@ -125,8 +136,9 @@ export function parseInvite(input: unknown): InviteResult {
   if (text.length === 0) return { ok: false, error: "empty" };
   if (text.length > MAX_INVITE_LENGTH) return { ok: false, error: "too_long" };
 
-  const prefix = /^reforged-revival:\/\/join\/?\?/i.exec(text);
+  const prefix = /^(reforged-revival|dauntless-revived):\/\/join\/?\?/i.exec(text);
   if (!prefix) return { ok: false, error: "not_invite" };
+  const game: GameEdition = prefix[1].toLowerCase() === REVIVED_INVITE_SCHEME ? "revived" : "reforged";
   const query = text.slice(prefix[0].length);
   if (query.includes("#")) return { ok: false, error: "params" };
 
@@ -193,7 +205,7 @@ export function parseInvite(input: unknown): InviteResult {
 
   return {
     ok: true,
-    invite: { mode: version === "1" ? "private" : "public", host, port, code, name, share, fp },
+    invite: { game, mode: version === "1" ? "private" : "public", host, port, code, name, share, fp },
   };
 }
 
@@ -220,7 +232,7 @@ export function isPrivateModeHost(host: string): boolean {
 }
 
 // Builds an invite string (used by tests and by hosts' tooling for reference).
-export function formatInvite(invite: Invite): string {
+export function formatInvite(invite: Omit<Invite, "game"> & { game?: GameEdition }): string {
   const parts: string[] = [];
   if (invite.mode === "public") {
     if (!isValidFingerprint(invite.fp)) throw new Error("public invites need a certificate fingerprint");
@@ -230,5 +242,5 @@ export function formatInvite(invite: Invite): string {
   }
   parts.push(`code=${encodeURIComponent(invite.code)}`, `name=${encodeURIComponent(invite.name)}`);
   if (invite.mode === "private" && invite.share) parts.push(`share=${encodeURIComponent(invite.share)}`);
-  return `${INVITE_SCHEME}://join?${parts.join("&")}`;
+  return `${invite.game === "revived" ? REVIVED_INVITE_SCHEME : INVITE_SCHEME}://join?${parts.join("&")}`;
 }

@@ -44,9 +44,13 @@ export function splitLines(text: string): string[] {
   return lines;
 }
 
-export function systemSettingsLines(graphics: GraphicsPreset): string[] {
-  if (graphics < 0) return [];
+// memory: Dauntless 1.4.4 (Dauntless Revived servers) always gets the streaming and garbage-collection
+// lines Dauntless Revived's launcher writes for it.
+export function systemSettingsLines(graphics: GraphicsPreset, memory = false): string[] {
+  if (graphics < 0 && !memory) return [];
   const sys = ["[SystemSettings]"];
+  if (memory) sys.push("r.Streaming.PoolSize=3000", "r.Streaming.LimitPoolSizeToVRAM=1", "gc.TimeBetweenPurgingPendingKillObjects=10", "s.ForceGCAfterLevelStreamedOut=1");
+  if (graphics < 0) return sys;
   for (const g of SCALABILITY_GROUPS) sys.push(`sg.${g}Quality=${graphics}`);
   sys.push("sg.ResolutionQuality=100", "r.ScreenPercentage=100");
   return sys;
@@ -60,7 +64,7 @@ export function xmppLines(host: string, port: number): string[] {
 
 const OWNED_SECTIONS = /^\[(SystemSettings|OnlineSubsystemMcp\.XMPP)\]/i;
 
-export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset): string[] {
+export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset, memory = false): string[] {
   const keep: string[] = [];
   let skip = false;
   for (const l of existing) {
@@ -73,7 +77,7 @@ export function rewriteEngineIniText(existing: string[], host: string, port: num
   }
   // Drop the blank lines a removed section leaves at the top.
   while (keep.length > 0 && keep[0].trim() === "") keep.shift();
-  const sys = systemSettingsLines(graphics);
+  const sys = systemSettingsLines(graphics, memory);
   return [...(sys.length ? [...sys, ""] : []), ...xmppLines(host, port), "", ...keep];
 }
 
@@ -103,8 +107,9 @@ async function writeAtomically(file: string, data: Buffer): Promise<void> {
 }
 
 export interface ApplyConfigOptions {
-  host: string; // where chat/presence (XMPP) connects: the relay
+  host: string; // where chat/presence (XMPP) connects: the relay (1.4.4 private mode: the host itself)
   port: number;
+  memory?: boolean; // Dauntless 1.4.4: its memory lines in [SystemSettings]
   graphics: GraphicsPreset;
   configDir?: string;
   safeWindow?: boolean;
@@ -115,7 +120,7 @@ export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engin
   await fsp.mkdir(dir, { recursive: true });
   const engine = path.join(dir, "Engine.ini");
   const existing = (await readLines(engine)) ?? [];
-  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics)));
+  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true)));
   const gus = path.join(dir, "GameUserSettings.ini");
   const lines = await readLines(gus);
   let displayRepaired = false;

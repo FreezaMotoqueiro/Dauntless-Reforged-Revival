@@ -6,6 +6,12 @@ Dauntless Revived launcher by mixutin and contributors (https://github.com/mixut
 itself a modified version of the Undaunted launcher by gwog (Gregory Morford) and contributors. Its
 complete source code is at https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival.
 
+For Dauntless Revived servers (Dauntless 1.4.4) it installs, next to the game, the two client DLLs of
+the Dauntless Revived launcher 0.1.35 (dxgi.dll and UndauntedInternalServer.dll, AGPL-3.0-only, built
+from Undaunted's and Dauntless Revived's sources). They are not shipped with the launcher: it downloads
+them from https://github.com/mixutin/dauntless-revived/tree/launcher-v0.1.35 (commit
+0e2b1e6730b9f14f1020d7c903a6955464fa4586) and checks them by SHA-256.
+
 It includes the software below, under the terms that follow. The launcher's Credits page lists
 the same software.
 

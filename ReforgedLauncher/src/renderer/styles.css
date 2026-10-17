@@ -1298,6 +1298,11 @@ img {
   color: var(--rr-ice);
 }
 
+/* A Dauntless Revived server (Dauntless 1.4.4). */
+.badge-revived {
+  color: var(--rr-frost);
+}
+
 .hero-title {
   margin: 0;
   font-family: var(--font-display);

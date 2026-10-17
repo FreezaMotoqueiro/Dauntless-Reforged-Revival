@@ -373,6 +373,8 @@ function errorText(e: LauncherError): string {
       return e.detail && isStringKey(`host_err_${e.detail}`) ? tk(`host_err_${e.detail}`) : t("err_host_failed", { detail: e.detail ?? "" });
     case "local_runtime_invalid":
       return t("err_local_runtime_invalid");
+    case "windows_runtime_missing":
+      return `${t("err_windows_runtime_missing")}${e.detail ? ` (${e.detail})` : ""}`;
     default:
       return tk(`err_${e.code}`);
   }
@@ -384,8 +386,13 @@ function vcWarning(): HTMLElement | null {
   return null;
 }
 
+// A Dauntless Revived server runs Dauntless 1.4.4: said next to its name wherever servers are listed.
+function editionBadge(game: Snapshot["savedServers"][number]["game"]): HTMLElement | null {
+  return game === "revived" ? h("span", { class: "badge badge-revived" }, icon("gamepad"), t("edition_revived")) : null;
+}
+
 function eyebrow(snap: Snapshot): HTMLElement {
-  return h("div", { class: "eyebrow" }, snap.server ? serverName() : t("join_eyebrow"), snap.server ? modeBadge(snap.server.mode) : null);
+  return h("div", { class: "eyebrow" }, snap.server ? serverName() : t("join_eyebrow"), snap.server ? modeBadge(snap.server.mode) : null, snap.server ? editionBadge(snap.server.game) : null);
 }
 
 function heading(title: string, text: string | null): HTMLElement[] {
@@ -410,7 +417,8 @@ async function switchTo(id: string): Promise<void> {
 
 function savedServerSub(sv: Snapshot["savedServers"][number]): HTMLElement {
   const address = blurred(`${sv.host}:${sv.port}`);
-  return sv.username ? h("span", {}, `${t("saved_account", { name: sv.username })} · `, address) : h("span", {}, address);
+  const edition = sv.game === "revived" ? `${t("edition_revived")} · ` : "";
+  return sv.username ? h("span", {}, `${edition}${t("saved_account", { name: sv.username })} · `, address) : h("span", {}, edition, address);
 }
 
 function savedServersCard(snap: Snapshot): HTMLElement | null {
@@ -640,7 +648,29 @@ function detectedCard(snap: Snapshot): HTMLElement | null {
   );
 }
 
+// Dauntless 1.4.4, for a Dauntless Revived server: where it is (or goes), and download or check it.
+function playLocateRevived(snap: Snapshot): HTMLElement[] {
+  const r = snap.revived!;
+  const out: HTMLElement[] = [eyebrow(snap)];
+  if (r.problem === "not_set") out.push(...heading(t("revived_download_title"), t("revived_download_text", { size: formatBytes(r.totalBytes, state.lang) })));
+  else out.push(...heading(t("revived_check_title"), r.missingFiles > 0 ? t("revived_check_missing", { n: r.missingFiles }) : t("revived_check_text")));
+  out.push(
+    card(
+      "",
+      h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, r.problem === "not_set" ? t("revived_folder_target") : t("revived_folder_current")), h("span", { class: "settings-row-sub selectable" }, secret(r.root, "revived-root")))),
+      h("div", { class: "card-row" }, button(t("revived_choose"), () => void api.revivedChooseFolder().then(report), { icon: "folder", fk: "revived-choose" })),
+      h("p", { class: "small-print" }, t("revived_choose_hint")),
+    ),
+  );
+  if (r.detected.length > 0 && !r.detected.some((d) => d.root === r.root)) {
+    out.push(card("card-accent", h("h3", { class: "card-title" }, icon("check"), t("revived_detected_title")), ...r.detected.map((d, i) => h("div", { class: "card-row" }, h("span", { class: "selectable" }, secret(d.root, `revived-detected-${i}`)), button(t("locate_use"), () => void api.revivedUseDetected(i).then(report), { cls: "btn-primary", fk: `revived-detected-${i}`, disabled: snap.busy })))));
+  }
+  out.push(card("card-warn", h("p", { class: "card-text" }, icon("info"), " ", t("revived_about"))));
+  return out;
+}
+
 function playLocate(snap: Snapshot): HTMLElement[] {
+  if (snap.revived) return playLocateRevived(snap);
   const g = snap.game;
   const out: HTMLElement[] = [eyebrow(snap)];
   switch (g.problem) {
@@ -713,6 +743,7 @@ function playRuntime(snap: Snapshot): HTMLElement[] {
 
 function playInstalling(snap: Snapshot): HTMLElement[] {
   const kind = state.task?.kind ?? snap.task?.kind ?? "verify";
+  if (snap.revived) return [eyebrow(snap), ...heading(t(kind === "download" ? "revived_installing_download" : kind === "dlls" ? "revived_installing_dlls" : "revived_installing_verify"), t("revived_installing_text"))];
   return [eyebrow(snap), ...heading(kind === "runtime" ? t("installing_runtime_title") : t("installing_verify_title"), t(kind === "runtime" ? "installing_runtime_text" : "installing_verify_text"))];
 }
 
@@ -739,11 +770,13 @@ function playReady(snap: Snapshot): HTMLElement[] {
       h(
         "div",
         { class: "card-row" },
-        h("span", { class: "badge" }, icon("gamepad"), t("ready_build")),
+        h("span", { class: "badge" }, icon("gamepad"), t(snap.revived ? "ready_build_revived" : "ready_build")),
         h("span", { class: "badge" }, icon("settings"), t("ready_graphics", { preset: t(graphicsKey(snap.settings.graphics)) })),
         h("span", { class: "badge" }, t(snap.settings.windowed ? "ready_windowed" : "ready_fullscreen")),
         snap.runtime.state === "local" ? h("span", { class: "badge badge-ember" }, icon("anvil"), t("ready_local_runtime")) : null,
         linkButton(t("ready_change"), () => setView("settings"), { fk: "ready-change" }),
+        // Dauntless 1.4.4: every file hashed again, and anything damaged downloaded again.
+        snap.revived ? linkButton(t("revived_repair"), () => void api.revivedInstall("repair").then(report), { icon: "refresh", fk: "revived-repair", disabled: snap.busy }) : null,
       ),
     ),
   );
@@ -876,6 +909,7 @@ function actionHint(snap: Snapshot): string {
     case "register":
       return t("hint_register");
     case "locate":
+      if (snap.revived) return snap.revived.problem === "not_set" ? t("hint_revived_download") : t("hint_revived_check");
       return snap.game.problem === "unverified" ? t("hint_verify") : t("hint_locate");
     case "runtime":
       return snap.runtime.state === "unavailable" ? t("hint_runtime_none") : snap.runtime.state === "untrusted" ? t("hint_trust") : t("hint_runtime");
@@ -914,7 +948,7 @@ function renderActionBar(): void {
     const v = taskView(task, state.lang);
     announce(`${t(v.titleKey)}: ${Math.floor(v.percent / 10) * 10} %`);
   } else {
-    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.game.problem, snap.runtime.state]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
+    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.game.problem, snap.runtime.state, snap.revived?.problem ?? null]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
     announce(actionHint(snap));
   }
 }
@@ -970,6 +1004,9 @@ async function onPrimary(): Promise<void> {
       break;
     case "verify":
       result = await api.verifyGame();
+      break;
+    case "revived_install":
+      result = await api.revivedInstall("install");
       break;
     case "trust":
       showModal({ kind: "trust_runtime" });
@@ -1340,8 +1377,15 @@ function workspaceCard(k: HostKit, steps: ReturnType<typeof hostSteps>): HTMLEle
     steps.workspace === "done" ? t("host_ws_ready") : k.workspaceOk ? t("host_ws_unpatched") : t("host_ws_missing"),
     h("p", { class: "card-text" }, t("host_ws_text")),
     k.workspace ? h("p", { class: "small-print selectable" }, secret(k.workspace, "host-ws")) : null,
-    h("div", { class: "card-row" }, button(t("host_ws_choose"), () => void api.hostChooseWorkspace().then(report).then(hostRefresh), { cls: k.workspaceOk ? "" : "btn-primary", icon: "folder", fk: "host-ws" }), k.workspace ? linkButton(t("host_open"), () => hostOpen("workspace"), { icon: "folder", fk: "host-ws-open" }) : null),
-    !k.workspaceOk ? cmd("git clone https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival") : null,
+    // Without one, the launcher downloads it beside the game (it does on its own when Host tools turn on).
+    !k.workspaceOk ? h("p", { class: "small-print" }, k.projectTarget ? t("host_ws_download_to", { folder: k.projectTarget }) : t("host_ws_download_no_game")) : null,
+    h(
+      "div",
+      { class: "card-row" },
+      !k.workspaceOk ? button(t("host_ws_download"), () => void api.hostDownloadProject().then(report).then(hostRefresh), { cls: "btn-primary", icon: "download", fk: "host-ws-download", disabled: k.job?.state === "running" || !k.projectTarget }) : null,
+      button(t("host_ws_choose"), () => void api.hostChooseWorkspace().then(report).then(hostRefresh), { icon: "folder", fk: "host-ws" }),
+      k.workspace ? linkButton(t("host_open"), () => hostOpen("workspace"), { icon: "folder", fk: "host-ws-open" }) : null,
+    ),
   );
 }
 
@@ -1563,7 +1607,7 @@ function gameDataTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSt
       h("p", { class: "card-text" }, t("hgd_intro")),
       h("div", { class: "card-row" }, chip(gd.backend === "real" ? "ok" : gd.backend === "synthetic" ? "warn" : "todo", t("host_data_backend", { state: tk(`gamedata_kind_${gd.backend}`) })), chip(gd.director === "real" ? "ok" : gd.director === "synthetic" ? "warn" : "todo", t("host_data_director", { state: tk(`gamedata_kind_${gd.director}`) })), chip(hasExport ? "ok" : "todo", hasExport ? t("hgd_export_found") : t("hgd_export_none"))),
       h("p", { class: "card-text" }, t("hgd_generate_text")),
-      h("div", { class: "card-row" }, button(t("hgd_generate"), () => hostAct("generate_gamedata"), { cls: "btn-primary btn-big", icon: "database", fk: "host-generate", disabled: running || !k.workspaceOk || !k.upstream.present || !hasExport })),
+      h("div", { class: "card-row" }, button(t("hgd_generate"), () => hostAct("generate_gamedata"), { cls: "btn-primary btn-big", icon: "database", fk: "host-generate", disabled: running || !k.workspaceOk || !hasExport })),
       done && k.job?.message === "restart" ? h("p", { class: "small-print warn-text" }, t("hgd_restart")) : null,
     ),
     card(
@@ -1594,7 +1638,7 @@ function gameDataTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSt
       "",
       h("h2", { class: "card-title" }, t("hgd_example_title")),
       h("p", { class: "card-text" }, t("host_data_step_synthetic")),
-      h("div", { class: "card-row" }, button(t("host_data_synthetic"), () => hostAct("synthetic_data"), { icon: "database", fk: "host-synthetic", disabled: running || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })),
+      h("div", { class: "card-row" }, button(t("host_data_synthetic"), () => hostAct("synthetic_data"), { icon: "database", fk: "host-synthetic", disabled: running || !k.workspaceOk }), linkButton(t("host_open"), () => hostOpen("game_data"), { icon: "folder", fk: "host-data-open" })),
     ),
   ];
 }
@@ -1625,8 +1669,15 @@ function buildTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSteps
             {},
             h("div", {}, t("host_sdk_step_import")),
             k.dumps.length ? h("p", { class: "small-print" }, t("host_sdk_found", { name: k.dumps[0].name, date: formatDate(k.dumps[0].modified, state.lang) })) : h("p", { class: "small-print" }, t("host_sdk_none")),
-            h("div", { class: "card-row" }, button(t("host_sdk_import"), () => hostAct("import_sdk"), { icon: "download", fk: "host-import", disabled: running || !k.dumps.length || !k.upstream.present }), linkButton(t("host_open"), () => hostOpen("dumps"), { icon: "folder", fk: "host-dumps-open" })),
-            k.upstream.present ? null : h("p", { class: "small-print" }, t("host_sdk_need_setup")),
+            // Mystic Paradox is downloaded first when the server is not set up yet: only a dump and the project folder are needed.
+            h(
+              "div",
+              { class: "card-row" },
+              button(t("host_sdk_import"), () => hostAct("import_sdk"), { cls: k.dumps.length && !k.sdk.present ? "btn-primary" : "", icon: "download", fk: "host-import", disabled: running || !k.dumps.length || !k.workspaceOk }),
+              linkButton(t("host_sdk_choose_folder"), () => void api.hostImportSdkFolder().then(report).then(hostRefresh), { icon: "folder", fk: "host-import-folder", disabled: running || !k.workspaceOk }),
+              linkButton(t("host_open"), () => hostOpen("dumps"), { icon: "folder", fk: "host-dumps-open" }),
+            ),
+            !k.workspaceOk ? h("p", { class: "small-print warn-text" }, t("host_err_workspace")) : k.upstream.present ? null : h("p", { class: "small-print" }, t("host_sdk_need_setup")),
           ),
         ),
       ),
@@ -1642,7 +1693,7 @@ function buildTab(snap: Snapshot, k: HostKit, steps: ReturnType<typeof hostSteps
         "div",
         { class: "stack" },
         h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "MysticParadox.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.runtime ? "host_built" : "host_not_built"))), button(t("host_build_runtime"), () => hostAct("build_runtime"), { icon: "cpu", fk: "host-build-runtime", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
-        h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "winmm.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.loader ? "host_built" : "host_not_built"))), button(t("host_build_loader"), () => hostAct("build_loader"), { icon: "cpu", fk: "host-build-loader", disabled: running || !windows || !tc.cargo || !k.upstream.present })),
+        h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "winmm.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.loader ? "host_built" : "host_not_built"))), button(t("host_build_loader"), () => hostAct("build_loader"), { icon: "cpu", fk: "host-build-loader", disabled: running || !windows || !tc.cargo || !k.workspaceOk })),
         h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, "CatalogExporter.dll"), h("span", { class: "settings-row-sub" }, t(k.builds.exporter ? "host_built" : "host_not_built"))), button(t("host_build_exporter"), () => hostAct("build_exporter"), { icon: "cpu", fk: "host-build-exporter", disabled: running || !windows || !tc.msbuild || !k.sdk.present })),
       ),
       !tc.visualStudio || !tc.cargo ? h("div", { class: "card-row" }, linkButton(t("host_tab_requirements"), () => setHostTab("requirements"), { icon: "list", fk: "host-build-reqs" })) : null,

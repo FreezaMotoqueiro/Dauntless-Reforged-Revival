@@ -259,10 +259,10 @@ export async function readServerConfig(root: string): Promise<HostKit["serverCon
   }
 }
 
-export async function detectHostKit(root: string | null, opts: { env: NodeJS.ProcessEnv; platform?: NodeJS.Platform; toolchain?: Toolchain; dumpRoot?: string }): Promise<Omit<HostKit, "job" | "dumperDll" | "requirements" | "update">> {
+export async function detectHostKit(root: string | null, opts: { env: NodeJS.ProcessEnv; platform?: NodeJS.Platform; toolchain?: Toolchain; dumpRoot?: string }): Promise<Omit<HostKit, "job" | "dumperDll" | "requirements" | "update" | "projectTarget">> {
   const toolchain = opts.toolchain ?? (await findToolchain(opts.env, opts.platform));
   const dumps = (opts.platform ?? process.platform) === "win32" || opts.dumpRoot ? await findDumps(opts.dumpRoot) : [];
-  const base: Omit<HostKit, "job" | "dumperDll" | "requirements" | "update"> = {
+  const base: Omit<HostKit, "job" | "dumperDll" | "requirements" | "update" | "projectTarget"> = {
     workspace: root,
     workspaceOk: false,
     upstream: { present: false, patched: false },

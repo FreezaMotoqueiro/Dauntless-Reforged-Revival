@@ -13,7 +13,7 @@ test("v1: parses a valid invite", () => {
   const r = parseInvite(good);
   assert.equal(r.ok, true);
   if (!r.ok) return;
-  assert.deepEqual(r.invite, { mode: "private", host: "100.101.102.103", port: 61000, code: "ABCD-1234", name: "Alex's Ramsgate", share: null, fp: null });
+  assert.deepEqual(r.invite, { game: "reforged", mode: "private", host: "100.101.102.103", port: 61000, code: "ABCD-1234", name: "Alex's Ramsgate", share: null, fp: null });
 });
 
 test("v1: accepts surrounding whitespace, a MagicDNS name, a share link and an upper-case scheme", () => {
@@ -28,7 +28,7 @@ test("v1: accepts surrounding whitespace, a MagicDNS name, a share link and an u
 });
 
 test("v1: round-trips through formatInvite", () => {
-  const inv: Invite = { mode: "private", host: "100.64.0.1", port: 61000, code: "Code-42", name: "Ember & Aether", share: "https://login.tailscale.com/x", fp: null };
+  const inv: Invite = { game: "reforged", mode: "private", host: "100.64.0.1", port: 61000, code: "Code-42", name: "Ember & Aether", share: "https://login.tailscale.com/x", fp: null };
   const r = parseInvite(formatInvite(inv));
   assert.equal(r.ok, true);
   if (r.ok) assert.deepEqual(r.invite, inv);
@@ -40,7 +40,7 @@ test("v2: parses a valid public invite", () => {
   const r = parseInvite(goodV2);
   assert.equal(r.ok, true);
   if (!r.ok) return;
-  assert.deepEqual(r.invite, { mode: "public", host: "203.0.113.10", port: 443, code: "ABCD-EFGH-JKLM", name: "Friday Hunts", share: null, fp: FP });
+  assert.deepEqual(r.invite, { game: "reforged", mode: "public", host: "203.0.113.10", port: 443, code: "ABCD-EFGH-JKLM", name: "Friday Hunts", share: null, fp: FP });
 });
 
 test("v2: the port defaults to 443, a DNS name and any parameter order work", () => {
@@ -59,7 +59,7 @@ test("v2: a custom gateway port", () => {
 });
 
 test("v2: round-trips through formatInvite", () => {
-  const inv: Invite = { mode: "public", host: "play.example.org", port: 8443, code: "XXXX-YYYY", name: "Aether & Ember", share: null, fp: FP };
+  const inv: Invite = { game: "reforged", mode: "public", host: "play.example.org", port: 8443, code: "XXXX-YYYY", name: "Aether & Ember", share: null, fp: FP };
   const r = parseInvite(formatInvite(inv));
   assert.equal(r.ok, true);
   if (r.ok) assert.deepEqual(r.invite, inv);
@@ -216,4 +216,24 @@ test("host and fingerprint rules", () => {
   assert.equal(isValidFingerprint(FP.toUpperCase()), false);
   assert.equal(isValidFingerprint(""), false);
   assert.equal(isValidFingerprint(null), false);
+});
+
+test("Dauntless Revived invites are read too, as servers for Dauntless 1.4.4", () => {
+  const priv = parseInvite("dauntless-revived://join?v=1&host=100.88.12.40&port=61000&code=ABCD-1234&name=Revived%20Fridays");
+  assert.equal(priv.ok, true);
+  if (priv.ok) {
+    assert.equal(priv.invite.game, "revived");
+    assert.equal(priv.invite.mode, "private");
+    assert.equal(priv.invite.port, 61000);
+  }
+  const fp = "ab".repeat(32);
+  const pub = parseInvite(`dauntless-revived://join?v=2&mode=public&host=revived.example.net&port=443&fp=${fp}&code=XYZ-99&name=Open`);
+  assert.equal(pub.ok && pub.invite.game, "revived");
+  const ours = parseInvite("reforged-revival://join?v=1&host=100.64.0.1&port=61000&code=Code-42&name=Ours");
+  assert.equal(ours.ok && ours.invite.game, "reforged");
+  // The same strict rules: plain HTTP only into the tailnet.
+  assert.deepEqual(parseInvite("dauntless-revived://join?v=1&host=203.0.113.7&port=61000&code=ABCD-1234&name=X"), { ok: false, error: "host" });
+  const inv: Invite = { game: "revived", mode: "private", host: "100.88.12.40", port: 61000, code: "ABCD-1234", name: "Revived Fridays", share: null, fp: null };
+  assert.ok(formatInvite(inv).startsWith("dauntless-revived://join?"));
+  assert.deepEqual(parseInvite(formatInvite(inv)), { ok: true, invite: inv });
 });

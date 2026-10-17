@@ -54,6 +54,9 @@ export interface FakeServerOptions {
   gameData?: "real" | "synthetic" | "missing";
   statusMissing?: boolean;
   news?: unknown;
+  // A Dauntless Revived server: /undaunted/api with its key header, and the 1.4.4 game files
+  // (/content/v1/manifest and /content/v1/files/<path>) on the same address.
+  revived?: { manifest: unknown; files: Map<string, Buffer>; regions?: unknown };
 }
 
 export interface Seen {
@@ -67,6 +70,7 @@ export class FakeServer {
   readonly registrations: { username: string; code: string }[] = [];
   readonly users = new Map<string, { username: string; id: string }>(); // key -> user
   private server: http.Server | null = null;
+  port = 0;
   private counter = 0;
 
   constructor(public opts: FakeServerOptions = {}) {
@@ -78,7 +82,10 @@ export class FakeServer {
       const handler: http.RequestListener = (req, res) => this.handle(req, res);
       this.server = tls ? https.createServer({ cert: tls.cert, key: tls.key }, handler) : http.createServer(handler);
       this.server.on("error", reject);
-      this.server.listen(port, "127.0.0.1", () => resolve((this.server!.address() as AddressInfo).port));
+      this.server.listen(port, "127.0.0.1", () => {
+        this.port = (this.server!.address() as AddressInfo).port;
+        resolve(this.port);
+      });
     });
   }
 
@@ -98,7 +105,9 @@ export class FakeServer {
 
   handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = new URL(req.url ?? "/", "http://x");
-    const header = req.headers["x-reforged-user-api-key"];
+    const rv = this.opts.revived;
+    const api = rv ? "/undaunted/api" : "/reforged/api";
+    const header = req.headers[rv ? "x-undaunted-user-api-key" : "x-reforged-user-api-key"];
     const key = typeof header === "string" ? header : undefined;
     const log: Seen = { path: url.pathname, key, status: 0 };
     this.seen.push(log);
@@ -106,7 +115,7 @@ export class FakeServer {
     switch (url.pathname) {
       case "/dauntless-status":
         return this.json(res, 200, { "show-status": true, name: this.opts.name ?? "Test Server" }, log);
-      case "/reforged/api/ServerStatus": {
+      case `${api}/ServerStatus`: {
         if (this.opts.statusMissing) return this.json(res, 404, {}, log);
         const full = user !== undefined;
         return this.json(
@@ -126,17 +135,18 @@ export class FakeServer {
             game: { build: "rel-1.14.7-Archon", changelist: 647472, executableSha256: null },
             gameData: this.opts.gameData ?? "real",
             chat: true,
+            ...(rv ? { contentPort: this.port } : {}),
             limited: !full,
           },
           log,
         );
       }
-      case "/reforged/api/GetUserInfo": {
+      case `${api}/GetUserInfo`: {
         if (key && this.opts.banned?.has(key)) return this.json(res, 403, { error: "account_banned", reason: this.opts.banned.get(key) }, log);
         if (!user) return this.json(res, 401, { error: "unauthorized" }, log);
         return this.json(res, 200, { UserId: user.id, Username: user.username, IsAdmin: false }, log);
       }
-      case "/reforged/api/Register": {
+      case `${api}/Register`: {
         if (req.method !== "POST") return this.json(res, 405, {}, log);
         let body = "";
         req.on("data", (c) => (body += c));
@@ -162,6 +172,20 @@ export class FakeServer {
         });
         return;
       }
+      case "/content/v1/manifest":
+        if (!rv) return this.json(res, 404, {}, log);
+        return this.json(res, 200, rv.manifest, log);
+      case `${api}/HuntRegion`:
+        if (!rv || !user) return this.json(res, 404, {}, log);
+        if (req.method === "POST") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => this.json(res, 200, { region: (JSON.parse(body) as { region: string }).region }, log));
+          return;
+        }
+        return rv.regions === undefined ? this.json(res, 404, {}, log) : this.json(res, 200, rv.regions, log);
+      case `${api}/PlayingEnded`:
+        return this.json(res, user ? 200 : 401, {}, log);
       case "/content/v1/news":
         return this.json(res, 200, this.opts.news ?? { items: [] }, log);
       case "/content/v1/branding":
@@ -171,6 +195,16 @@ export class FakeServer {
         if (!this.opts.runtime) return this.json(res, 404, { error: "no_runtime" }, log);
         return this.json(res, 200, runtimeManifestFor(this.opts.runtime), log);
       }
+    }
+    if (rv && url.pathname.startsWith("/content/v1/files/")) {
+      if (!user) return this.json(res, 401, { error: "unauthorized" }, log);
+      const rel = url.pathname.slice("/content/v1/files/".length).split("/").map(decodeURIComponent).join("/");
+      const data = rv.files.get(rel);
+      if (!data) return this.json(res, 404, {}, log);
+      log.status = 200;
+      res.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(data.length), etag: `"${sha256(data)}"` });
+      res.end(data);
+      return;
     }
     if (url.pathname.startsWith("/content/v1/runtime/files/")) {
       if (!user) return this.json(res, 401, { error: "unauthorized" }, log);

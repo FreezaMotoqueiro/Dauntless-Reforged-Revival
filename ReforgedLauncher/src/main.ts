@@ -273,6 +273,9 @@ function registerIpc(c: Controller): void {
   });
   handle(IPC.useDetectedGame, (_e, index) => (typeof index === "number" && Number.isInteger(index) && index >= 0 && index < 16 ? c.useDetectedGame(index) : { ok: false, error: { code: "folder_invalid" } }));
   handle(IPC.verifyGame, () => c.verifyGame());
+  handle(IPC.revivedInstall, (_e, mode) => (mode === "install" || mode === "repair" ? c.installRevived(mode) : { ok: false, error: { code: "unknown" } }));
+  handle(IPC.revivedChooseFolder, () => c.chooseRevivedFolder());
+  handle(IPC.revivedUseDetected, (_e, index) => (typeof index === "number" && Number.isInteger(index) && index >= 0 && index < 16 ? c.useDetectedRevived(index) : { ok: false, error: { code: "folder_invalid" } }));
   handle(IPC.trustRuntime, () => c.trustRuntime());
   handle(IPC.installRuntime, () => c.installServerRuntime());
   handle(IPC.chooseLocalRuntime, () => c.chooseLocalRuntime());
@@ -302,6 +305,8 @@ function registerIpc(c: Controller): void {
   handle(IPC.hostChooseWorkspace, () => c.hostChooseWorkspace());
   handle(IPC.hostChooseDumper, () => c.hostChooseDumper());
   handle(IPC.hostImportGameData, () => c.hostImportGameData());
+  handle(IPC.hostImportSdkFolder, () => c.hostImportSdkFolder());
+  handle(IPC.hostDownloadProject, () => c.ensureHostWorkspace());
   handle(IPC.hostAction, (_e, action) => {
     const a = hostAction(action);
     return a === null ? { ok: false, error: { code: "unknown" } } : c.hostAction(a);
@@ -376,7 +381,7 @@ function makePlatform(): Platform {
     },
     chooseFolder: async (purpose, defaultPath) => {
       if (!mainWindow) return null;
-      const title = purpose === "game" ? "dialog_game_folder" : purpose === "runtime" ? "dialog_runtime_folder" : "dialog_workspace_folder";
+      const title = purpose === "game" ? "dialog_game_folder" : purpose === "runtime" ? "dialog_runtime_folder" : purpose === "sdk" ? "dialog_sdk_folder" : purpose === "revived" ? "dialog_revived_folder" : "dialog_workspace_folder";
       const r = await dialog.showOpenDialog(mainWindow, {
         title: translate(lang(), title),
         defaultPath: defaultPath && existsSync(defaultPath) ? defaultPath : undefined,

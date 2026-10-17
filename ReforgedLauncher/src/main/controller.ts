@@ -43,6 +43,7 @@ import type {
   NoticeCode,
   Phase,
   RegisterOutcome,
+  RevivedInfo,
   RuntimeInfo,
   RuntimeProfile,
   Settings,
@@ -59,21 +60,32 @@ import {
   fetchServerStatus,
   fetchUserInfo,
   registerAccount,
+  REFORGED_FLAVOR,
+  REVIVED_FLAVOR,
+  type ApiFlavor,
   type RuntimeManifest,
   type StatusResult,
 } from "./hostapi";
-import { HashCache } from "./verify";
+import { GAME_MANIFEST, resolveInside, compareManifests, type GameManifest } from "./revived/manifest";
+import { removePartFiles, verifyInstall, VerifiedCache } from "./revived/install-check";
+import { contentDownloadBase, DownloadError, DownloadJob } from "./revived/downloader";
+import { DllError, dllsInstalled, ensureDllCache, installDlls, type FetchBytes } from "./revived/dlls";
+import { chooseClosestRegion, endPlaying, fetchContentManifest, probeContent, saveHuntRegion } from "./revived/api";
+import { buildRevivedArgs, missingDirectX } from "./revived/launch";
+import { detectRevivedInstalls, revivedDefaultDir } from "./revived/detect";
+import { DISK_MARGIN_BYTES, REVIVED_DLLS, REVIVED_EXE_RELATIVE_PATH, REVIVED_LAUNCHER_VERSION, REVIVED_XMPP_PORT, type PinnedDll } from "./revived/constants";
+import { AbortedError, HashCache } from "./verify";
 import { checkRuntime, installLocalRuntime, installRuntime, isCompleteRuntimeDir, RuntimeError, runtimeSetId } from "./runtime-files";
 import { applyGameConfig } from "./engineini";
 import { detectStoreInstalls, locateExistingGame, readGameVersion, hasGameExe } from "./game-folder";
 import { buildLaunchArgs, describeLaunch, GameProcess, gameExitDetail, gameLocale, launchEnvironment, STATUS_CONTROL_C_EXIT, type SpawnFn } from "./launch";
 import { backupFileText, KeyStore, KeyStoreError, serverId, type Encryptor, type KeySlot } from "./keystore";
 import { SettingsStore, type StoredServer, type StoredSettings } from "./settings";
-import { missingVcRuntime } from "./system";
+import { freeBytes, missingVcRuntime } from "./system";
 import { fixedLinkUrl, isAllowedExternalUrl } from "./links";
 import { describeError, log } from "./log";
 import { Relay, RelayError } from "./relay";
-import { DEFAULT_RELAY_PORT, EXE_NAME, EXE_RELATIVE_PATH, PINNED_EXE_SHA256, PROJECT_URL, RUNTIME_FILE_NAMES, STATUS_POLL_MS, WIN64_RELATIVE_DIR } from "./constants";
+import { DEFAULT_RELAY_PORT, EXE_NAME, EXE_RELATIVE_PATH, PINNED_EXE_SHA256, PROJECT_FOLDER_NAME, PROJECT_GIT_URL, PROJECT_URL, RUNTIME_FILE_NAMES, STATUS_POLL_MS, WIN64_RELATIVE_DIR } from "./constants";
 import {
   BACKEND_GAME_DATA,
   DIRECTOR_GAME_DATA,
@@ -98,7 +110,7 @@ import { HostKitError, HostServer, type HostServerOptions } from "./hostserver";
 import { detectRequirements, findGit } from "./requirements";
 import type { InjectEvent, InjectOptions } from "./injector";
 
-export type FolderPurpose = "game" | "runtime" | "workspace";
+export type FolderPurpose = "game" | "runtime" | "workspace" | "sdk" | "revived";
 
 export interface Platform {
   userDataDir: string;
@@ -120,6 +132,14 @@ export interface Platform {
   // The executable's pinned hash (tests use a fake game).
   exePin?: string;
   dumpRoot?: string;
+  projectGitUrl?: string; // tests: a local repository in place of the project's on GitHub
+  // Dauntless 1.4.4 for Dauntless Revived servers: where it is downloaded to when no folder is chosen
+  // (default: Dauntless Revived's own launcher's folder). Tests: a small manifest, other DLL pins and
+  // a fake DLL download.
+  revivedDefaultDir?: string;
+  revivedManifest?: GameManifest | null;
+  revivedDlls?: readonly PinnedDll[];
+  revivedDllFetch?: FetchBytes;
   runtimeFilesExist?: (file: string) => boolean;
   chooseFolder(purpose: FolderPurpose, defaultPath: string): Promise<string | null>;
   chooseDll(defaultPath: string): Promise<string | null>;
@@ -190,6 +210,13 @@ export class Controller {
   private phase: Phase = "loading";
   private hostJob: HostJob | null = null;
   private hostUpdateResult: HostUpdateView | null = null;
+  // Dauntless 1.4.4 (Dauntless Revived servers): what is in its folder, which files were hashed
+  // already, the download running, whether the public gateway serves the game, and the session to end.
+  private revivedInfo: RevivedInfo | null = null;
+  private readonly revivedVerified: VerifiedCache;
+  private revivedJob: DownloadJob | null = null;
+  private revivedContentProbe: boolean | null = null;
+  private endPlayingSession: (() => Promise<void>) | null = null;
   // While a Dumper-7 session runs: the runtime loader set aside so the game starts without it.
   private dumpRestore: { from: string; to: string } | null = null;
   // A game started for Dumper-7, with or without a loader to put back. Its exit code is not a
@@ -205,6 +232,7 @@ export class Controller {
     this.keys = new KeyStore(path.join(p.userDataDir, "keys"), p.encryptor, p.documentsDir ? path.join(p.documentsDir, "Dauntless Reforged Revival", "Account Keys") : undefined);
     this.game = new GameProcess(p.spawn);
     this.hashes = new HashCache(path.join(p.userDataDir, "file-hashes.json"));
+    this.revivedVerified = new VerifiedCache(path.join(p.userDataDir, "revived", "verified-files.json"));
     this.server = new HostServer({
       env: p.env ?? process.env,
       platform: p.hostPlatform ?? process.platform,
@@ -214,6 +242,9 @@ export class Controller {
     this.game.onChange((running, code) => {
       log.info(running ? "game started" : `game exited (code ${code ?? "none"})`);
       if (!running) {
+        const end = this.endPlayingSession;
+        this.endPlayingSession = null;
+        if (end) void end().catch(() => undefined);
         const dumped = this.dumping;
         this.dumping = false;
         if (code !== null && code !== 0 && !dumped && (code >>> 0) !== STATUS_CONTROL_C_EXIT) this.lastError = { code: "launch_failed", detail: gameExitDetail(code) };
@@ -265,6 +296,15 @@ export class Controller {
     return sv ? serverId(sv.host, sv.port, sv.mode) : null;
   }
 
+  // A Dauntless Revived server: Dauntless 1.4.4, their API, their client DLLs (src/main/revived/).
+  private get isRevived(): boolean {
+    return this.s.server?.game === "revived";
+  }
+
+  private flavor(): ApiFlavor {
+    return this.isRevived ? REVIVED_FLAVOR : REFORGED_FLAVOR;
+  }
+
   private win64Dir(): string | null {
     const root = this.gameInfo.root;
     return root ? this.pathApi.join(root, ...WIN64_RELATIVE_DIR.split("/")) : null;
@@ -278,6 +318,8 @@ export class Controller {
     if (this.s.server) void this.connect();
     // A game found but never checked: check it now (the executable is hashed once per change).
     if (this.gameInfo.problem === "unverified") void this.verifyGame();
+    // A host's project folder: found or downloaded beside the game (Host tools on).
+    void this.ensureHostWorkspace({ auto: true });
   }
 
   private computePhase(): Phase {
@@ -286,6 +328,8 @@ export class Controller {
     if (this.game.running) return "running";
     if (this.reachable !== true) return "connect";
     if (!this.hasKey || this.keyRejected) return "register";
+    // Dauntless 1.4.4: the game folder checked against the manifest; the DLLs go in with it.
+    if (this.isRevived) return this.revivedInfo !== null && this.revivedInfo.problem === null ? "ready" : "locate";
     if (this.gameInfo.problem !== null) return "locate";
     if (!this.runtimePlayable) return "runtime";
     return "ready";
@@ -313,10 +357,11 @@ export class Controller {
       busy: this.busy,
       savedServers: this.s.savedServers.map((o) => {
         const id = serverId(o.host, o.port, o.mode);
-        return { id, mode: o.mode, host: o.host, port: o.port, name: o.name, current: sid === id, username: this.s.usernames[id] ?? null };
+        return { id, game: o.game, mode: o.mode, host: o.host, port: o.port, name: o.name, current: sid === id, username: this.s.usernames[id] ?? null };
       }),
       server: sv
         ? {
+            game: sv.game,
             mode: sv.mode,
             host: sv.host,
             port: sv.port,
@@ -334,6 +379,7 @@ export class Controller {
         offerBackup: sid !== null && this.hasKey && !this.keyRejected && this.s.backupOffered[sid] !== true,
       },
       game: { ...this.gameInfo, detected: [...this.gameInfo.detected] },
+      revived: this.isRevived && this.revivedInfo ? { ...this.revivedInfo, detected: [...this.revivedInfo.detected] } : null,
       runtime: { ...this.runtimeInfo, files: [...this.runtimeInfo.files] },
       task: this.task,
       running: { game: this.game.running, relayPort: this.relay?.port ?? null },
@@ -407,16 +453,17 @@ export class Controller {
   // A private server that moved: its host changed Tailscale accounts, so the same server (same name,
   // same port) is now at another address, where this PC has no key yet. The page offers to take the
   // account along; its key goes to the new address only once the player confirmed.
-  private async movedServer(inv: Pick<Invite, "mode" | "host" | "port" | "name">): Promise<StoredServer | null> {
+  private async movedServer(inv: Pick<Invite, "game" | "mode" | "host" | "port" | "name">): Promise<StoredServer | null> {
     if (inv.mode !== "private") return null;
     if (await this.keys.has({ host: inv.host, port: inv.port, mode: "private", fp: null })) return null;
     const name = inv.name.trim();
-    const candidates = [this.s.server, ...this.s.savedServers].filter((sv): sv is StoredServer => sv !== null && sv.mode === "private" && sv.port === inv.port && sv.host !== inv.host && sv.name.trim() === name);
+    // The same kind of server only: a Dauntless Revived server's account is not one of ours.
+    const candidates = [this.s.server, ...this.s.savedServers].filter((sv): sv is StoredServer => sv !== null && sv.game === inv.game && sv.mode === "private" && sv.port === inv.port && sv.host !== inv.host && sv.name.trim() === name);
     for (const sv of candidates) if (await this.keys.has({ host: sv.host, port: sv.port, mode: "private", fp: null })) return sv;
     return null;
   }
 
-  private async carryAccount(inv: Pick<Invite, "mode" | "host" | "port" | "name">): Promise<void> {
+  private async carryAccount(inv: Pick<Invite, "game" | "mode" | "host" | "port" | "name">): Promise<void> {
     const from = await this.movedServer(inv);
     if (!from) return;
     const key = await this.keys.load({ host: from.host, port: from.port, mode: "private", fp: null });
@@ -480,10 +527,11 @@ export class Controller {
     }
     if (opts.carryAccount === true) await this.carryAccount(inv);
     const current = this.s.server;
-    const same = current !== null && current.mode === inv.mode && current.host === inv.host && current.port === inv.port && current.fp === inv.fp;
+    const same = current !== null && current.game === inv.game && current.mode === inv.mode && current.host === inv.host && current.port === inv.port && current.fp === inv.fp;
     const hasKeyForIt = await this.keys.has({ host: inv.host, port: inv.port, mode: inv.mode, fp: inv.fp });
     await this.settings.update((s) => {
       s.server = {
+        game: inv.game,
         mode: inv.mode,
         host: inv.host,
         port: inv.port,
@@ -495,7 +543,7 @@ export class Controller {
       };
     });
     if (!same) this.resetServerState();
-    log.info(`joined ${inv.mode} server ${inv.host}:${inv.port}`);
+    log.info(`joined ${inv.mode} ${inv.game === "revived" ? "Dauntless Revived (1.4.4) " : ""}server ${inv.host}:${inv.port}`);
     await this.refreshKeyFlag();
     this.lastError = null;
     await this.connect();
@@ -512,6 +560,8 @@ export class Controller {
     this.keyRejected = false;
     this.failedPolls = 0;
     this.runtimeManifest = null;
+    this.revivedInfo = null;
+    this.revivedContentProbe = null;
     this.statusGen++;
   }
 
@@ -548,7 +598,8 @@ export class Controller {
         this.statusUnsupported = res.kind === "unsupported";
         if (res.kind === "ok" && !stale) await this.rememberServerName(res.status.name);
         await this.checkAccount();
-        await this.refreshRuntimeOffer();
+        if (this.isRevived) await this.inspectRevived();
+        else await this.refreshRuntimeOffer();
         void this.loadExtras();
       } else {
         this.reachable = false;
@@ -590,7 +641,7 @@ export class Controller {
 
   private async fetchStatus(ep: Endpoint): Promise<{ res: StatusResult; stale: boolean }> {
     const gen = this.statusGen;
-    const res = await fetchServerStatus(ep, { key: await this.statusKey() });
+    const res = await fetchServerStatus(ep, { key: await this.statusKey(), flavor: this.flavor() });
     return { res, stale: gen !== this.statusGen };
   }
 
@@ -608,7 +659,7 @@ export class Controller {
     }
     this.hasKey = key !== null;
     if (!key) return;
-    const info = await fetchUserInfo(ep, key);
+    const info = await fetchUserInfo(ep, key, this.flavor());
     if (info.ok) {
       this.keyRejected = false;
       if (this.s.usernames[sid] !== info.info.username) {
@@ -657,7 +708,7 @@ export class Controller {
       if (this.branding === null) void this.loadExtras();
       else void this.refreshNews();
       // The host may have published a runtime meanwhile.
-      if (!this.game.running && !this.task && (this.runtimeInfo.state === "unavailable" || this.runtimeManifest === null)) await this.refreshRuntimeOffer();
+      if (!this.isRevived && !this.game.running && !this.task && (this.runtimeInfo.state === "unavailable" || this.runtimeManifest === null)) await this.refreshRuntimeOffer();
     } else if (res.kind === "unsupported") {
       this.statusUnsupported = true;
       this.failedPolls = 0;
@@ -750,7 +801,7 @@ export class Controller {
     const sid = this.sid();
     if (!ep || !sv || !slot || !sid) return err("server_unreachable");
     return this.withBusy(async () => {
-      const res = await registerAccount(ep, username as string, sv.code ?? "");
+      const res = await registerAccount(ep, username as string, sv.code ?? "", this.flavor());
       if (!res.ok) {
         log.warn(`registration refused: ${res.error}`);
         this.lastError = { code: res.error };
@@ -808,7 +859,7 @@ export class Controller {
     const slot = this.slot();
     const sid = this.sid();
     if (!ep || !slot || !sid) return err("server_unreachable");
-    const info = await fetchUserInfo(ep, key);
+    const info = await fetchUserInfo(ep, key, this.flavor());
     if (!info.ok) {
       this.lastError = { code: info.error, detail: info.detail };
       return { ok: false, error: this.lastError };
@@ -1048,6 +1099,7 @@ export class Controller {
   }
 
   async inspectRuntime(): Promise<void> {
+    if (this.isRevived) return this.inspectRevived();
     const dir = this.win64Dir();
     const m = this.runtimeManifest;
     const localDir = this.s.localRuntimeDir;
@@ -1175,6 +1227,362 @@ export class Controller {
 
   cancelTask(): void {
     this.taskAbort?.abort();
+    this.revivedJob?.cancel();
+  }
+
+  // ------------------------------------------------------------------ Dauntless 1.4.4 (Dauntless Revived servers)
+
+  private get revivedManifest(): GameManifest | null {
+    return this.p.revivedManifest !== undefined ? this.p.revivedManifest : GAME_MANIFEST;
+  }
+
+  private get revivedDlls(): readonly PinnedDll[] {
+    return this.p.revivedDlls ?? REVIVED_DLLS;
+  }
+
+  private get revivedDllCache(): string {
+    return path.join(this.p.userDataDir, "revived", "dlls");
+  }
+
+  // Where 1.4.4 goes when the player chose no folder: Dauntless Revived's own launcher's folder.
+  private revivedDefault(): string {
+    return this.p.revivedDefaultDir ?? revivedDefaultDir(this.p.env ?? process.env) ?? path.join(this.p.userDataDir, "revived", "Game");
+  }
+
+  private async revivedExeThere(root: string): Promise<boolean> {
+    const exe = this.revivedManifest?.files.find((f) => f.path === REVIVED_EXE_RELATIVE_PATH);
+    if (!exe) return false;
+    try {
+      const st = await fsp.stat(resolveInside(root, exe.path));
+      return st.isFile() && st.size === exe.size;
+    } catch {
+      return false;
+    }
+  }
+
+  // The 1.4.4 folder: the chosen one, one Dauntless Revived's launcher downloaded (taken the first time),
+  // or the default. Every file is checked by size here; by hash on install and Check and repair.
+  async inspectRevived(opts: { detect?: boolean } = {}): Promise<void> {
+    if (!this.isRevived) {
+      this.revivedInfo = null;
+      return;
+    }
+    const m = this.revivedManifest;
+    const detected = opts.detect || this.revivedInfo === null ? await detectRevivedInstalls(this.p.env ?? process.env).catch(() => []) : this.revivedInfo.detected;
+    let chosen = this.s.revivedRoot;
+    if (chosen === null && detected.length > 0) {
+      const pick = detected[0].root;
+      chosen = pick;
+      await this.settings.update((s) => {
+        s.revivedRoot = pick;
+      });
+      log.info("using the Dauntless 1.4.4 folder of Dauntless Revived's launcher");
+    }
+    const root = chosen ?? this.revivedDefault();
+    let problem: GameProblem = null;
+    let missingFiles = 0;
+    if (!m || !(await this.revivedExeThere(root))) {
+      problem = "not_set";
+      missingFiles = m?.files.length ?? 0;
+    } else {
+      const quick = await verifyInstall(root, m.files, { fullHash: false, concurrency: 8 }).catch(() => null);
+      missingFiles = quick ? quick.bad.length : m.files.length;
+      problem = missingFiles > 0 || this.s.revivedVerified !== root ? "unverified" : null;
+    }
+    const dllsOk = problem === "not_set" ? false : await dllsInstalled(root, this.revivedDlls).catch(() => false);
+    this.revivedInfo = { root, chosen: chosen !== null, problem, missingFiles, totalBytes: m?.totalBytes ?? 0, dllsOk, detected };
+  }
+
+  // Choose a folder: one that holds 1.4.4 already (it, its parent, Archon or Win64), or an empty one
+  // to download it into.
+  async chooseRevivedFolder(): Promise<ActionResult> {
+    if (this.task || this.busy || this.game.running) return err("busy");
+    const picked = await this.p.chooseFolder("revived", this.revivedInfo?.root ?? this.revivedDefault());
+    if (!picked) return err("cancelled");
+    return this.useRevivedPath(picked);
+  }
+
+  // A folder for 1.4.4: one that holds it (it, its parent, Archon or Win64), or one the download may
+  // fill: empty, new, or holding only 1.4.4's own folders (a download that stopped). Another Dauntless
+  // (1.14.7) or anything else is never written into.
+  async useRevivedPath(picked: string): Promise<ActionResult> {
+    const found = await locateExistingGame(picked, this.hostPlatform);
+    if (found.ok) {
+      if (await this.revivedExeThere(found.root)) return this.useRevivedRoot(found.root);
+      return this.fail("folder_other_game");
+    }
+    let entries: string[] = [];
+    try {
+      entries = await fsp.readdir(picked);
+    } catch {
+      entries = [];
+    }
+    const own = new Set((this.revivedManifest?.files ?? []).map((f) => f.path.split("/")[0].toLowerCase()));
+    if (entries.some((e) => !own.has(e.toLowerCase()))) return this.fail("folder_not_empty");
+    return this.useRevivedRoot(picked);
+  }
+
+  async useDetectedRevived(index: number): Promise<ActionResult> {
+    const d = this.revivedInfo?.detected[index];
+    if (!Number.isInteger(index) || !d) return this.fail("folder_invalid");
+    return this.useRevivedRoot(d.root);
+  }
+
+  private async useRevivedRoot(root: string): Promise<ActionResult> {
+    await this.settings.update((s) => {
+      s.revivedRoot = root;
+    });
+    await this.inspectRevived();
+    this.publish();
+    return OK;
+  }
+
+  // Private mode: the content server named in ServerStatus. Public mode: behind the gateway, if it answers.
+  private async revivedContentEndpoint(): Promise<Endpoint | null> {
+    const sv = this.s.server;
+    if (!sv) return null;
+    if (sv.mode === "public") {
+      if (this.revivedContentProbe !== true) this.revivedContentProbe = await probeContent(endpointFor(sv));
+      return this.revivedContentProbe ? endpointFor(sv) : null;
+    }
+    if (!this.status || this.status.contentPort === null) return null;
+    return { host: sv.host, port: this.status.contentPort, pin: null };
+  }
+
+  private revivedTask(kind: TaskProgress["kind"], total: number, files: number): TaskProgress {
+    return { kind, totalBytes: total, doneBytes: 0, filesTotal: files, filesDone: 0, bytesPerSecond: 0, etaSeconds: null, currentFile: null };
+  }
+
+  private setRevivedTask(t: TaskProgress): void {
+    this.task = t;
+    this.p.emitProgress(t);
+  }
+
+  // Install (or Check and repair): every file checked against the manifest (by hash, unless this
+  // launcher hashed it already, and always on repair), what is missing or damaged downloaded from the
+  // server's content server, then the client DLLs. The way Dauntless Revived's launcher 0.1.35 does it.
+  async installRevived(mode: "install" | "repair"): Promise<ActionResult> {
+    if (this.task || this.busy) return err("busy");
+    if (this.game.running) return this.fail("already_running");
+    const manifest = this.revivedManifest;
+    if (!manifest) return this.fail("manifest_mismatch");
+    const sv = this.s.server;
+    const slot = this.slot();
+    if (!sv || !slot || !this.isRevived) return this.fail("server_unreachable");
+    if (!this.revivedInfo) await this.inspectRevived();
+    const dir = this.revivedInfo!.root;
+    this.lastError = null;
+    this.notice = null;
+    const abort = new AbortController();
+    this.taskAbort = abort;
+    try {
+      await fsp.mkdir(dir, { recursive: true });
+      const fullHash = mode === "repair" || this.s.revivedVerified !== dir;
+      this.setRevivedTask(this.revivedTask("verify", fullHash ? manifest.totalBytes : manifest.files.length, manifest.files.length));
+      this.publish();
+      const report = await verifyInstall(dir, manifest.files, {
+        fullHash,
+        signal: abort.signal,
+        trusted: mode === "install" ? (f, size, mtime) => this.revivedVerified.isTrusted(dir, f, size, mtime) : undefined,
+        onProgress: (p) => this.setRevivedTask({ ...this.revivedTask("verify", p.totalBytes, p.filesTotal), doneBytes: p.doneBytes, filesDone: p.filesDone, currentFile: p.currentFile }),
+      });
+      for (const f of manifest.files) if (!report.bad.some((b) => b.file.path === f.path)) void this.revivedVerified.record(dir, f);
+      const needed = report.bad.map((b) => b.file);
+      for (const b of report.bad) this.revivedVerified.forget(dir, b.file);
+      if (needed.length > 0) log.info(`Dauntless 1.4.4: ${needed.length} file(s) to download (${mode})`);
+
+      if (needed.length > 0) {
+        const cep = await this.revivedContentEndpoint();
+        if (!cep) return this.fail("no_content_server");
+        const key = await this.keys.load(slot).catch(() => null);
+        if (!key) return this.fail("key_invalid");
+        const serverManifest = await fetchContentManifest(cep);
+        if (serverManifest === null) return this.fail("no_content_server");
+        const cmp = compareManifests(manifest, serverManifest);
+        if (!cmp.equal) {
+          log.error(`content server manifest refused: ${cmp.difference}`);
+          return this.fail("manifest_mismatch", cmp.difference);
+        }
+        const free = await freeBytes(dir);
+        let onDisk = 0;
+        for (const f of needed) {
+          try {
+            onDisk += Math.min(f.size, (await fsp.stat(resolveInside(dir, f.path) + ".part")).size);
+          } catch {
+            /* none */
+          }
+        }
+        const required = needed.reduce((a, f) => a + f.size, 0) - onDisk + DISK_MARGIN_BYTES;
+        if (free !== null && free < required) return this.fail("disk_space", String(required));
+        const job = new DownloadJob({
+          endpoint: cep,
+          downloadBaseUrl: contentDownloadBase(serverManifest),
+          key,
+          installDir: dir,
+          files: needed,
+          onProgress: (p) => this.setRevivedTask({ kind: "download", totalBytes: p.totalBytes, doneBytes: p.doneBytes, filesTotal: p.filesTotal, filesDone: p.filesDone, bytesPerSecond: p.bytesPerSecond, etaSeconds: p.etaSeconds, currentFile: p.currentFile }),
+          onRetry: (f, n, reason) => log.warn(`retry ${n} for ${f.path}: ${reason}`),
+          onFileVerified: (f) => void this.revivedVerified.record(dir, f).then(() => this.revivedVerified.save()).catch(() => undefined),
+        });
+        this.revivedJob = job;
+        this.setRevivedTask(this.revivedTask("download", needed.reduce((a, f) => a + f.size, 0), needed.length));
+        this.publish();
+        await job.run();
+        this.revivedJob = null;
+        log.info(`downloaded and verified ${needed.length} Dauntless 1.4.4 file(s)`);
+      }
+
+      this.setRevivedTask(this.revivedTask("dlls", this.revivedDlls.length, this.revivedDlls.length));
+      this.publish();
+      await ensureDllCache(this.revivedDllCache, this.p.revivedDllFetch, this.revivedDlls);
+      await installDlls(this.revivedDllCache, dir, this.revivedDlls);
+      await removePartFiles(dir, manifest.files);
+      await this.settings.update((s) => {
+        s.revivedRoot = dir;
+        s.revivedVerified = dir;
+      });
+      log.info(`Dauntless 1.4.4 ${mode} finished in ${dir}`);
+      this.notice = mode === "install" ? "install_done" : "repair_done";
+      return OK;
+    } catch (e) {
+      if (e instanceof AbortedError || (e instanceof DownloadError && e.code === "cancelled")) {
+        log.info(`Dauntless 1.4.4 ${mode} cancelled`);
+        return err("cancelled");
+      }
+      if (e instanceof DownloadError) {
+        log.error(`download stopped: ${e.code} ${e.filePath ?? ""} ${e.message}`);
+        const map: Record<string, ErrorCode> = {
+          key_rejected: "key_rejected",
+          file_missing_on_server: "file_missing_on_server",
+          file_different_on_server: "file_different_on_server",
+          disk_space: "disk_space",
+          disk_error: "folder_invalid",
+          download_failed: "download_failed",
+          cert_mismatch: "cert_mismatch",
+        };
+        if (e.code === "key_rejected") this.keyRejected = true;
+        if (e.code === "cert_mismatch") {
+          this.reachable = false;
+          this.connectProblem = "cert_mismatch";
+        }
+        return this.fail(map[e.code] ?? "download_failed", e.filePath);
+      }
+      if (e instanceof DllError) {
+        log.error(`DLL install failed: ${e.dll}: ${e.message}`);
+        return this.fail("dll_failed", e.dll);
+      }
+      const code = (e as NodeJS.ErrnoException)?.code;
+      log.error(`Dauntless 1.4.4 ${mode} failed: ${describeError(e)}`);
+      if (code === "ENOSPC") return this.fail("disk_space");
+      if (code === "EPERM" || code === "EACCES") return this.fail("folder_invalid");
+      return this.fail("unknown");
+    } finally {
+      await this.revivedVerified.save().catch(() => undefined);
+      this.revivedJob = null;
+      this.taskAbort = null;
+      this.task = null;
+      await this.inspectRevived().catch(() => undefined);
+      this.publish();
+    }
+  }
+
+  // PLAY on a Dauntless Revived server, as their launcher 0.1.35 does: the account checked, the hunt
+  // region chosen, the executable and DLLs checked by hash, the game config written, the relay started
+  // in public mode (private mode connects straight to the host), and the game started with the server
+  // address first on its command line.
+  private async playRevived(sv: StoredServer, slot: KeySlot): Promise<ActionResult> {
+    const env = this.p.env ?? process.env;
+    const exists = this.p.runtimeFilesExist ?? existsSync;
+    const missing = [...missingVcRuntime(env, exists, this.hostPlatform), ...missingDirectX(env, exists, this.hostPlatform)];
+    if (missing.length) return this.fail("windows_runtime_missing", missing.join(", "));
+    const others = await this.p.findRunningClients();
+    if (others.length > 0) return this.fail("already_running");
+    const key = await this.keys.load(slot).catch(() => null);
+    if (!key) return this.fail("key_invalid");
+    const ep = endpointFor(sv);
+    const account = await fetchUserInfo(ep, key, REVIVED_FLAVOR);
+    if (!account.ok) {
+      this.keyRejected = account.error === "key_rejected" || account.error === "account_banned";
+      return this.fail(account.error, account.detail);
+    }
+    this.keyRejected = false;
+    const region = await chooseClosestRegion(ep, key);
+    if (region) {
+      try {
+        if (!(await saveHuntRegion(ep, key, region))) return this.fail("server_error", "hunt_region");
+      } catch {
+        return this.fail("server_unreachable");
+      }
+      log.info(`hunt region: ${region}`);
+    }
+    await this.inspectRevived();
+    const info = this.revivedInfo;
+    const manifest = this.revivedManifest;
+    if (!info || !manifest || info.problem !== null) return this.fail("game_files_invalid", String(info?.missingFiles ?? 0));
+    const root = info.root;
+    const exe = manifest.files.find((f) => f.path === REVIVED_EXE_RELATIVE_PATH);
+    let exeHash = "";
+    try {
+      exeHash = await this.hashes.hash(resolveInside(root, REVIVED_EXE_RELATIVE_PATH));
+      await this.hashes.save().catch(() => undefined);
+    } catch {
+      exeHash = "";
+    }
+    if (!exe || exeHash !== exe.sha256) {
+      await this.settings.update((s) => {
+        s.revivedVerified = null;
+      });
+      await this.inspectRevived();
+      return this.fail("game_files_invalid", REVIVED_EXE_RELATIVE_PATH);
+    }
+    try {
+      if (!(await dllsInstalled(root, this.revivedDlls))) {
+        await ensureDllCache(this.revivedDllCache, this.p.revivedDllFetch, this.revivedDlls);
+        await installDlls(this.revivedDllCache, root, this.revivedDlls);
+      }
+    } catch (e) {
+      log.error(`DLL repair before launch failed: ${describeError(e)}`);
+      return this.fail("dll_failed", e instanceof DllError ? e.dll : undefined);
+    }
+
+    let gameHost = sv.host;
+    let gamePort = sv.port;
+    let xmppPort = REVIVED_XMPP_PORT;
+    if (sv.mode === "public") {
+      const started = await this.startRelay(sv);
+      if (!started.ok) return started;
+      gameHost = "127.0.0.1";
+      gamePort = this.relay?.port ?? DEFAULT_RELAY_PORT;
+      xmppPort = gamePort;
+    }
+    let launched = false;
+    try {
+      let displayRepaired = false;
+      try {
+        const config = await applyGameConfig({ host: gameHost, port: xmppPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, memory: true });
+        displayRepaired = config.displayRepaired;
+      } catch (e) {
+        log.error(`could not write the game config: ${describeError(e)}`);
+        return this.fail("config_failed");
+      }
+      const args = buildRevivedArgs({ host: gameHost, port: gamePort, key, windowed: this.s.windowed || displayRepaired, gameLocale: gameLocale(this.s.gameLanguage, this.p.systemLocale ?? "en-US") });
+      // The 1.4.4 game gets none of this launcher's Mystic Paradox environment.
+      const gameEnv = { ...env };
+      for (const k of Object.keys(gameEnv)) if (/^(REFORGED_|MYSTICPARADOX_)/i.test(k)) delete gameEnv[k];
+      log.info(`starting Dauntless 1.4.4 (Dauntless Revived ${REVIVED_LAUNCHER_VERSION} mode): ${describeLaunch(EXE_NAME, args)}${sv.mode === "public" ? ` (relay to ${sv.host}:${sv.port})` : ""}`);
+      try {
+        this.endPlayingSession = () => endPlaying(ep, key);
+        await this.game.start(path.join(root, ...WIN64_RELATIVE_DIR.split("/")), args, gameEnv);
+      } catch (e) {
+        this.endPlayingSession = null;
+        log.error(`launch failed: ${describeError(e)}`);
+        return this.fail("launch_failed");
+      }
+      launched = true;
+      return OK;
+    } finally {
+      if (!launched) await this.stopRelay();
+    }
   }
 
   // ------------------------------------------------------------------ play
@@ -1185,6 +1593,7 @@ export class Controller {
     const sv = this.s.server;
     const slot = this.slot();
     if (!sv || !slot) return this.fail("server_unreachable");
+    if (sv.game === "revived") return this.withBusy(() => this.playRevived(sv, slot));
     return this.withBusy(async () => {
       const missingVc = missingVcRuntime(this.p.env ?? process.env, this.p.runtimeFilesExist ?? existsSync, this.hostPlatform);
       if (missingVc.length) log.warn(`Visual C++ runtime files missing: ${missingVc.join(", ")}`);
@@ -1195,7 +1604,7 @@ export class Controller {
       if (!key) return this.fail("key_invalid");
       const ep = this.endpoint();
       if (!ep) return this.fail("server_unreachable");
-      const account = await fetchUserInfo(ep, key);
+      const account = await fetchUserInfo(ep, key, this.flavor());
       if (!account.ok) {
         this.keyRejected = account.error === "key_rejected" || account.error === "account_banned";
         return this.fail(account.error, account.detail);
@@ -1306,19 +1715,24 @@ export class Controller {
   // ------------------------------------------------------------------ settings / links
 
   async setSettings(patch: unknown): Promise<Settings> {
+    let turnedOn = false;
     if (typeof patch === "object" && patch !== null) {
       const p = patch as Record<string, unknown>;
       await this.settings.update((s) => {
         if (GRAPHICS_PRESETS.includes(p.graphics as GraphicsPreset)) s.graphics = p.graphics as GraphicsPreset;
         if (typeof p.windowed === "boolean") s.windowed = p.windowed;
         if (typeof p.streamerMode === "boolean") s.streamerMode = p.streamerMode;
-        if (typeof p.hostTools === "boolean") s.hostTools = p.hostTools;
+        if (typeof p.hostTools === "boolean") {
+          if (p.hostTools && !s.hostTools) turnedOn = true;
+          s.hostTools = p.hostTools;
+        }
         if (LANGUAGES.includes(p.language as Language)) s.language = p.language as Language;
         if (GAME_LANGUAGES.includes(p.gameLanguage as GameLanguage)) s.gameLanguage = p.gameLanguage as GameLanguage;
         if (RUNTIME_PROFILES.includes(p.runtimeProfile as RuntimeProfile)) s.runtimeProfile = p.runtimeProfile as RuntimeProfile;
       });
     }
     this.publish();
+    if (turnedOn) void this.ensureHostWorkspace({ auto: true });
     return this.currentSettings();
   }
 
@@ -1371,7 +1785,7 @@ export class Controller {
     }
     const win64 = this.win64Dir();
     const exports = { ...kit.exports, inGame: win64 !== null && existsSync(path.join(win64, "Items_Analysis")) };
-    return { ...kit, exports, requirements: list, dumperDll: this.s.dumperDll, job: this.hostJob, update: this.hostUpdateResult };
+    return { ...kit, exports, requirements: list, dumperDll: this.s.dumperDll, job: this.hostJob, update: this.hostUpdateResult, projectTarget: this.projectTarget() };
   }
 
   // ------------------------------------------------------------------ the Host page's server
@@ -1533,7 +1947,7 @@ export class Controller {
     const env = this.p.env ?? process.env;
     const git = this.hostPlatform === "win32" ? findGit(env) : "git";
     if (!git) return this.finishJob("update", false, "git_missing", logFile);
-    const run = (args: string[]) => this.server.program(git, args, ws, "update");
+    const run = (args: string[]) => this.server.program(git, args, ws, logFile);
     const rev = async (ref: string) => {
       const r = await run(["rev-parse", ref]);
       return r.code === 0 ? (r.lines.find((l) => /^[0-9a-f]{40}$/.test(l.trim()))?.trim() ?? null) : null;
@@ -1619,6 +2033,66 @@ export class Controller {
     }
   }
 
+  // Where the project folder goes when it is downloaded: beside the game's folder, in the folder that holds
+  // it (D:\Games\D1147\Dauntless -> D:\Games\D1147\Reforged). Null without a game folder.
+  private projectTarget(): string | null {
+    const root = this.gameInfo.root;
+    if (!root || this.gameInfo.problem === "not_found" || this.gameInfo.problem === "not_set") return null;
+    const parent = path.dirname(root);
+    return parent === root ? null : path.join(parent, PROJECT_FOLDER_NAME);
+  }
+
+  // The project folder a host's server runs from (this repository). With Host tools on and none chosen
+  // yet, the one beside the game is taken when it is there, and otherwise cloned there with git (once per
+  // start: auto never shows an error, the Host page has a button that does it again and says why).
+  async ensureHostWorkspace(opts: { auto?: boolean } = {}): Promise<ActionResult> {
+    if (opts.auto && !this.s.hostTools) return OK;
+    if (this.workspaceOrNull()) return OK;
+    if (this.hostJob?.state === "running") return err("busy");
+    const target = this.projectTarget();
+    if (!target) return opts.auto ? OK : this.fail("host_failed", "project_no_game");
+    const use = async (): Promise<ActionResult> => {
+      await this.settings.update((s) => {
+        s.hostWorkspace = target;
+      });
+      log.info(`host: project folder ${target}`);
+      await this.emitHostKit();
+      this.publish();
+      return OK;
+    };
+    if (existsSync(path.join(target, "ReforgedHost", "package.json"))) return use();
+    // Never into a folder that already holds something else.
+    let taken = false;
+    try {
+      taken = existsSync(target) && (await fsp.readdir(target)).length > 0;
+    } catch {
+      taken = true;
+    }
+    if (taken) return opts.auto ? OK : this.fail("host_failed", "project_folder_taken");
+    const git = this.hostPlatform === "win32" ? findGit(this.p.env ?? process.env) : "git";
+    if (!git) return opts.auto ? OK : this.fail("host_failed", "git_missing");
+    const logFile = path.join(this.p.userDataDir, "logs", "host-download.log");
+    this.setJob({ kind: "download_project", state: "running", message: target, logFile });
+    try {
+      const r = await this.server.program(git, ["clone", "--quiet", this.p.projectGitUrl ?? PROJECT_GIT_URL, target], path.dirname(target), logFile);
+      if (r.code !== 0 || !existsSync(path.join(target, "ReforgedHost", "package.json"))) {
+        log.warn(`host: project not downloaded to ${target} (git exit ${r.code})`);
+        const failed = { kind: "download_project" as const, state: "failed" as const, message: r.lines.filter(Boolean).pop() ?? `exit ${r.code}`, logFile };
+        if (opts.auto) {
+          this.setJob(failed);
+          return OK;
+        }
+        return this.finishJob("download_project", false, failed.message, logFile);
+      }
+      await use();
+      return this.finishJob("download_project", true, target, logFile);
+    } catch (e) {
+      this.setJob(null);
+      log.error(`host: project download failed: ${describeError(e)}`);
+      return opts.auto ? OK : this.fail("host_failed", describeError(e));
+    }
+  }
+
   async hostChooseWorkspace(): Promise<ActionResult> {
     const picked = await this.p.chooseFolder("workspace", this.s.hostWorkspace ?? "");
     if (!picked) return err("cancelled");
@@ -1696,6 +2170,49 @@ export class Controller {
     return this.fail("host_failed", message ?? kind);
   }
 
+  // Mystic Paradox, downloaded and patched in .workspace (ReforgedHost's npm run upstream, setup's first
+  // step): the SDK, the loader and the game data go into it, so those steps do not wait for the server's setup.
+  private async ensureUpstream(ws: string): Promise<void> {
+    const w = workspacePaths(ws);
+    if (existsSync(path.join(w.runtimeSource, "dllmain.cpp"))) return;
+    this.setJob({ kind: "upstream", state: "running", message: null, logFile: path.join(ws, ".workspace", "logs", "launcher-upstream.log") });
+    const r = await this.server.command(ws, ["upstream"], "upstream");
+    if (r.code !== 0) throw new Error(r.failure ?? "upstream");
+    // A project from before npm run upstream answers with its help text: its setup does it.
+    if (!existsSync(path.join(w.runtimeSource, "dllmain.cpp"))) throw new HostKitError("upstream_old");
+    log.info("host: Mystic Paradox downloaded and patched for the Build tab");
+  }
+
+  private async importSdkFrom(w: ReturnType<typeof workspacePaths>, dir: string, name: string): Promise<ActionResult> {
+    this.setJob({ kind: "import_sdk", state: "running", message: name, logFile: null });
+    const n = await importSdk(dir, w.runtimeSource);
+    log.info(`host: imported ${n} SDK files from ${name}`);
+    return this.finishJob("import_sdk", true, `${n} files`);
+  }
+
+  // A Dumper-7 output that is not under C:\Dumper-7 (another output folder in its ini, or copied from
+  // another PC): the CppSDK folder itself, or the folder that holds it.
+  async hostImportSdkFolder(): Promise<ActionResult> {
+    if (this.hostJob?.state === "running") return err("busy");
+    const ws = this.workspaceOrNull();
+    if (!ws) return this.fail("host_failed", "workspace");
+    const picked = await this.p.chooseFolder("sdk", this.p.dumpRoot ?? DUMPER_OUTPUT_ROOT);
+    if (!picked) return err("cancelled");
+    const dir = existsSync(path.join(picked, "SDK.hpp")) ? picked : existsSync(path.join(picked, "CppSDK", "SDK.hpp")) ? path.join(picked, "CppSDK") : null;
+    if (!dir) return this.fail("host_failed", "sdk_folder");
+    try {
+      await this.ensureUpstream(ws);
+      return await this.importSdkFrom(workspacePaths(ws), dir, path.basename(path.dirname(dir)) || path.basename(dir));
+    } catch (e) {
+      if (e instanceof HostKitError) {
+        this.setJob(null);
+        return this.hostKitFailure(e);
+      }
+      log.error(`host: SDK import failed: ${describeError(e)}`);
+      return this.finishJob("import_sdk", false, describeError(e));
+    }
+  }
+
   async hostAction(action: HostAction): Promise<ActionResult> {
     if (this.hostJob?.state === "running") return err("busy");
     const ws = this.s.hostWorkspace;
@@ -1703,6 +2220,7 @@ export class Controller {
     if (needsWorkspace && !ws) return this.fail("host_failed", "workspace");
     const w = ws ? workspacePaths(ws) : null;
     try {
+      if (ws && NEEDS_UPSTREAM.has(action)) await this.ensureUpstream(ws);
       switch (action) {
         case "inject_dumper":
           return await this.startDump();
@@ -1711,10 +2229,7 @@ export class Controller {
         case "import_sdk": {
           const dumps = await findDumps(this.p.dumpRoot ?? DUMPER_OUTPUT_ROOT);
           if (dumps.length === 0) return this.fail("host_failed", "no_dump");
-          this.setJob({ kind: "import_sdk", state: "running", message: dumps[0].name, logFile: null });
-          const n = await importSdk(dumps[0].dir, w!.runtimeSource);
-          log.info(`host: imported ${n} SDK files from ${dumps[0].name}`);
-          return this.finishJob("import_sdk", true, `${n} files`);
+          return await this.importSdkFrom(w!, dumps[0].dir, dumps[0].name);
         }
         case "build_runtime":
         case "build_exporter": {
@@ -1862,3 +2377,6 @@ function updateFailure(json: Record<string, unknown> | null, failure: string | n
   const code = typeof json?.error === "string" && /^[a-z_]{1,40}$/.test(json.error) ? json.error : null;
   return code ? `update_${code}` : failure ?? "update";
 }
+
+// The Host page's steps that work in the downloaded Mystic Paradox (ensureUpstream).
+const NEEDS_UPSTREAM: ReadonlySet<HostAction> = new Set<HostAction>(["import_sdk", "build_loader", "synthetic_data", "generate_gamedata"]);

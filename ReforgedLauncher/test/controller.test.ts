@@ -17,7 +17,9 @@ import { formatInvite } from "../src/shared/invite";
 import { setSink } from "../src/main/log";
 import type { SpawnFn } from "../src/main/launch";
 import type { Snapshot } from "../src/shared/types";
-import { FakeServer, makeRuntime, sha256 } from "./fakes";
+import { FakeServer, makeRuntime, pattern, sha256 } from "./fakes";
+import { validateManifest } from "../src/main/revived/manifest";
+import { REVIVED_BUILD, REVIVED_EXE_RELATIVE_PATH } from "../src/main/revived/constants";
 import { makeTestCert, type TestCert } from "./certs";
 import { GAME_VERSION_TEXT } from "../src/main/constants";
 
@@ -357,6 +359,10 @@ if (a === "update --check --json") {
   console.log(JSON.stringify({ branch: "main", upstream: "origin/main", head: "bbbbbbbbbbbb", remoteHead: "bbbbbbbbbbbb", behind: 0, ahead: 0, updated: true, from: "aaaaaaaaaaaa", to: "bbbbbbbbbbbb", files: 4, runtimeChanged: true, hostKitDeps: false }));
 } else if (a === "setup") {
   console.log("setup again");
+} else if (a === "upstream") {
+  const src = path.join(ws, ".workspace", "Mystic-Paradox", "ParadoxRuntime");
+  fs.mkdirSync(src, { recursive: true });
+  fs.writeFileSync(path.join(src, "dllmain.cpp"), "int main() {}\\n");
 } else if (process.argv[2] === "multipliers") {
   const file = path.join(ws, ".workspace", "config", "host.json");
   const c = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -442,4 +448,156 @@ test("a project from before npm run update is updated with git, once", async () 
   assert.equal(git(ws, "rev-parse", "HEAD"), git(dev, "rev-parse", "HEAD"));
   assert.deepEqual(readFileSync(path.join(ws, "calls.log"), "utf8").trim().split("\n"), ["setup"], "setup ran again; the host kit was not asked to update");
   await hx.c.shutdown();
+});
+
+async function eventually(check: () => Promise<boolean>, ms = 8000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!(await check())) {
+    if (Date.now() > end) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+test("Host tools on: the project folder is downloaded beside the game and chosen; a folder with other files is left alone", async () => {
+  const remote = temp("rr-ctl-proj-");
+  git(remote, "init", "--quiet", "--bare", "--initial-branch=main");
+  const dev = temp("rr-ctl-projdev-");
+  git(dev, "clone", "--quiet", remote, ".");
+  git(dev, "checkout", "--quiet", "-b", "main");
+  mkdirSync(path.join(dev, "ReforgedHost"), { recursive: true });
+  writeFileSync(path.join(dev, "ReforgedHost", "package.json"), "{}");
+  git(dev, "add", "-A");
+  git(dev, "commit", "--quiet", "-m", "project");
+  git(dev, "push", "--quiet", "origin", "main");
+
+  const hx = await harness(async () => null, { projectGitUrl: remote, hostServer: { findNode: () => ({ node: process.execPath, npmCli: null }), probe: async () => false } });
+  await hx.c.init();
+  const game = fakeGame();
+  assert.deepEqual(await hx.c.useGamePath(game), { ok: true });
+  const target = path.join(path.dirname(game), "Reforged");
+  assert.equal((await hx.c.hostKit()).projectTarget, target);
+  assert.equal(existsSync(target), false, "nothing is downloaded while Host tools are off");
+  await hx.c.setSettings({ hostTools: true });
+  await eventually(async () => (await hx.c.hostKit()).workspace === target);
+  assert.ok(existsSync(path.join(target, "ReforgedHost", "package.json")));
+  assert.equal(git(target, "rev-parse", "--abbrev-ref", "@{u}"), "origin/main", "a git clone, so Update setup works");
+  assert.equal((await hx.c.hostKit()).job?.kind, "download_project");
+  await hx.c.shutdown();
+
+  // Another game whose Reforged folder holds something else: never written into.
+  const other = await harness(async () => null, { projectGitUrl: remote });
+  await other.c.init();
+  const game2 = fakeGame();
+  mkdirSync(path.join(path.dirname(game2), "Reforged"));
+  writeFileSync(path.join(path.dirname(game2), "Reforged", "notes.txt"), "mine");
+  assert.deepEqual(await other.c.useGamePath(game2), { ok: true });
+  await other.c.setSettings({ hostTools: true });
+  assert.deepEqual(await other.c.ensureHostWorkspace(), { ok: false, error: { code: "host_failed", detail: "project_folder_taken" } });
+  assert.equal((await other.c.hostKit()).workspace, null);
+  await other.c.shutdown();
+});
+
+test("Import SDK works before the server is set up: Mystic Paradox is downloaded first", async () => {
+  const ws = hostWorkspace();
+  const dumps = temp("rr-ctl-dumps-");
+  const sdk = path.join(dumps, "4.26.2-647472-Dauntless", "CppSDK");
+  mkdirSync(path.join(sdk, "SDK"), { recursive: true });
+  writeFileSync(path.join(sdk, "SDK.hpp"), "#pragma once\n");
+  writeFileSync(path.join(sdk, "SDK", "Engine_functions.cpp"), "\n");
+  const hx = await harness(async () => ws, { dumpRoot: dumps, hostServer: { findNode: () => ({ node: process.execPath, npmCli: null }), probe: async () => false } });
+  await hx.c.init();
+  assert.deepEqual(await hx.c.hostChooseWorkspace(), { ok: true });
+  assert.equal((await hx.c.hostKit()).upstream.present, false);
+  assert.deepEqual(await hx.c.hostAction("import_sdk"), { ok: true });
+  assert.deepEqual(readFileSync(path.join(ws, "calls.log"), "utf8").trim().split("\n"), ["upstream"]);
+  const kit = await hx.c.hostKit();
+  assert.equal(kit.sdk.present, true);
+  assert.equal(kit.sdk.functionFiles, 1);
+  await hx.c.shutdown();
+});
+
+test("a Dauntless Revived server: Dauntless 1.4.4 downloaded, checked and played the way their launcher 0.1.35 does", async () => {
+  // A tiny stand-in for 1.4.4: the executable and two other files, and two client DLLs.
+  const files = new Map<string, Buffer>([
+    [REVIVED_EXE_RELATIVE_PATH, pattern(5000, 3)],
+    ["Archon/Content/Paks/pakchunk0-WindowsNoEditor.pak", pattern(70000, 4)],
+    ["Engine/Binaries/ThirdParty/x.txt", Buffer.from("hello")],
+  ]);
+  const raw = { build: REVIVED_BUILD, totalBytes: [...files.values()].reduce((a, b) => a + b.length, 0), files: [...files].map(([p, d]) => ({ path: p, size: d.length, sha256: sha256(d) })) };
+  const check = validateManifest(raw, REVIVED_BUILD, false);
+  assert.ok(check.ok);
+  const dllData = new Map([
+    ["dxgi.dll", pattern(1100, 8)],
+    ["UndauntedInternalServer.dll", pattern(2100, 9)],
+  ]);
+  const dlls = [...dllData].map(([name, d]) => ({ name, sha256: sha256(d), size: d.length, url: `https://raw.example.invalid/${name}` }));
+  const fetched: string[] = [];
+  const revived = new FakeServer({ name: "Revived Fridays", registration: "OPEN", revived: { manifest: raw, files, regions: { region: "main", probes: [] } } });
+  const port = await revived.start();
+  const root = path.join(temp("rr-ctl-144-"), "Game");
+  try {
+    const hx = await harness(async () => null, {
+      revivedDefaultDir: root,
+      revivedManifest: check.ok ? check.manifest : null,
+      revivedDlls: dlls,
+      revivedDllFetch: async (url) => {
+        fetched.push(url);
+        return dllData.get(url.split("/").pop()!)!;
+      },
+    });
+    await hx.c.init();
+    const invite = formatInvite({ game: "revived", mode: "private", host: "127.0.0.1", port, fp: null, code: "OPEN-ANYONE", name: "Revived Fridays", share: null });
+    assert.ok(invite.startsWith("dauntless-revived://"));
+    assert.deepEqual(await hx.c.submitInvite(invite), { ok: true });
+    assert.equal(hx.last().server?.game, "revived");
+    assert.deepEqual(await hx.c.register("Wanderer"), { ok: true, username: "Wanderer" });
+    assert.ok(revived.seen.some((r) => r.path === "/undaunted/api/Register"), "their API, not ours");
+    let s = hx.last();
+    assert.equal(s.phase, "locate");
+    assert.equal(s.revived?.problem, "not_set");
+    assert.equal(s.revived?.root, root);
+
+    // Install: everything downloaded from the server (with their key header), checked, the DLLs added.
+    assert.deepEqual(await hx.c.installRevived("install"), { ok: true });
+    for (const [rel, data] of files) assert.deepEqual(readFileSync(path.join(root, ...rel.split("/"))), data);
+    const win64 = path.join(root, "Archon", "Binaries", "Win64");
+    for (const [name, data] of dllData) assert.deepEqual(readFileSync(path.join(win64, name)), data);
+    assert.deepEqual(fetched.sort(), dlls.map((d) => d.url).sort());
+    assert.ok(revived.seen.some((r) => r.path.startsWith("/content/v1/files/") && r.key !== undefined && r.status === 200));
+    s = hx.last();
+    assert.equal(s.phase, "ready");
+    assert.equal(s.notice, "install_done");
+
+    // PLAY: private mode connects straight to the host; the server address comes first.
+    assert.deepEqual(await hx.c.play(), { ok: true });
+    const run = hx.spawns[hx.spawns.length - 1];
+    assert.equal(run.exe, path.join(win64, "Dauntless-Win64-Shipping.exe"));
+    assert.equal(run.args[0], `127.0.0.1:${port}`);
+    assert.ok(run.args[1].startsWith("-AUTH_PASSWORD=RRK_") || run.args[1].startsWith("-AUTH_PASSWORD="));
+    assert.ok(run.args.includes("-NoEAC") && run.args.includes("-AUTH_TYPE=exchangecode"));
+    assert.equal(run.env?.REFORGED_BACKEND_URL, undefined, "none of the 1.14.7 runtime's environment");
+    assert.ok(revived.seen.some((r) => r.path === "/undaunted/api/HuntRegion" && r.status === 200));
+    const engineIni = readFileSync(path.join(hx.configDir, "Engine.ini"), "latin1");
+    assert.match(engineIni, /r\.Streaming\.PoolSize=3000/);
+    assert.match(engineIni, /ServerAddr="ws:\/\/127\.0\.0\.1"\r\nServerPort=61099/);
+    assert.equal(hx.last().running.relayPort, null, "no relay in private mode");
+    hx.child()!.emit("exit", 0);
+    await waitFor(() => revived.seen.some((r) => r.path === "/undaunted/api/PlayingEnded"));
+
+    // Another game's folder, or one with other files, is never chosen for 1.4.4.
+    assert.deepEqual(await hx.c.useRevivedPath(fakeGame()), { ok: false, error: { code: "folder_other_game" } });
+    const junk = temp("rr-ctl-junk-");
+    writeFileSync(path.join(junk, "notes.txt"), "mine");
+    assert.deepEqual(await hx.c.useRevivedPath(junk), { ok: false, error: { code: "folder_not_empty" } });
+    assert.equal(hx.last().revived?.root, root);
+
+    // A damaged file: CHECK finds it and fetches it again.
+    writeFileSync(path.join(root, "Engine", "Binaries", "ThirdParty", "x.txt"), "hellO");
+    assert.deepEqual(await hx.c.installRevived("repair"), { ok: true });
+    assert.equal(readFileSync(path.join(root, "Engine", "Binaries", "ThirdParty", "x.txt"), "utf8"), "hello");
+    assert.equal(hx.last().notice, "repair_done");
+    await hx.c.shutdown();
+  } finally {
+    await revived.stop();
+  }
 });
