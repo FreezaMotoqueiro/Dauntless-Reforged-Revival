@@ -125,11 +125,11 @@ describe("invites", () => {
     it("are links the launcher accepts, private and public", () => {
         const priv = parseInvite(inviteFor(config, "ABCD-EFGH-JKMN", null));
         assert.ok(priv.ok);
-        if (priv.ok) assert.deepEqual(priv.invite, { mode: "private", host: "100.101.102.103", port: 61000, code: "ABCD-EFGH-JKMN", name: "Friday Hunts & Co", share: config.shareUrl, fp: null });
+        if (priv.ok) assert.deepEqual(priv.invite, { game: "reforged", mode: "private", host: "100.101.102.103", port: 61000, code: "ABCD-EFGH-JKMN", name: "Friday Hunts & Co", share: config.shareUrl, fp: null });
         const fp = "ab".repeat(32);
         const pub = parseInvite(inviteFor({ ...config, mode: "public", host: "hunts.example.net", gameAddress: "203.0.113.7", shareUrl: null }, "ABCD-EFGH-JKMN", fp));
         assert.ok(pub.ok);
-        if (pub.ok) assert.deepEqual(pub.invite, { mode: "public", host: "hunts.example.net", port: 443, code: "ABCD-EFGH-JKMN", name: "Friday Hunts & Co", share: null, fp });
+        if (pub.ok) assert.deepEqual(pub.invite, { game: "reforged", mode: "public", host: "hunts.example.net", port: 443, code: "ABCD-EFGH-JKMN", name: "Friday Hunts & Co", share: null, fp });
         assert.throws(() => formatInvite({ mode: "public", host: "x.example", port: 443, code: "ABCD", name: "x", fp: null, share: null }), /fingerprint/);
     });
 
