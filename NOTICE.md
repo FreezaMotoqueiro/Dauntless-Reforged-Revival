@@ -75,7 +75,7 @@ Undaunted or any other project named here, and none of them endorses it.
 ### This project
 
 - `ReforgedHost/` (the host kit), `upstream/` (the pin and the patches; the patched upstream files
-  remain under Mystic Paradox's terms), `brand/` (the emblem and icons, made for this project),
+  remain under Mystic Paradox's terms), `brand/` (the logo and icons, made for this project),
   `docs/` and the new parts of the components above, by the Dauntless Reforged Revival
   contributors, AGPL-3.0-only.
 

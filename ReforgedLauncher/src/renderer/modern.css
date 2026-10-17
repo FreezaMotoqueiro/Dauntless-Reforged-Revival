@@ -1,0 +1,369 @@
+/* The modern look: the launcher's layout, flat and quiet. Near-black surfaces with a hint of green, one
+   hairline for every edge, rounded corners, no bevels, glows or painted frames, and the logo's two
+   greens as the only colour: the bright green for actions and the lime for highlights. The night
+   scene gives way to one soft light from the top. It sits on top of styles.css and is scoped to
+   <html data-style="modern">: the --rr-* colours are styles.css's (brand/palette.json); this file adds the
+   surface and hairline roles and flattens the few components that drew ornaments. */
+
+:root[data-style="modern"] {
+  --surface: #0e1310;
+  --surface-2: #131a15;
+  --hairline: rgb(255 255 255 / 0.07);
+  --hairline-strong: rgb(255 255 255 / 0.12);
+  --line: var(--hairline);
+  --edge: var(--hairline-strong);
+  --glass: var(--surface);
+  --glass-strong: var(--surface-2);
+  --shadow: transparent;
+  --radius: 12px;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+}
+
+/* ------------------------------------------------------------------ frame */
+
+:root[data-style="modern"] .titlebar {
+  background: var(--rr-ink);
+  border-bottom: 1px solid var(--hairline);
+}
+
+:root[data-style="modern"] .titlebar-emblem {
+  width: 18px;
+  height: 18px;
+}
+
+:root[data-style="modern"] .rail {
+  background: var(--rr-ink);
+  border-right: 1px solid var(--hairline);
+  padding: 18px 12px 14px;
+}
+
+:root[data-style="modern"] .game-tile {
+  background: none;
+  gap: 10px;
+  padding: 0 0 6px;
+}
+
+:root[data-style="modern"] .tile-version {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--rr-steel);
+}
+
+:root[data-style="modern"] .nav {
+  gap: 2px;
+}
+
+:root[data-style="modern"] .nav-item {
+  height: 40px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--rr-steel);
+}
+
+:root[data-style="modern"] .nav-item:hover {
+  background: var(--surface-2);
+  color: var(--rr-frost);
+}
+
+:root[data-style="modern"] .nav-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--rr-ice) 10%, transparent);
+  color: var(--rr-frost);
+}
+
+:root[data-style="modern"] .nav-item[aria-current="page"]::before {
+  left: -12px;
+  top: 11px;
+  bottom: 11px;
+  box-shadow: none;
+}
+
+:root[data-style="modern"] .nav-item[aria-current="page"] .icon {
+  color: var(--rr-ice);
+}
+
+/* ------------------------------------------------------------------ background */
+
+/* No painted scene: one soft green light from the top of the window. A host's art still fades in. */
+:root[data-style="modern"] .scene {
+  display: none;
+}
+
+:root[data-style="modern"] .hero {
+  background:
+    radial-gradient(120% 70% at 75% -20%, color-mix(in srgb, var(--rr-ice) 13%, transparent), transparent 60%),
+    radial-gradient(60% 50% at 0% 110%, color-mix(in srgb, var(--rr-glow) 5%, transparent), transparent 70%),
+    var(--rr-ink);
+}
+
+:root[data-style="modern"] .hero-shade {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--rr-ink) 80%, transparent) 0%, color-mix(in srgb, var(--rr-ink) 40%, transparent) 45%, transparent 70%);
+}
+
+/* ------------------------------------------------------------------ type */
+
+:root[data-style="modern"] .eyebrow {
+  color: var(--rr-steel);
+  letter-spacing: 0.06em;
+  font-size: 12px;
+  text-shadow: none;
+}
+
+:root[data-style="modern"] .hero-title {
+  font-weight: 650;
+  font-stretch: normal;
+  font-size: 40px;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  text-shadow: none;
+}
+
+:root[data-style="modern"] .hero-text {
+  color: var(--rr-steel);
+  font-size: 15px;
+  text-shadow: none;
+}
+
+:root[data-style="modern"] .page-title {
+  letter-spacing: -0.015em;
+  font-weight: 650;
+}
+
+/* ------------------------------------------------------------------ surfaces */
+
+:root[data-style="modern"] .card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+:root[data-style="modern"] .settings-panel > .card {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+:root[data-style="modern"] .settings-panel .settings-row:hover,
+:root[data-style="modern"] .settings-panel .settings-row:focus-within {
+  background: var(--surface-2);
+}
+
+:root[data-style="modern"] .settings-tabs {
+  background: var(--surface);
+}
+
+:root[data-style="modern"] .settings-tab[aria-selected="true"] {
+  background: var(--rr-deep);
+}
+
+:root[data-style="modern"] .card-warn,
+:root[data-style="modern"] .card-danger {
+  border-color: var(--hairline);
+  box-shadow: inset 3px 0 0 var(--rr-ice);
+}
+
+:root[data-style="modern"] .card-danger {
+  box-shadow: inset 3px 0 0 var(--rr-glow);
+}
+
+:root[data-style="modern"] .card-accent {
+  border-color: color-mix(in srgb, var(--rr-ice) 35%, transparent);
+}
+
+:root[data-style="modern"] .badge {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  font-weight: 500;
+}
+
+:root[data-style="modern"] .badge-public {
+  color: var(--rr-glow);
+}
+
+:root[data-style="modern"] .badge-private {
+  color: var(--rr-ice);
+}
+
+:root[data-style="modern"] .input,
+:root[data-style="modern"] .textarea,
+:root[data-style="modern"] .select {
+  background: var(--rr-ink);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 8px;
+}
+
+:root[data-style="modern"] .input:focus,
+:root[data-style="modern"] .textarea:focus,
+:root[data-style="modern"] .select:focus {
+  border-color: var(--rr-ice);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rr-ice) 22%, transparent);
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+:root[data-style="modern"] .btn {
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  color: var(--rr-frost);
+  font-weight: 500;
+}
+
+:root[data-style="modern"] .btn:hover:not(:disabled) {
+  background: var(--rr-deep);
+  border-color: var(--hairline-strong);
+  color: var(--rr-frost);
+}
+
+:root[data-style="modern"] .btn:active:not(:disabled) {
+  transform: none;
+  background: var(--rr-deep);
+  color: var(--rr-frost);
+}
+
+:root[data-style="modern"] .btn:disabled {
+  background: transparent;
+  border-style: dashed;
+  color: var(--rr-steel);
+  opacity: 0.75;
+}
+
+:root[data-style="modern"] .btn-primary {
+  background: var(--rr-ice);
+  border-color: var(--rr-ice);
+  color: #04140a;
+  box-shadow: none;
+  font-weight: 600;
+}
+
+:root[data-style="modern"] .btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rr-ice) 85%, white);
+  border-color: color-mix(in srgb, var(--rr-ice) 85%, white);
+  color: #04140a;
+}
+
+:root[data-style="modern"] .btn-primary:active:not(:disabled) {
+  background: var(--rr-azure);
+  border-color: var(--rr-azure);
+  color: var(--rr-frost);
+}
+
+:root[data-style="modern"] .link-btn {
+  color: var(--rr-ice);
+}
+
+/* ------------------------------------------------------------------ the action bar and PLAY */
+
+:root[data-style="modern"] .actionbar {
+  background: color-mix(in srgb, var(--rr-ink) 92%, transparent);
+  border-top: 1px solid var(--hairline);
+  min-height: 96px;
+  padding: 16px 40px 18px;
+}
+
+:root[data-style="modern"] .big-button {
+  min-width: 220px;
+  height: 56px;
+  border-radius: 12px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.12em;
+  color: #04140a;
+  background: var(--rr-ice);
+  box-shadow: none;
+  transition: background 0.15s, transform 0.1s;
+}
+
+:root[data-style="modern"] .big-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rr-ice) 82%, white);
+  box-shadow: none;
+}
+
+:root[data-style="modern"] .big-button:active:not(:disabled) {
+  transform: translateY(1px);
+  background: var(--rr-azure);
+  color: var(--rr-frost);
+}
+
+:root[data-style="modern"] .big-button:disabled {
+  background: var(--surface-2);
+  color: var(--rr-steel);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+
+:root[data-style="modern"] .big-button.is-running,
+:root[data-style="modern"] .big-button.is-running:disabled {
+  background: transparent;
+  color: var(--rr-ice);
+  box-shadow: inset 0 0 0 1.5px var(--rr-ice);
+}
+
+:root[data-style="modern"] .big-button.is-pause {
+  background: var(--surface-2);
+  color: var(--rr-frost);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+
+:root[data-style="modern"] .big-button.is-pause:hover:not(:disabled) {
+  background: var(--rr-deep);
+}
+
+/* Ready: one slow breath of the button's own edge, nothing around it. */
+:root[data-style="modern"] .big-button.is-ready::after {
+  inset: -4px;
+  border-radius: 15px;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--rr-ice) 55%, transparent);
+}
+
+/* ------------------------------------------------------------------ the server panel */
+
+:root[data-style="modern"] .server-panel {
+  background: var(--rr-ink);
+  border-left: 1px solid var(--hairline);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* ------------------------------------------------------------------ dialogs, banners, small parts */
+
+:root[data-style="modern"] .modal-root {
+  background: rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(2px);
+}
+
+:root[data-style="modern"] .modal {
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.55);
+}
+
+:root[data-style="modern"] .modal-danger {
+  border-color: var(--hairline-strong);
+  box-shadow: inset 0 3px 0 var(--rr-glow), 0 24px 64px rgb(0 0 0 / 0.55);
+}
+
+:root[data-style="modern"] .banner {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: none;
+}
+
+:root[data-style="modern"] .account-chip,
+:root[data-style="modern"] .lang-switch {
+  background: var(--surface);
+  border-color: var(--hairline);
+}
+
+:root[data-style="modern"] .dropdown-list {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.5);
+}
+
+:root[data-style="modern"] .step-dot {
+  border-color: var(--hairline-strong);
+}
