@@ -17,6 +17,7 @@
     "patches/0009-backend-mastery-xp-and-objective-progress.patch",
     "patches/0010-backend-claim-bounties-delete-route.patch",
     "patches/0011-runtime-client-readiness-force-after-20s.patch",
-    "patches/0012-runtime-hunt-restart-waits-for-player-data.patch"
+    "patches/0012-runtime-hunt-restart-waits-for-player-data.patch",
+    "patches/0013-runtime-log-missing-hunt-weapon.patch"
   ]
 }

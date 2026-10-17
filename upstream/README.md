@@ -196,6 +196,18 @@ slow, it was missing something:
   turns the gate off. The same early restart happened before 0008, 20 to 30 seconds after joining; with the
   progression configuration available at boot (0008) it comes about 1.5 seconds after joining. 0008 stays.
 
+### 0013: the log shows where a hunt's missing weapon got stuck
+
+`ParadoxRuntime/dllmain.cpp`, client side, logging only. With 0012 the hunt no longer crashes, but on 16 Oct
+every hunt with the newly crafted hammer (`ihammer_rock_00`) equipped stayed on the loading screen until the
+server's 120-second "Loading timeout", while hunts with the war pike or the repeaters loaded. The server logs of
+both kinds of hunt match line for line, so the weapon is lost on the client: `AArchonCharacter::Weapon`
+(`+0x5F0`) is not replicated, and the client never sets it. While 0012's check holds the loading screen for a
+missing weapon, the runtime now writes `[WeaponGap]` lines 3, 10, 30, 60 and 100 seconds after `ClientRestart`:
+the character's equipment pointers, every weapon the client has (owner, network role, item id, the four
+`AArchonEquipment` equip flags, and the weapon's replicated level, slot and parts, power table and meshes),
+the other equipment the character owns, and the local loadout's active slot. It changes nothing in the game.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
