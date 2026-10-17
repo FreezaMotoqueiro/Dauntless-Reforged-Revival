@@ -208,6 +208,21 @@ the character's equipment pointers, every weapon the client has (owner, network 
 `AArchonEquipment` equip flags, and the weapon's replicated level, slot and parts, power table and meshes),
 the other equipment the character owns, and the local loadout's active slot. It changes nothing in the game.
 
+### 0014: the server log shows what happened to a hunt's weapon
+
+`ParadoxRuntime/dllmain.cpp`, server and client, logging only. 0013's `[WeaponGap]` lines from a hammer hunt on
+16 Oct show the hammer reaching the client already destroyed (`dying=1`, no owner) 4 seconds after
+`ClientRestart`, with no other weapon arriving, while the armour and lantern arrived and equipped. A client
+cannot destroy a replicated actor it does not own, so the server either destroyed the hammer or stopped
+replicating it to that player. Neither the game's server log nor the runtime's recorded weapons. In hunts the
+server now writes `[ServerWeaponGap]` lines 0.5, 1.5, 3, 5, 10 and 30 seconds after each connected player's
+character appears: the character's equipment pointers and location, then every weapon and every piece of that
+character's equipment, with its owner, equip flags, location and distance from the character, what it is
+attached to, its cull distance, and its replication-graph state for that player's connection (the actor
+channel, the cull distance the graph uses, and the frame the channel is due to close). The client's
+`[WeaponGap]` item lines also gain the cull distance and attachment. `DISABLE_SERVER_WEAPON_GAP_LOG.flag` next
+to the game exe turns the server lines off. It changes nothing in the game.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
