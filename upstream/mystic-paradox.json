@@ -20,6 +20,7 @@
     "patches/0012-runtime-hunt-restart-waits-for-player-data.patch",
     "patches/0013-runtime-log-missing-hunt-weapon.patch",
     "patches/0014-runtime-log-hunt-weapon-on-server.patch",
-    "patches/0015-runtime-send-dormant-weapons.patch"
+    "patches/0015-runtime-send-dormant-weapons.patch",
+    "patches/0016-runtime-always-relevant-weapon-not-culled.patch"
   ]
 }

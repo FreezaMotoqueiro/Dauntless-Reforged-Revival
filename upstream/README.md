@@ -242,6 +242,22 @@ line per weapon registered (dormancy, flags, location, the route taken) and a `[
 weapon woken, and the `[ServerWeaponGap]` item lines gain the dormancy and route flags.
 `DISABLE_WEAPON_DORMANCY_FIX.flag` next to the game exe turns both changes off.
 
+### 0016: an always-relevant weapon is no longer culled at the world origin
+
+`ParadoxRuntime/dllmain.cpp`, server side. 0015 did not fix the hammer hunts, and its `[WeaponRoute]` line
+(17 Oct, 03:43) shows why: the hammer is not dormant. Its class sets `bAlwaysRelevant` (`flags58=0x88`; the
+armour and lantern are `0x80`), so it goes to the graph's global always-relevant node, registered at
+`(0,0,0)`, where it is spawned. That node still applies the class cull distance (15000 units) and measures it
+from the position the graph stores for the actor, which only the spatial grid updates; for a global actor it
+stays at the origin. A hunt starts about 24000 units from the origin, so the hammer is culled for the player
+and never sent; the city's start is close enough. The PlayerRole and PlayerState routes already clear the
+cull distance for this reason. A weapon on the global route now gets the same correction when it is
+registered, and a player's current weapon that is on that route and was never sent to them has its cull
+distance cleared on the tick, in the graph and in each connection's copy (`[WeaponCullFix]` line). The
+`[WeaponRoute]` line gains the cull change and the `[ServerWeaponGap]` item lines gain the graph's stored
+position. `DISABLE_WEAPON_CULL_FIX.flag` next to the game exe turns this off. 0015 stays: it is correct for a
+dormant weapon on the spatial route.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
