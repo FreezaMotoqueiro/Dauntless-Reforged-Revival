@@ -112,6 +112,8 @@ describe("the service env files", () => {
         assert.equal(get(f.backend, "REFORGED_HTTP_ONLY"), "true");
         assert.equal(get(f.backend, "QOS_TARGET_URL"), "http://127.0.0.1:61100/QoS");
         assert.equal(get(f.backend, "REALTIME_XMPP_DEV_CITY_MUC"), "false");
+        assert.equal(get(f.backend, "HUNT_GO_NOW_MIN_DELAY_MS"), "1", "no 10-20 s wait (with the build locked) after the hunt server is ready");
+        assert.equal(get(f.backend, "HUNT_GO_NOW_MAX_DELAY_MS"), "1000");
         assert.equal(get(f.backend, "REALTIME_XMPP_ALLOWED_HOSTS"), "100.101.102.103");
         assert.equal(get(f.backend, "GAMESERVER_API_KEYS"), s.gameserverKey);
         assert.equal(get(f.director, "METAGAME_API_KEY"), s.gameserverKey, "the Director's game servers use the backend's game-server key");
