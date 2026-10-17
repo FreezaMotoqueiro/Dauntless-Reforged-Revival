@@ -1,6 +1,6 @@
-/* Dauntless Reforged Revival Launcher. The layout and the look are Dauntless Revived's, in our own
-   green and yellow: eight colours (brand/palette.json), defined once below as --rr-* tokens and used by
-   role everywhere else. The token names are Dauntless Revived's (its blues became our greens, its glow
+/* Dauntless Reforged Revival Launcher. The layout is Dauntless Revived's; the look is ours, flat and
+   quiet (modern.css on top of this file flattens what still had ornaments). Eight colours from the
+   logo (brand/palette.json), defined once below as --rr-* tokens and used by role everywhere else. The token names are Dauntless Revived's (its blues became our greens, its glow
    our yellow), so the roles read the same in both projects: ink page, navy and deep surfaces, ice for links and primary buttons (ink text),
    glow for highlights and focus rings, azure for pressed fills, steel for muted text, frost for
    text. One warm accent of our own, ember, marks the forge (the emblem's glow, the embers in the
@@ -8,16 +8,16 @@
    System fonts only: Segoe UI for text, Bahnschrift for display type. */
 
 :root {
-  --rr-ink: #010D05;
-  --rr-navy: #03230e;
-  --rr-deep: #095122;
-  --rr-azure: #0D9C3B;
-  --rr-ice: #18E052;
-  --rr-glow: #FCE675;
-  --rr-steel: #99A79E;
-  --rr-frost: #F3F5F4;
-  --rr-ember: #FFC94A;
-  --rr-ember-deep: #C8612A;
+  --rr-ink: #070a08;
+  --rr-navy: #0e1310;
+  --rr-deep: #18201b;
+  --rr-azure: #1f8f45;
+  --rr-ice: #3ddc6b;
+  --rr-glow: #d4f53c;
+  --rr-steel: #8d9991;
+  --rr-frost: #eef2ef;
+  --rr-ember: #d4f53c;
+  --rr-ember-deep: #8fae1c;
 
   /* Roles built from the tokens. */
   --line: var(--rr-deep); /* decorative dividers between surfaces, never a control's only edge */
@@ -88,6 +88,12 @@ img {
 :focus-visible {
   outline: 2px solid var(--rr-glow);
   outline-offset: 2px;
+}
+
+/* A page's title takes focus when the page opens (for screen readers); it is not a control, so no ring. */
+.view h1[tabindex="-1"]:focus,
+.view h2[tabindex="-1"]:focus {
+  outline: none;
 }
 
 ::selection {
@@ -230,39 +236,12 @@ img {
   background: radial-gradient(closest-side, color-mix(in srgb, var(--rr-azure) 35%, transparent), transparent);
 }
 
-/* The emblem over the wordmark: DAUNTLESS / REFORGED / REVIVAL, set in the display face. */
-.tile-emblem {
+/* The logo: it carries the name, so there is no wordmark beside it. */
+.tile-logo {
   display: block;
-  width: 96px;
-  height: 96px;
-  filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--rr-ember) 22%, transparent));
-}
-
-.tile-wordmark {
-  display: grid;
-  justify-items: center;
-  line-height: 1;
-  margin-top: -2px;
-  text-shadow: 0 2px 10px var(--rr-ink);
-}
-
-.tile-word-small {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.42em;
-  margin-right: -0.42em;
-  color: var(--rr-glow);
-}
-
-.tile-word-big {
-  font-family: var(--font-display);
-  font-stretch: condensed;
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  margin: 3px 0 2px;
-  color: var(--rr-frost);
+  width: 148px;
+  height: 148px;
+  object-fit: contain;
 }
 
 .tile-version {
@@ -769,8 +748,7 @@ img {
 
 /* Keep every rail action reachable at the launcher's minimum window height. */
 @media (max-height: 800px) {
-  .rail .tile-emblem { width: 72px; height: 72px; }
-  .rail .tile-word-big { font-size: 26px; }
+  .rail .tile-logo { width: 116px; height: 116px; }
   .nav { margin-top: 10px; gap: 2px; }
   .nav-item { height: 36px; }
   .rail-foot { gap: 8px; padding-top: 10px; }
@@ -778,8 +756,7 @@ img {
 
 @media (max-height: 700px) {
   .rail { padding: 8px 10px; }
-  .rail .tile-emblem { width: 52px; height: 52px; }
-  .rail .tile-word-big { font-size: 22px; }
+  .rail .tile-logo { width: 84px; height: 84px; }
   .nav-item { height: 32px; }
   .rail-foot { gap: 4px; padding-top: 6px; }
   .account-chip { padding: 8px; }
@@ -2129,9 +2106,9 @@ img {
     font-size: 14px;
   }
 
-  .tile-emblem {
-    width: 84px;
-    height: 84px;
+  .tile-logo {
+    width: 96px;
+    height: 96px;
   }
 }
 

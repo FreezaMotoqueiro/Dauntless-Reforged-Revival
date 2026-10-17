@@ -1,12 +1,12 @@
 {
-  "_comment": "The launcher palette, green and yellow: Dauntless Revived's eight brand colours (brand/README.md there) with their blues turned green and their glow yellow, keeping each one's lightness and saturation, plus one warm accent of our own for the forge. The names are Dauntless Revived's. Every project defines them once as tokens (--rr-* in CSS) and uses the tokens everywhere else.",
-  "ink": "#010D05",
-  "navy": "#03230e",
-  "deep": "#095122",
-  "azure": "#0D9C3B",
-  "ice": "#18E052",
-  "glow": "#FCE675",
-  "steel": "#99A79E",
-  "frost": "#F3F5F4",
-  "ember": "#FFC94A"
+  "_comment": "The launcher palette, taken from the logo: near-black surfaces with a hint of green, the logo's bright green for actions and its lime for highlights. The role names are the launcher's --rr-* tokens (styles.css, modern.css); every project defines them once and uses the tokens everywhere else.",
+  "ink": "#070a08",
+  "navy": "#0e1310",
+  "deep": "#18201b",
+  "azure": "#1f8f45",
+  "ice": "#3ddc6b",
+  "glow": "#d4f53c",
+  "steel": "#8d9991",
+  "frost": "#eef2ef",
+  "ember": "#d4f53c"
 }

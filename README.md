@@ -1,4 +1,4 @@
-<p align="center"><img src="brand/launcher/icon-512.png" width="160" alt="Dauntless Reforged Revival emblem"></p>
+<p align="center"><img src="brand/launcher/icon-512.png" width="160" alt="Dauntless Reforged Revival logo"></p>
 
 # Dauntless Reforged Revival
 
@@ -58,7 +58,7 @@ The launcher speaks **English** and **Brazilian Portuguese**.
 | [`ReforgedContent/`](ReforgedContent) | Serves the runtime, the news and the art pack (from Dauntless Revived's content server) |
 | [`ReforgedHost/`](ReforgedHost) | The host kit: `npm run setup`, `start`, `invite`, `doctor`, `gamedata`, `publish-runtime` |
 | [`upstream/`](upstream) | The pinned Mystic Paradox commit and the Reforged patches to it |
-| [`brand/`](brand) | The emblem and the icons |
+| [`brand/`](brand) | The logo and the icons |
 | [`docs/`](docs) | Guides for players and hosts, the SDK and game data, and the architecture |
 
 ## Status

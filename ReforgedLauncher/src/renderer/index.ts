@@ -2239,6 +2239,9 @@ function applyStaticI18n(): void {
 
 function renderAll(): void {
   applyStaticI18n();
+  // The rail says which game the current server runs.
+  const tileVersion = document.querySelector(".tile-version");
+  if (tileVersion) tileVersion.textContent = state.snap?.server?.game === "revived" ? t("edition_revived") : t("tile_sub");
   updateInviteFeedback();
   updateUsernameFeedback();
   // The Host page is hidden again when its switch is turned off.
