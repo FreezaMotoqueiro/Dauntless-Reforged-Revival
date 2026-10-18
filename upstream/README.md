@@ -295,6 +295,63 @@ The route answers the captured contract, `{ "show-status": false }`
 ([EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation),
 `Login/LoginQueue/MaintenanceStatus.md`). `src/maintenanceStatus.test.ts` covers it.
 
+### 0019: the game servers stop wasting CPU on every frame and every reflected call
+
+`ParadoxRuntime/dllmain.cpp`, server side. Ported from Mystic Paradox's own CPU fixes (marked
+`[2026-10-10 1.14.7 CPU]` and `[2026-10-11 1.14.7 O3]`, upstream commit `c7869b6`, two days after the pin), with
+the same flags to undo each one. The trigger was a report from a Debian 13 VPS (4 vCPU, 16 GB): about 40% CPU
+with nobody online and over 80% with two players. The costs below are in every game server, Ramsgate and the
+Training Grounds included, and grow with the players.
+
+- **Every frame walked every object.** While a server listens, its tick hook kept `ExpectedPlayerCount` in
+  sync by walking all of `GObjects` (about 208,000 objects in Ramsgate) with two `IsA` calls each, on every
+  frame, with or without players. It now reads the world's own `AuthorityGameMode` (`GWorld+0x118`) and
+  `GameState` (`GWorld+0x120`): same fields, same values, same log lines. A one-shot census (10 s after listen,
+  and at the first `K2_PostLogin`) logs whether the two lookups agree. `LEGACY_EXPECTED_PLAYER_WALK.flag`
+  beside the game executable brings the walk back.
+- **Every reflected call built a name.** The server's `ProcessEvent` hook built `Function->GetFullName()` (an
+  Outer-chain walk with string allocations) and then ran about 90 substring searches on it, for every call:
+  tens of thousands a second on a hub with players. The name now comes from the per-UFunction cache the client
+  hook already had (validated by index, name and outer), and each search is evaluated once per UFunction into
+  a bit mask; a call site still runs its original test, only when its bit is set. `PE_FULLNAME_UNCACHED.flag`
+  and `PE_CATEGORY_CACHE_OFF.flag` undo them.
+- **Flag files were looked up on the disk.** `MpExeRelativeFlagPresent` resolved the executable's path and asked
+  the file system on every call, several times a frame (and once per replicated actor added to the graph). Under
+  Wine a file that does not exist costs a scan of the whole folder. Each answer is now kept for 4 s, so a flag
+  created or deleted next to the executable still takes effect within 4 s. `UNCACHED_FLAG_FILES.flag` undoes it.
+- The F7 object dump (a full walk, then a busy wait while the key is held) runs on clients only.
+
+The log says `[FlagCache]`, `[PENameCache]`, `[PECategoryCache]` and `[ExpectedPlayerCount] lookup = ...`.
+
+### 0020: a frame cap for the game servers
+
+`ParadoxRuntime/dllmain.cpp`, server side, adapted from Dauntless Revived's `DR_SERVER_MAX_FPS` (its server DLL
+caps the game thread at 30 frames per second). Nothing in this build reliably caps a game server's game thread,
+so each one ran its frames as fast as the CPU allowed, players or not. `MpPaceServerFrame`, at the top of the tick
+hook, waits for the rest of the frame's time (real elapsed time, not a fixed timestep: `DeltaTime` stays the real
+frame time, so game time does not change):
+
+- `REFORGED_SERVER_MAX_FPS`: frames per second (default 30, the configured `NetServerMaxTickRate`); 10-240, or
+  0 for no cap.
+- `REFORGED_SERVER_IDLE_FPS`: frames per second once the server has listened with no client connection for 15 s
+  straight (default 0: the same as above). The first connection switches back to the full rate on the next
+  frame; boot, the map load and the first 15 s after listening always run at the full rate.
+
+The Director passes its environment to every game server, so the host kit writes both into `director.env`
+(`npm run setup -- --server-fps 30 --idle-fps 10`). The log says `[FramePace]` at start and at each switch.
+
+### 0021: the Training Grounds on demand, and quieter game-server logs
+
+`ParadoxDirector/src/controllers/gameservers.ts`.
+
+- `TRAINING_ON_DEMAND=1`: the Training Grounds are not started at boot (Dauntless Revived does the same with its
+  Training Dojo). The first matchmaking request for them starts the hub and waits for it, as a hunt request waits
+  for its hunt server; from then on it is supervised like Ramsgate. Saves a whole game process (about 1-1.5 GB of
+  RAM and its CPU) while nobody trains. Without the setting the Director starts both hubs at boot, as before.
+- `GAMESERVER_LOG_CMDS` replaces the game servers' `-LogCmds` value (default unchanged:
+  `LogPhoenixCharacter VeryVerbose, LogOnline Verbose, LogLoad Off`). Letters, digits, underscores, spaces and
+  commas only; anything else keeps the default (logged).
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
