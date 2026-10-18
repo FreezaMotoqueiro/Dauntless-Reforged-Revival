@@ -27,6 +27,7 @@
     "patches/0019-runtime-server-cpu-fixes-from-upstream.patch",
     "patches/0020-runtime-server-frame-cap.patch",
     "patches/0021-director-training-on-demand-and-log-levels.patch",
-    "patches/0022-director-hunt-memory-guard.patch"
+    "patches/0022-director-hunt-memory-guard.patch",
+    "patches/0023-backend-session-supplies-refill.patch"
   ]
 }

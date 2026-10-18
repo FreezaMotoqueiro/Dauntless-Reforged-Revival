@@ -348,6 +348,8 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
             ["REFORGED_XP_MULTIPLIER", String(c.multipliers!.xp)],
             ["REFORGED_REWARD_MULTIPLIER", String(c.multipliers!.rewards)],
         ] as [string, string][] : []),
+        // Stacked items given back to a fixed quantity at each login, per account (upstream patch 0023).
+        ["REFORGED_SESSION_SUPPLIES_FILE", path.join(p.config, "session-supplies.json")],
         ["LOG_LEVEL", "info"],
     ];
     const exe = c.gameDir ? path.join(c.gameDir, GAME_EXE_RELATIVE) : "";

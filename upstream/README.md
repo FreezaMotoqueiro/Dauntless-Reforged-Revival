@@ -369,6 +369,23 @@ The host kit also lets a server run up to 10 hunts (`--max-hunts 1-10`): up to 6
 8770-8777, and each hunt above 6 takes one more port below 8770 (`PORT_RANGE_BEGIN` 8768 for 8, 8766 for 10).
 Ramsgate (8777) and the Training Grounds (8776) do not move.
 
+### 0023: supplies refilled at every game login
+
+`ParadoxBackend`, `src/sessionSupplies.ts` and `src/routes/login.ts`. The host can name, per account,
+stacked items (tonics, pylons, grenades...) that go back to a fixed quantity every time that account
+starts a game session (`POST /login`). The list is the JSON file named by `REFORGED_SESSION_SUPPLIES_FILE`
+(the host kit writes `.workspace/config/session-supplies.json` there), read again at every login, so
+editing it needs no restart:
+
+```json
+{ "accounts": { "<user id>": { "QI_GRENADE_ICE": 1000, "QI_STAMINA_POTION_00": 1000 } } }
+```
+
+Quantities are set, not added (0 removes the item); every other item is left alone. A missing file or
+an account it does not name changes nothing. Currencies (`CURRENCY_*`, kept in the wallet) and items the
+storage policy keeps as instanced are refused, and a malformed file is logged (`[SessionSupplies]`)
+without blocking the login.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
