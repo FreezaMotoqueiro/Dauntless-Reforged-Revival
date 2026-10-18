@@ -23,7 +23,10 @@ Players: see [docs/players.md](../docs/players.md). Hosts: see [docs/hosting.md]
    before they replace anything and again before every launch.
 5. **Play**: starts a local relay on `127.0.0.1:61100` that carries the game's traffic to the
    server (pinned TLS in public mode, plain HTTP inside the tailnet in private mode) and answers
-   the game's QoS ping, writes Engine.ini's chat section, and starts the game with the 1.14.7
+   the game's QoS ping, writes Engine.ini's chat section, removes the `[OnlineSubsystemPhoenix]`
+   endpoints Dauntless Revived's launcher leaves in Game.ini (they point every Dauntless version at
+   `127.0.0.1:61000`, and 1.14.7's login then stops at CheckCrossPlayAndCrossProgression; a copy is
+   kept as `Game.ini.before-reforged`), and starts the game with the 1.14.7
    command line (`-AUTH_TYPE=exchangecode -AUTH_PASSWORD=<key> ...`) and
    `REFORGED_BACKEND_URL=http://127.0.0.1:61100` for the runtime.
 

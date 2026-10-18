@@ -1649,8 +1649,11 @@ export class Controller {
       try {
         let displayRepaired = false;
         try {
-          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir });
+          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true });
           displayRepaired = config.displayRepaired;
+          if (config.phoenixEndpointsRemoved > 0) {
+            log.info(`removed ${config.phoenixEndpointsRemoved} endpoint overrides ([OnlineSubsystemPhoenix], written by Dauntless Revived's launcher) from Game.ini: they send Dauntless 1.14.7 to 127.0.0.1 (copy kept as Game.ini.before-reforged)`);
+          }
         } catch (e) {
           log.error(`could not write the game config: ${describeError(e)}`);
           return this.fail("config_failed");

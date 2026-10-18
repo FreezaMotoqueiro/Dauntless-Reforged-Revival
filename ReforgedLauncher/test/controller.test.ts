@@ -202,7 +202,12 @@ test("public mode end to end: join, register, game check, runtime trust and inst
   const win64 = path.join(root, "Archon", "Binaries", "Win64");
   for (const f of runtime) assert.ok(readFileSync(path.join(win64, f.name)).equals(f.data), f.name);
 
+  // Left by Dauntless Revived's launcher (local-server mode): 1.14.7 would send its login checks to 127.0.0.1.
+  writeFileSync(path.join(hx.configDir, "Game.ini"), '[OnlineSubsystemPhoenix]\r\nCheckCrossPlayProgressionEndpoint="http://127.0.0.1:61000/features/platform/{platform}"\r\n[Mine]\r\nKeep=1\r\n');
   assert.deepEqual(await hx.c.play(), { ok: true });
+  const gameIni = readFileSync(path.join(hx.configDir, "Game.ini"), "latin1");
+  assert.ok(!gameIni.includes("OnlineSubsystemPhoenix") && gameIni.includes("Keep=1"), "Revived's endpoints removed, the rest kept");
+  assert.ok(logLines.some((l) => l.includes("removed 1 endpoint overrides ([OnlineSubsystemPhoenix]")));
   s = hx.last();
   assert.equal(s.phase, "running");
   assert.equal(s.running.relayPort, hx.relayPort);
@@ -569,7 +574,10 @@ test("a Dauntless Revived server: Dauntless 1.4.4 downloaded, checked and played
     assert.equal(s.notice, "install_done");
 
     // PLAY: private mode connects straight to the host; the server address comes first.
+    // Revived's own Game.ini endpoints are left alone for 1.4.4.
+    writeFileSync(path.join(hx.configDir, "Game.ini"), '[OnlineSubsystemPhoenix]\r\nAuthEndpoint="http://127.0.0.1:61000/auth"\r\n');
     assert.deepEqual(await hx.c.play(), { ok: true });
+    assert.match(readFileSync(path.join(hx.configDir, "Game.ini"), "latin1"), /AuthEndpoint=/);
     const run = hx.spawns[hx.spawns.length - 1];
     assert.equal(run.exe, path.join(win64, "Dauntless-Win64-Shipping.exe"));
     assert.equal(run.args[0], `127.0.0.1:${port}`);

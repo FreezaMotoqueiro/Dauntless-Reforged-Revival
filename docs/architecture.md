@@ -38,7 +38,9 @@ see [hosting.md](hosting.md); for the per-component details, each folder's READM
    stored); then each file is downloaded with the key, checked, and only then moved into place.
    A different set means asking again.
 6. **Play.** The launcher starts its relay on 127.0.0.1:61100, writes Engine.ini's XMPP section
-   (`ws://127.0.0.1:61100`), and starts the game with the 1.14.7 command line
+   (`ws://127.0.0.1:61100`), removes Dauntless Revived's `[OnlineSubsystemPhoenix]` endpoints from
+   Game.ini (they would send the game's own requests to `127.0.0.1:61000`, outside the runtime's
+   redirect), and starts the game with the 1.14.7 command line
    (`-AUTH_TYPE=exchangecode -AUTH_LOGIN=<userId> -AUTH_PASSWORD=<key> -epicapp=Archon ...`) and
    `REFORGED_BACKEND_URL=http://127.0.0.1:61100`. The runtime rewrites every official Dauntless URL
    to `<that address>/__origin/<host><path>`; the relay carries them, and the chat WebSocket, to the

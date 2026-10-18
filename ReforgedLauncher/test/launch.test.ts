@@ -2,11 +2,11 @@
 
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildLaunchArgs, describeLaunch, gameLocale, launchEnvironment, maskArgs } from "../src/main/launch";
-import { applyGameConfig, decodeIni, rewriteEngineIniText, rewriteGameUserSettingsText, xmppLines } from "../src/main/engineini";
+import { applyGameConfig, decodeIni, PHOENIX_ENDPOINTS_SECTION, removeIniSection, rewriteEngineIniText, rewriteGameUserSettingsText, xmppLines } from "../src/main/engineini";
 import { redact } from "../src/main/log";
 
 const KEY = "RRK_" + "c".repeat(48);
@@ -80,4 +80,53 @@ test("applyGameConfig writes Engine.ini and keeps a UTF-16 file readable", async
   const text = decodeIni(readFileSync(r.engineIni));
   assert.ok(text.includes("ServerPort=61100"));
   assert.ok(text.includes("Name=Jörð"));
+  assert.equal(r.phoenixEndpointsRemoved, 0);
+});
+
+// What Dauntless Revived's launcher leaves in Game.ini (local-server mode), between player sections.
+const REVIVED_GAME_INI = [
+  "[/Script/Archon.ArchonGameSettings]",
+  "bShowHints=False",
+  "",
+  "[OnlineSubsystemPhoenix]",
+  'AuthEndpoint="http://127.0.0.1:61000/auth"',
+  'CheckCrossPlayProgressionEndpoint="http://127.0.0.1:61000/features/platform/{platform}"',
+  "; a comment",
+  'PhoenixStatusMessageEndpoint="http://127.0.0.1:61000/dauntless-status"',
+  "",
+  "[Custom]",
+  "Name=Kept",
+];
+
+test("removeIniSection drops one section (any case), counts its keys and keeps the rest", () => {
+  const r = removeIniSection(REVIVED_GAME_INI, "onlinesubsystemphoenix");
+  assert.equal(r.removed, 3);
+  assert.deepEqual(r.lines, ["[/Script/Archon.ArchonGameSettings]", "bShowHints=False", "", "[Custom]", "Name=Kept"]);
+  assert.deepEqual(removeIniSection(["[A]", "x=1"], PHOENIX_ENDPOINTS_SECTION), { lines: ["[A]", "x=1"], removed: 0 });
+});
+
+test("applyGameConfig (1.14.7): Revived's 127.0.0.1 endpoints leave Game.ini, with a copy; nothing else changes", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "rr-ini-"));
+  dirs.push(dir);
+  const gameIni = path.join(dir, "Game.ini");
+  writeFileSync(gameIni, REVIVED_GAME_INI.map((l) => l + "\r\n").join(""));
+  // Dauntless 1.4.4 (Revived servers) keeps them.
+  const kept = await applyGameConfig({ host: "127.0.0.1", port: 61100, graphics: -1, configDir: dir, memory: true });
+  assert.equal(kept.phoenixEndpointsRemoved, 0);
+  assert.match(decodeIni(readFileSync(gameIni)), /CheckCrossPlayProgressionEndpoint/);
+
+  const r = await applyGameConfig({ host: "127.0.0.1", port: 61100, graphics: -1, configDir: dir, clearPhoenixEndpoints: true });
+  assert.equal(r.phoenixEndpointsRemoved, 3);
+  const text = decodeIni(readFileSync(gameIni));
+  assert.ok(!text.includes("127.0.0.1"), "no endpoint left");
+  assert.ok(text.includes("bShowHints=False") && text.includes("Name=Kept"));
+  assert.match(decodeIni(readFileSync(`${gameIni}.before-reforged`)), /CheckCrossPlayProgressionEndpoint/);
+
+  // Already clean: not written again, and no Game.ini is made where there is none.
+  const again = await applyGameConfig({ host: "127.0.0.1", port: 61100, graphics: -1, configDir: dir, clearPhoenixEndpoints: true });
+  assert.equal(again.phoenixEndpointsRemoved, 0);
+  const empty = mkdtempSync(path.join(tmpdir(), "rr-ini-"));
+  dirs.push(empty);
+  await applyGameConfig({ host: "127.0.0.1", port: 61100, graphics: -1, configDir: empty, clearPhoenixEndpoints: true });
+  assert.ok(!existsSync(path.join(empty, "Game.ini")));
 });
