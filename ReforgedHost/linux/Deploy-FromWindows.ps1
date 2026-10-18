@@ -23,6 +23,10 @@
     A folder with MysticParadox.dll and winmm.dll. Default: the published runtime of a Reforged
     project on this PC (C:\Reforged\.workspace\runtime or beside the game), when there is one.
 
+.PARAMETER PublicPort
+    The TCP port players connect to, when 443 is taken on the VPS (a Hostinger Game Panel plan uses
+    443 for its panel): 4443, for example. It goes into every invite; allow it in the VPS firewall.
+
 .PARAMETER GameData
     A game data pack (npm run gamedata -- --export). Default: the newest pack of that project.
 
@@ -40,6 +44,7 @@ param(
     [string]$GameData = '',
     [string]$Branch = 'main',
     [int]$MaxHunts = 0,
+    [int]$PublicPort = 0,
     [switch]$SkipInstall,
     [switch]$SkipGame,
     [switch]$NoKey
@@ -75,6 +80,9 @@ if ($User -notmatch '^[a-z_][a-z0-9_-]{0,31}$') { Stop-Deploy "-User must be a p
 if ($Branch -notmatch '^[A-Za-z0-9._/-]{1,100}$') { Stop-Deploy "-Branch must be a branch name (got $Branch)" }
 if ($Name -match '["\x00-\x1f]' -or $Name.Trim().Length -eq 0 -or $Name.Length -gt 48) { Stop-Deploy '-Name must be 1 to 48 characters, without double quotes' }
 if ($MaxHunts -ne 0 -and ($MaxHunts -lt 1 -or $MaxHunts -gt 6)) { Stop-Deploy '-MaxHunts must be 1 to 6' }
+if ($PublicPort -ne 0 -and ($PublicPort -lt 1 -or $PublicPort -gt 65535)) { Stop-Deploy '-PublicPort must be a TCP port from 1 to 65535' }
+$PlayersPort = 443
+if ($PublicPort -ne 0) { $PlayersPort = $PublicPort }
 foreach ($Tool in @('ssh', 'scp', 'ssh-keygen')) {
     if (-not (Get-Command $Tool -ErrorAction SilentlyContinue)) {
         Stop-Deploy "$Tool was not found: turn on Windows' OpenSSH Client (Settings > System > Optional features > Add a feature > OpenSSH Client), then open a new PowerShell"
@@ -210,7 +218,7 @@ try {
 if (-not $Reached) {
     Write-Host "no answer from ${Server}:$Port within 15 seconds. Usually one of these:" -ForegroundColor Yellow
     Write-Host "  - the VPS firewall (its Firewall page in Hostinger's hPanel) drops SSH: add a rule Accept, TCP, port $Port, from any," -ForegroundColor Yellow
-    Write-Host '    next to TCP 443 and UDP 8770-8777, and make sure that firewall is the one active for this VPS' -ForegroundColor Yellow
+    Write-Host "    next to TCP $PlayersPort and UDP 8770-8777, and make sure that firewall is the one active for this VPS" -ForegroundColor Yellow
     Write-Host '  - the VPS is stopped or still installing (hPanel > VPS > Overview), or the address is not its own' -ForegroundColor Yellow
     Write-Host "  - this network blocks outgoing SSH (some work, school and public networks): try another one, a phone hotspot" -ForegroundColor Yellow
     Write-Host "Check again with: Test-NetConnection $Server -Port $Port" -ForegroundColor Yellow
@@ -262,6 +270,7 @@ if (-not $SkipInstall) {
     # The address this PC reaches the VPS at is the one players use.
     $Options = "--install-only --host $(ConvertTo-ShWord $Server) --name $(ConvertTo-ShWord $Name) --branch $(ConvertTo-ShWord $Branch)"
     if ($MaxHunts -ne 0) { $Options += " --max-hunts $MaxHunts" }
+    if ($PublicPort -ne 0) { $Options += " --public-port $PublicPort" }
     Invoke-Remote "${Sudo}sh ~/$Upload/setup-vps.sh $Options" -Tty
 }
 
@@ -312,4 +321,5 @@ Write-Host 'Send each friend an invite (the first one is above). For more, on th
 Write-Host '  sudo -iu reforged'
 Write-Host '  cd Reforged/ReforgedHost; npm run invite -- --for "Alex"'
 Write-Host ''
-Write-Host "If players cannot join: allow inbound TCP 443 and UDP 8770-8777 in the VPS's Firewall page in Hostinger's hPanel." -ForegroundColor Yellow
+Write-Host "If players cannot join: allow inbound TCP $PlayersPort and UDP 8770-8777 in the VPS's Firewall page in Hostinger's hPanel." -ForegroundColor Yellow
+Write-Host "If the launcher says the certificate does not match, another program (a hosting panel) answers on port ${PlayersPort}: run this again with -PublicPort 4443 -SkipGame, allow TCP 4443 in the firewall, and use the new invite." -ForegroundColor Yellow

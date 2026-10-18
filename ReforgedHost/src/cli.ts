@@ -16,13 +16,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { portInUse, printChecks, runDoctor, tailscaleIPv4 } from "./doctor";
+import { portInUse, portOwnerHint, printChecks, runDoctor, tailscaleIPv4 } from "./doctor";
 import { BACKEND_GAME_DATA, DIRECTOR_GAME_DATA, gameDataState, generateGameData, useExamples } from "./gamedata";
 import { defaultPackFile, exportGameDataPack, importGameDataPack } from "./gamepack";
 import { applyPreset, createPreset, readPresetManifest } from "./preset";
 import {
     DEFAULT_MONGO_URI,
     buildEnvFiles,
+    gatewayPort,
     isPublicIPv4,
     isTailscaleIPv4,
     loadOrCreateSecrets,
@@ -154,6 +155,19 @@ export function linuxFromArgs(args: Args, existing: LinuxOptions | undefined, fi
     };
 }
 
+// --public-port <port>: the gateway's port when 443 is taken (a hosting panel); --public-port 443 goes back.
+export function publicPortFromArgs(args: Args, mode: HostConfig["mode"], existing: HostConfig | null): { publicPort?: number } {
+    if (mode !== "public") {
+        if (str(args, "public-port") !== undefined) throw new Error("--public-port is for public servers only");
+        return {};
+    }
+    const raw = str(args, "public-port");
+    const port = raw === undefined ? existing?.mode === "public" ? existing.publicPort : undefined : Number(raw);
+    if (port === undefined || port === PORTS.publicGateway) return {};
+    if (!Number.isInteger(port)) throw new Error(`--public-port must be a TCP port number (got ${raw})`);
+    return { publicPort: port };
+}
+
 export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null; platform?: NodeJS.Platform }): HostConfig {
     const mode = (str(args, "mode") ?? existing?.mode) as HostConfig["mode"] | undefined;
     if (mode !== "private" && mode !== "public") throw new Error("say which kind of server: --mode private (friends over Tailscale) or --mode public (a server on the internet)");
@@ -193,6 +207,7 @@ export function hostConfigFromArgs(args: Args, existing: HostConfig | null, dete
         mongo: { uri: mongoUri, manage, mongod: str(args, "mongod") ?? existing?.mongo.mongod ?? (manage ? detect.mongod() : null) },
         maxHuntServers: Number(str(args, "max-hunts") ?? existing?.maxHuntServers ?? 3),
         multipliers: multipliersFromArgs(args, mode, existing?.mode === mode ? existing.multipliers : undefined),
+        ...publicPortFromArgs(args, mode, existing),
         ...((detect.platform ?? process.platform) === "linux" ? { linux: linuxFromArgs(args, existing?.linux) } : existing?.linux ? { linux: existing.linux } : {}),
     };
 }
@@ -240,7 +255,7 @@ export function firewallScript(c: HostConfig, nodeExe: string): string {
     const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
     if (c.mode === "public") {
         lines.push(
-            `Add-Rule 'ReforgedRevival-Gateway' 'Dauntless Reforged Revival gateway (TCP ${PORTS.publicGateway})' 'TCP' '${PORTS.publicGateway}' ${q(nodeExe)} $null 'True'`,
+            `Add-Rule 'ReforgedRevival-Gateway' 'Dauntless Reforged Revival gateway (TCP ${gatewayPort(c)})' 'TCP' '${gatewayPort(c)}' ${q(nodeExe)} $null 'True'`,
             "# The game ports start closed: the allowlist helper opens them only for players who logged in.",
             `Add-Rule 'ReforgedRevival-GamePorts-Allowlist' 'Dauntless Reforged Revival game ports (allowlist)' 'UDP' '${PORTS.gameFirst}-${PORTS.gameLast}' ${exe ? q(exe) : "$null"} $null 'False'`,
         );
@@ -407,16 +422,16 @@ async function start(p: Paths): Promise<void> {
         if (!fs.existsSync(path.join(p.config, `${name}.env`))) fail(`${name}.env is missing: run npm run setup`);
     }
     // Linux, public: the reforged-allowlist systemd unit runs the allowlist (with CAP_NET_ADMIN), and the
-    // reforged unit gives this process CAP_NET_BIND_SERVICE for port 443.
+    // reforged unit gives this process CAP_NET_BIND_SERVICE for a gateway port below 1024 (443).
     const externalAllowlist = onLinux && config.mode === "public" && process.env.REFORGED_ALLOWLIST === "external";
     if (onLinux) {
         if (isRoot()) fail(NOT_AS_ROOT);
         if (!fs.existsSync(p.gameserverWrapper)) fail("the game-server launcher is missing: run npm run setup");
         const asService = `run it as a systemd service: sudo sh ${path.join(p.systemd, "install.sh")} (then journalctl -u ${UNIT_SERVER} -f shows it)`;
-        if (config.mode === "public" && !canBindPort(PORTS.publicGateway)) fail(`a public server listens on port ${PORTS.publicGateway}, which needs a privilege: ${asService}`);
+        if (config.mode === "public" && !canBindPort(gatewayPort(config))) fail(`a public server listens on port ${gatewayPort(config)}, which needs a privilege: ${asService}`);
         if (config.mode === "public" && !externalAllowlist && !canChangeFirewall()) fail(`a public server's allowlist changes the firewall (nftables), which needs a privilege: ${asService}`);
     } else if (config.mode === "public" && !isWindowsAdmin()) {
-        fail("a public server changes Windows Firewall rules (the allowlist helper) and listens on port 443: run this terminal as administrator");
+        fail(`a public server changes Windows Firewall rules (the allowlist helper) and listens on port ${gatewayPort(config)}: run this terminal as administrator`);
     }
     // The gateway and the game servers listen on the Tailscale address: one that changed (another
     // Tailscale account) would only fail later, with a bind error.
@@ -522,9 +537,16 @@ async function start(p: Paths): Promise<void> {
         command: node,
         args: ["dist/server.js"],
         envFile: path.join(p.config, "gateway.env"),
-        ready: config.mode === "public" ? { port: PORTS.publicGateway, tcp: true } : { port: PORTS.privateGateway, host: config.gameAddress, tcp: true },
+        ready: config.mode === "public" ? { port: gatewayPort(config), tcp: true } : { port: PORTS.privateGateway, host: config.gameAddress, tcp: true },
     });
     for (const spec of specs) {
+        // Readiness is "something answers on the port": a port another program already holds would pass
+        // it while this service fails to listen (a hosting panel on 443 then answers players with its own
+        // certificate, and every invite fails). So a taken port stops the start here.
+        if (spec.ready && (await portInUse(spec.ready.port, spec.ready.host))) {
+            const move = spec.name === "gateway" && config.mode === "public" ? ", or give the gateway a free port: npm run setup -- --public-port 4443 (then new invites)" : "";
+            await abort(`port ${spec.ready.port} (${spec.name}) is already used by another program. ${portOwnerHint(spec.ready.port)}, then stop that program (or a server still running from before) and start again${move}`);
+        }
         const ok = await supervisor.start(spec, spec.name === "backend" ? 120000 : 60000);
         if (!ok && (spec.name === "backend" || spec.name === "gateway")) {
             say(`\n${spec.name} did not come up. Its log: ${path.join(p.logs, `${spec.name}.log`)}`);
@@ -838,6 +860,7 @@ async function main(): Promise<void> {
             say("  npm run setup -- --mode private|public [--host <address>] --name \"<server name>\" --game \"<Dauntless 1.14.7 folder>\"");
             say("                   [--game-address <IPv4>] [--registration INVITECODE|OPEN|NONE] [--share <Tailscale share link>]");
             say("                   [--mongo-uri <uri>] [--no-manage-mongo] [--mongod <path>] [--max-hunts 1-6] [--skip-install] [--force-upstream]");
+            say("                   public: [--public-port <port>] (when 443 is taken, by a hosting panel for example)");
             say("                   Linux: [--wine <path>] [--proton <script> | --no-proton] [--no-xvfb | --xvfb] [--firewall-interface <eth0> | --no-firewall-interface]");
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list] [--json]");

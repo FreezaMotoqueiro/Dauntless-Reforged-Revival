@@ -5,8 +5,8 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { gameDataState, BACKEND_GAME_DATA, DIRECTOR_GAME_DATA } from "./gamedata";
-import { readHostConfig, readEnvFile, SECRET_FILE, type HostConfig } from "./hostconfig";
-import { certificateFingerprint } from "./invite";
+import { gatewayPort, readHostConfig, readEnvFile, SECRET_FILE, type HostConfig } from "./hostconfig";
+import { certificateFingerprint, servedFingerprint } from "./invite";
 import { ensureReplicaSet } from "./mongo";
 import { GAME_EXE_RELATIVE, GAME_VERSION_TEXT, PINNED_EXE_SHA256, PORTS, RUNTIME_FILE_NAMES, type Paths } from "./paths";
 import { sha256File } from "./publish";
@@ -52,6 +52,13 @@ export function portInUse(port: number, host = "127.0.0.1"): Promise<boolean> {
         });
         socket.once("error", () => resolve(false));
     });
+}
+
+// How to find the program that holds a port.
+export function portOwnerHint(port: number, platform: NodeJS.Platform = process.platform): string {
+    return platform === "win32"
+        ? `netstat -ano | findstr :${port} shows the process id (Task Manager > Details names it)`
+        : `sudo ss -tlnp 'sport = :${port}' shows which program`;
 }
 
 export function tailscaleIPv4(): string | null {
@@ -114,7 +121,7 @@ export function linuxChecks(p: Paths, config: HostConfig, find: (names: string[]
     const installed = units.filter((u) => systemdInstalled(u));
     out.push(installed.length === units.length
         ? { area: "linux", level: "ok", text: `systemd units installed (${units.join(", ")})` }
-        : { area: "linux", level: config.mode === "public" && !canBindPort(PORTS.publicGateway) ? "warn" : "info", text: `systemd units not installed${installed.length ? ` (only ${installed.join(", ")})` : ""}: the server does not start at boot${config.mode === "public" ? ", and a public server needs them for port 443 and nftables" : ""}`, fix: "sudo sh .workspace/config/systemd/install.sh" });
+        : { area: "linux", level: config.mode === "public" && !canBindPort(gatewayPort(config)) ? "warn" : "info", text: `systemd units not installed${installed.length ? ` (only ${installed.join(", ")})` : ""}: the server does not start at boot${config.mode === "public" ? ", and a public server needs them for port 443 and nftables" : ""}`, fix: "sudo sh .workspace/config/systemd/install.sh" });
     return out;
 }
 
@@ -175,11 +182,19 @@ export async function runDoctor(p: Paths, opts: { hashExe?: boolean } = {}): Pro
                     : { area: "network", level: "fail", text: `this PC's Tailscale address is ${ip}, host.json says ${config.gameAddress}`, fix: `npm run setup -- --host ${ip}` });
         } else {
             if (fs.existsSync(p.certFile)) {
-                add({ area: "network", level: "ok", text: `gateway certificate ${certificateFingerprint(p.certFile)}` });
+                const ours = certificateFingerprint(p.certFile);
+                add({ area: "network", level: "ok", text: `gateway certificate ${ours}` });
+                const port = gatewayPort(config);
+                const moveIt = `${portOwnerHint(port)}; stop it and restart the server, or move the gateway to a free port (npm run setup -- --public-port 4443, then new invites)`;
+                const served = await servedFingerprint(port);
+                if (served === ours) add({ area: "network", level: "ok", text: `port ${port} serves this certificate (invites match)` });
+                else if (served !== null) add({ area: "network", level: "fail", text: `another program answers on port ${port} with its own certificate (${served.slice(0, 16)}...): players' launchers refuse it`, fix: moveIt });
+                else if (await portInUse(port)) add({ area: "network", level: "fail", text: `something on port ${port} does not speak TLS: another program holds the gateway's port`, fix: moveIt });
+                else add({ area: "running", level: "info", text: `the gateway is not running (port ${port})` });
             } else add({ area: "network", level: "fail", text: "no gateway certificate", fix: "npm run setup" });
             add({ area: "network", level: "info", text: process.platform === "linux"
-                ? `open inbound TCP ${PORTS.publicGateway} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} in your provider's firewall (Hostinger: the VPS's Firewall page in hPanel); sudo sh .workspace/config/firewall.sh adds them to ufw`
-                : `open inbound TCP ${PORTS.publicGateway} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} (run .workspace\\config\\firewall.ps1 as administrator); forward them on your router if this PC is behind NAT` });
+                ? `open inbound TCP ${gatewayPort(config)} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} in your provider's firewall (Hostinger: the VPS's Firewall page in hPanel); sudo sh .workspace/config/firewall.sh adds them to ufw`
+                : `open inbound TCP ${gatewayPort(config)} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} (run .workspace\\config\\firewall.ps1 as administrator); forward them on your router if this PC is behind NAT` });
         }
         if (process.platform === "linux") for (const c of linuxChecks(p, config)) add(c);
     }

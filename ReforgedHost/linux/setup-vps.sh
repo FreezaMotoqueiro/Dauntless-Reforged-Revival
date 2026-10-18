@@ -20,6 +20,7 @@ HOST=
 GAME_ADDRESS=
 IFACE=
 MAX_HUNTS=
+PUBLIC_PORT=
 FINISH=0
 GAME_FROM=
 RUNTIME=
@@ -37,7 +38,7 @@ die() { printf '\nError: %s\n' "$*" >&2; exit 1; }
 usage() {
     cat >&2 <<'EOF'
 usage: sh setup-vps.sh [--name "<server name>"] [--host <public IPv4 or DNS name>] [--game-address <IPv4>]
-                       [--interface <eth0>] [--max-hunts 1-6] [--user reforged] [--branch main] [--repo <url>]
+                       [--interface <eth0>] [--max-hunts 1-6] [--public-port <port>] [--user reforged] [--branch main] [--repo <url>]
                        [--skip-apt] [--install-only]
        sh setup-vps.sh --finish [--game-from <folder>] [--runtime <folder>] [--gamedata <pack>] [--no-services]
 EOF
@@ -55,6 +56,7 @@ while [ "$#" -gt 0 ]; do
         --game-address) need_value "$@"; GAME_ADDRESS=$2; shift 2 ;;
         --interface) need_value "$@"; IFACE=$2; shift 2 ;;
         --max-hunts) need_value "$@"; MAX_HUNTS=$2; shift 2 ;;
+        --public-port) need_value "$@"; PUBLIC_PORT=$2; shift 2 ;;
         --user) need_value "$@"; SERVICE_USER=$2; shift 2 ;;
         --branch) need_value "$@"; BRANCH=$2; shift 2 ;;
         --repo) need_value "$@"; REPO_URL=$2; shift 2 ;;
@@ -73,6 +75,7 @@ done
 [ "$(id -u)" -eq 0 ] || die "run it as root: sudo sh $0 ..."
 printf '%s' "$SERVICE_USER" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$' || die "--user must be a plain user name like reforged"
 [ -z "$MAX_HUNTS" ] || printf '%s' "$MAX_HUNTS" | grep -Eq '^[1-6]$' || die "--max-hunts must be 1 to 6"
+[ -z "$PUBLIC_PORT" ] || printf '%s' "$PUBLIC_PORT" | grep -Eq '^[0-9]{1,5}$' || die "--public-port must be a TCP port number, like 4443"
 [ -z "$IFACE" ] || printf '%s' "$IFACE" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_.@-]{0,14}$' || die "--interface must be a network interface name like eth0"
 
 USER_HOME=/home/$SERVICE_USER
@@ -203,6 +206,7 @@ run_setup() {
     [ -n "$GAME_ADDRESS" ] && set -- "$@" --game-address "$GAME_ADDRESS"
     [ -n "$IFACE" ] && set -- "$@" --firewall-interface "$IFACE"
     [ -n "$MAX_HUNTS" ] && set -- "$@" --max-hunts "$MAX_HUNTS"
+    [ -n "$PUBLIC_PORT" ] && set -- "$@" --public-port "$PUBLIC_PORT"
     kit npm run setup -- "$@"
     step "Host firewall"
     sh "$CONFIG/firewall.sh"
@@ -324,5 +328,10 @@ else
     fi
 fi
 
+# The gateway's port, as host.json has it (443 unless --public-port moved it).
+port=443
+if [ -f "$CONFIG/host.json" ]; then
+    port=$(node -e 'try { const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.stdout.write(String(c.publicPort || 443)); } catch { process.stdout.write("443"); }' "$CONFIG/host.json" 2>/dev/null || echo 443)
+fi
 step "Remember"
-say "Allow inbound TCP 443 and UDP 8770-8777 (and keep TCP 22) in your provider's firewall: the VPS's Firewall page in Hostinger's hPanel."
+say "Allow inbound TCP $port and UDP 8770-8777 (and keep TCP 22) in your provider's firewall: the VPS's Firewall page in Hostinger's hPanel."

@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { HostConfig, LinuxOptions } from "./hostconfig";
+import { gatewayPort, type HostConfig, type LinuxOptions } from "./hostconfig";
 import { PORTS, type Paths } from "./paths";
 import { run } from "./run";
 import { dllOverrides, findOnPath, findWine, winePrefixReady } from "./wine";
@@ -198,7 +198,8 @@ export function systemdUnits(c: HostConfig, p: Paths, ctx: UnitContext): Record<
         "TimeoutStopSec=120",
         "Restart=on-failure",
         "RestartSec=10",
-        ...(pub ? ["AmbientCapabilities=CAP_NET_BIND_SERVICE", "CapabilityBoundingSet=CAP_NET_BIND_SERVICE"] : ["CapabilityBoundingSet="]),
+        // A port below 1024 (443) needs CAP_NET_BIND_SERVICE; nothing else does.
+        ...(pub && gatewayPort(c) < 1024 ? ["AmbientCapabilities=CAP_NET_BIND_SERVICE", "CapabilityBoundingSet=CAP_NET_BIND_SERVICE"] : ["CapabilityBoundingSet="]),
         "NoNewPrivileges=true",
         "LimitNOFILE=65536",
         "",
@@ -263,14 +264,14 @@ export function linuxFirewallScript(c: HostConfig): string {
     ];
     if (c.mode === "public") {
         lines.push(
-            `    ufw allow ${PORTS.publicGateway}/tcp comment 'Dauntless Reforged Revival gateway'`,
+            `    ufw allow ${gatewayPort(c)}/tcp comment 'Dauntless Reforged Revival gateway'`,
             "    # The allowlist's nftables table (reforged_revival) still closes these to everyone who has not logged in.",
             `    ufw allow ${game}/udp comment 'Dauntless Reforged Revival game ports (allowlist)'`,
             "    echo 'ufw: added the rules'",
             "else",
             "    echo 'No active ufw: nothing to add here (the allowlist manages the game ports itself).'",
             "fi",
-            `echo "Also allow inbound TCP ${PORTS.publicGateway} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} in your provider's firewall, if it has one (Hostinger: the VPS's Firewall page in hPanel)."`,
+            `echo "Also allow inbound TCP ${gatewayPort(c)} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} in your provider's firewall, if it has one (Hostinger: the VPS's Firewall page in hPanel)."`,
         );
     } else {
         lines.push(

@@ -30,7 +30,8 @@ Run them in this folder (`cd ReforgedHost`, then `npm install` once).
 Other `setup` options: `--registration INVITECODE|OPEN|NONE` (default invite codes only),
 `--share <Tailscale share link>` (private: put it in every invite), `--mongo-uri <uri>` with
 `--no-manage-mongo` (your own MongoDB, which must be a replica set), `--mongod <path>`,
-`--max-hunts 1-6` (default 3; each hunt is a whole game process), `--skip-install`,
+`--max-hunts 1-6` (default 3; each hunt is a whole game process), `--public-port <port>` (public: the
+gateway's port when 443 is taken, by a hosting panel for example; it goes into every invite), `--skip-install`,
 `--force-upstream`. Running `setup` again with other options changes only those.
 
 Linux (`docs/hosting-linux.md`): `--wine <path>`, `--proton <script>` (`--no-proton`), `--no-xvfb`
