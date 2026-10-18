@@ -50,7 +50,9 @@ describe("host.json", () => {
         assert.throws(() => validateHostConfig({ ...PUBLIC, host: "100.101.102.103" }), /public/);
         assert.throws(() => validateHostConfig({ ...PUBLIC, gameAddress: "hunts.example.net" }), /IPv4/);
         assert.throws(() => validateHostConfig({ ...PRIVATE, name: "  " }), /name/);
-        assert.throws(() => validateHostConfig({ ...PRIVATE, maxHuntServers: 7 }), /maxHuntServers/);
+        assert.throws(() => validateHostConfig({ ...PRIVATE, maxHuntServers: 11 }), /maxHuntServers/);
+        assert.throws(() => validateHostConfig({ ...PRIVATE, maxHuntServers: 0 }), /maxHuntServers/);
+        assert.equal(validateHostConfig({ ...PRIVATE, maxHuntServers: 10 }).maxHuntServers, 10);
         assert.throws(() => validateHostConfig({ ...PRIVATE, shareUrl: "https://evil.example/" }), /shareUrl/);
         assert.throws(() => validateHostConfig({ ...PRIVATE, mongo: { ...PRIVATE.mongo, uri: "http://x" } }), /mongo/);
     });

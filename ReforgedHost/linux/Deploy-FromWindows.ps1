@@ -79,10 +79,13 @@ if ($Server -notmatch '^[A-Za-z0-9.:-]{1,253}$') { Stop-Deploy "-Server must be 
 if ($User -notmatch '^[a-z_][a-z0-9_-]{0,31}$') { Stop-Deploy "-User must be a plain user name like root (got $User)" }
 if ($Branch -notmatch '^[A-Za-z0-9._/-]{1,100}$') { Stop-Deploy "-Branch must be a branch name (got $Branch)" }
 if ($Name -match '["\x00-\x1f]' -or $Name.Trim().Length -eq 0 -or $Name.Length -gt 48) { Stop-Deploy '-Name must be 1 to 48 characters, without double quotes' }
-if ($MaxHunts -ne 0 -and ($MaxHunts -lt 1 -or $MaxHunts -gt 6)) { Stop-Deploy '-MaxHunts must be 1 to 6' }
+if ($MaxHunts -ne 0 -and ($MaxHunts -lt 1 -or $MaxHunts -gt 10)) { Stop-Deploy '-MaxHunts must be 1 to 10' }
 if ($PublicPort -ne 0 -and ($PublicPort -lt 1 -or $PublicPort -gt 65535)) { Stop-Deploy '-PublicPort must be a TCP port from 1 to 65535' }
 $PlayersPort = 443
 if ($PublicPort -ne 0) { $PlayersPort = $PublicPort }
+# The game ports: 8770-8777 up to 6 hunts, one more port below 8770 for each hunt above 6 (8766-8777 at 10).
+$GamePorts = '8770-8777'
+if ($MaxHunts -gt 6) { $GamePorts = "$(8776 - $MaxHunts)-8777" }
 foreach ($Tool in @('ssh', 'scp', 'ssh-keygen')) {
     if (-not (Get-Command $Tool -ErrorAction SilentlyContinue)) {
         Stop-Deploy "$Tool was not found: turn on Windows' OpenSSH Client (Settings > System > Optional features > Add a feature > OpenSSH Client), then open a new PowerShell"
@@ -218,7 +221,7 @@ try {
 if (-not $Reached) {
     Write-Host "no answer from ${Server}:$Port within 15 seconds. Usually one of these:" -ForegroundColor Yellow
     Write-Host "  - the VPS firewall (its Firewall page in Hostinger's hPanel) drops SSH: add a rule Accept, TCP, port $Port, from any," -ForegroundColor Yellow
-    Write-Host "    next to TCP $PlayersPort and UDP 8770-8777, and make sure that firewall is the one active for this VPS" -ForegroundColor Yellow
+    Write-Host "    next to TCP $PlayersPort and UDP $GamePorts, and make sure that firewall is the one active for this VPS" -ForegroundColor Yellow
     Write-Host '  - the VPS is stopped or still installing (hPanel > VPS > Overview), or the address is not its own' -ForegroundColor Yellow
     Write-Host "  - this network blocks outgoing SSH (some work, school and public networks): try another one, a phone hotspot" -ForegroundColor Yellow
     Write-Host "Check again with: Test-NetConnection $Server -Port $Port" -ForegroundColor Yellow
@@ -321,5 +324,5 @@ Write-Host 'Send each friend an invite (the first one is above). For more, on th
 Write-Host '  sudo -iu reforged'
 Write-Host '  cd Reforged/ReforgedHost; npm run invite -- --for "Alex"'
 Write-Host ''
-Write-Host "If players cannot join: allow inbound TCP $PlayersPort and UDP 8770-8777 in the VPS's Firewall page in Hostinger's hPanel." -ForegroundColor Yellow
+Write-Host "If players cannot join: allow inbound TCP $PlayersPort and UDP $GamePorts in the VPS's Firewall page in Hostinger's hPanel." -ForegroundColor Yellow
 Write-Host "If the launcher says the certificate does not match, another program (a hosting panel) answers on port ${PlayersPort}: run this again with -PublicPort 4443 -SkipGame, allow TCP 4443 in the firewall, and use the new invite." -ForegroundColor Yellow

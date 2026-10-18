@@ -75,9 +75,10 @@ The two systemd units run as an ordinary user:
 ## What you need
 
 - A VPS with **Debian 13** (x86-64). Each game server is a whole game process under Wine (about
-  1-1.5 GB of RAM); Ramsgate and the Training Grounds always run, plus one per hunt (`--max-hunts`,
-  3 by default). **16 GB of RAM** is comfortable (Hostinger KVM 4); 8 GB (KVM 2) only with
-  `--max-hunts 1` or 2. About 30 GB of free disk.
+  1-1.5 GB of RAM); Ramsgate always runs, the Training Grounds when someone uses them, plus one per
+  hunt (`--max-hunts`, 3 by default, up to 10). **16 GB of RAM** is comfortable (Hostinger KVM 4) for
+  about 6 hunts at once; 8 GB (KVM 2) only with `--max-hunts 1` or 2. The memory guard refuses a new
+  hunt when the RAM for it is not free (see [CPU and RAM](#cpu-and-ram)). About 30 GB of free disk.
 - The VPS's **public IPv4 address** (Hostinger: hPanel > VPS > Overview).
 - Your own **Dauntless 1.14.7** (from your Epic library, installed with Legendary: see
   [players.md](players.md#1-install-dauntless-1147)).
@@ -88,7 +89,8 @@ The two systemd units run as an ordinary user:
 ## 1. The provider's firewall
 
 Allow inbound **TCP 443** (the gateway) and **UDP 8770-8777** (the game servers), and keep SSH
-(TCP 22). On Hostinger: the VPS's **Firewall** page in hPanel; make a rule set with those three
+(TCP 22). More than 6 hunts at once use one more port below 8770 per hunt: UDP 8768-8777 for 8,
+8766-8777 for 10. On Hostinger: the VPS's **Firewall** page in hPanel; make a rule set with those three
 and activate it for the VPS. Never open 61000-61005 or 27017: they listen on 127.0.0.1 only.
 
 The game ports stay closed to everyone who has not logged in: the allowlist's own nftables table
@@ -171,7 +173,7 @@ Linux options (each is kept in `host.json` until you change it):
 | `--wine /usr/bin/wine64` | a particular Wine (default: the first `wine` on `PATH`) |
 | `--proton <path to proton>` | Proton or GE-Proton instead of Wine (`--no-proton` goes back) |
 | `--no-xvfb` | no virtual display (only if the VPS has a real X display in `DISPLAY`) |
-| `--max-hunts 1-6` | at most this many hunts at once (default 3) |
+| `--max-hunts 1-10` | at most this many hunts at once (default 3; above 6 the game ports reach below 8770, see step 1) |
 | `--public-port 4443` | the port players connect to, when 443 is taken (a Hostinger Game Panel plan serves its panel there); `--public-port 443` goes back |
 
 ## 6. The runtime and the game data, from your Windows PC
@@ -243,7 +245,8 @@ What the server does now (each part can be changed):
 | Frames per second after 15 s without players | 10 | `--idle-fps 1-240`, `0` for the same as above |
 | Training Grounds (Director patch 0021) | started the first time someone goes there | `--training-at-boot` (`--training-on-demand` goes back) |
 | Game-server logs | warnings and errors | `--verbose-game-logs` (`--quiet-game-logs` goes back) |
-| Hunts at once | 3 | `--max-hunts 1-6` |
+| Hunts at once | 3 (UDP 8770-8777; above 6, one more port below 8770 per hunt) | `--max-hunts 1-10` |
+| A new hunt only when its memory is free (Director patch 0022) | on: 1536 MB for the hunt plus 1024 MB left free | `--no-memory-guard` (`--memory-guard`), `--hunt-ram <MB>`, `--min-free-ram <MB>` |
 | MongoDB's cache | 1 GB (it used to take up to half the RAM) | |
 
 Restart the server after a change (`sudo systemctl restart reforged`).
@@ -295,6 +298,8 @@ and compare `top` with players on. `npm run setup -- --no-proton` goes back to W
 | `wine: ... is not owned by you` | the Wine prefix belongs to another user: `sudo chown -R reforged: ~/Reforged/.workspace/wine` |
 | `xvfb-run was not found` / `Wine was not found` | `sudo apt install xvfb xauth wine wine64`, then `npm run setup` |
 | players log in but cannot reach Ramsgate | UDP 8770-8777 in the provider's firewall (step 1), and `--firewall-interface` naming the right interface (`ip -br addr`) |
+| a hunt does not start ("matchmaking failed") while others run | the hunt cap or the memory guard: `journalctl -u reforged \| grep -i "MemoryGuard\|capacity"` says which; `free -h` shows the RAM left |
+| players reach Ramsgate but some hunts never load (more than 6 hunts) | the extra game ports: UDP 8768-8777 (8 hunts) or 8766-8777 (10) in the provider's firewall |
 | the launcher says the certificate does not match | another program holds the gateway's port (a hosting panel on 443): `npm run doctor` names it; give the server another port with `npm run setup -- --public-port 4443` (or `Deploy-FromWindows.ps1 -PublicPort 4443 -SkipGame`), allow TCP 4443 in the provider's firewall, restart, and send new invites |
 | `port 27017 is already taken` | MongoDB's own service: `sudo systemctl disable --now mongod` |
 
@@ -345,7 +350,19 @@ Grounds e um por caçada), cada um um processo inteiro do Dauntless no Wine. Ago
   (`--server-fps`, `--idle-fps`; `0` desliga);
 - o Training Grounds só sobe quando alguém vai para lá (`--training-at-boot` volta ao antigo);
 - os servidores de jogo registram só avisos e erros (`--verbose-game-logs` volta ao antigo);
-- o MongoDB usa no máximo 1 GB de cache (antes podia usar metade da RAM).
+- o MongoDB usa no máximo 1 GB de cache (antes podia usar metade da RAM);
+- uma caçada nova só abre quando há RAM livre para ela: 1536 MB para a caçada mais 1024 MB de folga
+  (`--hunt-ram`, `--min-free-ram`, `--no-memory-guard`). Se faltar, o jogador vê a busca falhar e tenta
+  de novo depois, e o servidor não cai por falta de memória.
+
+**Mais caçadas ao mesmo tempo:** `--max-hunts` vai até 10. Até 6 as portas são UDP 8770-8777; acima disso
+cada caçada usa uma porta a mais abaixo de 8770 (UDP 8768-8777 para 8, 8766-8777 para 10), que precisa
+estar liberada no firewall da Hostinger. Por exemplo, para 8, como root:
+
+```sh
+sudo -iu reforged bash -c 'cd ~/Reforged/ReforgedHost && npm run update && npm run setup -- --max-hunts 8 --skip-install'
+sh /home/reforged/Reforged/.workspace/config/systemd/install.sh
+```
 
 O limite de FPS e as correções de CPU (patches 0019 e 0020) ficam no runtime (`MysticParadox.dll`), que é
 compilado no PC com Windows: lá, `npm run update`, compile o runtime de novo (página Host tools do launcher),

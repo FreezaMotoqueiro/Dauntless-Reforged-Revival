@@ -38,7 +38,7 @@ die() { printf '\nError: %s\n' "$*" >&2; exit 1; }
 usage() {
     cat >&2 <<'EOF'
 usage: sh setup-vps.sh [--name "<server name>"] [--host <public IPv4 or DNS name>] [--game-address <IPv4>]
-                       [--interface <eth0>] [--max-hunts 1-6] [--public-port <port>] [--user reforged] [--branch main] [--repo <url>]
+                       [--interface <eth0>] [--max-hunts 1-10] [--public-port <port>] [--user reforged] [--branch main] [--repo <url>]
                        [--skip-apt] [--install-only]
        sh setup-vps.sh --finish [--game-from <folder>] [--runtime <folder>] [--gamedata <pack>] [--no-services]
 EOF
@@ -74,7 +74,7 @@ done
 
 [ "$(id -u)" -eq 0 ] || die "run it as root: sudo sh $0 ..."
 printf '%s' "$SERVICE_USER" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$' || die "--user must be a plain user name like reforged"
-[ -z "$MAX_HUNTS" ] || printf '%s' "$MAX_HUNTS" | grep -Eq '^[1-6]$' || die "--max-hunts must be 1 to 6"
+[ -z "$MAX_HUNTS" ] || printf '%s' "$MAX_HUNTS" | grep -Eq '^([1-9]|10)$' || die "--max-hunts must be 1 to 10"
 [ -z "$PUBLIC_PORT" ] || printf '%s' "$PUBLIC_PORT" | grep -Eq '^[0-9]{1,5}$' || die "--public-port must be a TCP port number, like 4443"
 [ -z "$IFACE" ] || printf '%s' "$IFACE" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_.@-]{0,14}$' || die "--interface must be a network interface name like eth0"
 
@@ -328,10 +328,13 @@ else
     fi
 fi
 
-# The gateway's port, as host.json has it (443 unless --public-port moved it).
+# The gateway's port, as host.json has it (443 unless --public-port moved it), and the game ports: 8770-8777
+# up to 6 hunts, one more port below 8770 for each hunt above 6 (8766-8777 at 10).
 port=443
+first=8770
 if [ -f "$CONFIG/host.json" ]; then
     port=$(node -e 'try { const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.stdout.write(String(c.publicPort || 443)); } catch { process.stdout.write("443"); }' "$CONFIG/host.json" 2>/dev/null || echo 443)
+    first=$(node -e 'try { const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const h = Math.min(Math.max(Number(c.maxHuntServers) || 3, 1), 10); process.stdout.write(String(Math.min(8770, 8776 - h))); } catch { process.stdout.write("8770"); }' "$CONFIG/host.json" 2>/dev/null || echo 8770)
 fi
 step "Remember"
-say "Allow inbound TCP $port and UDP 8770-8777 (and keep TCP 22) in your provider's firewall: the VPS's Firewall page in Hostinger's hPanel."
+say "Allow inbound TCP $port and UDP $first-8777 (and keep TCP 22) in your provider's firewall: the VPS's Firewall page in Hostinger's hPanel."

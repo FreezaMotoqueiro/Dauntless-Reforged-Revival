@@ -198,7 +198,9 @@ button for it.
   runtime switches: it makes the hub query the Hunt Pass season, which fetches the config. It acts on
   game servers only, not on your own game client. Delete the file to turn it off.
 - One PC for everything: the services, the database and the game servers. Each hunt is a whole game
-  process (about 1 GB of RAM); `--max-hunts` caps them (default 3).
+  process (about 1 GB of RAM); `--max-hunts` caps them (default 3, up to 10), and the memory guard refuses
+  a new hunt while the RAM for it is not free. More than 6 hunts need one more UDP port below 8770 per hunt
+  (8768-8777 for 8, 8766-8777 for 10) forwarded or allowed too.
 - Windows for the launcher, the runtime build and the SDK, like the game. The server itself can also
   run on Linux, with the game servers under Wine ([hosting-linux.md](hosting-linux.md), experimental).
 
@@ -207,7 +209,7 @@ button for it.
 | Port | What | Reachable from |
 |---|---|---|
 | 443/TCP (public) or 61000/TCP on the Tailscale IP (private) | gateway | players |
-| 8770-8775/UDP | hunts | players (public mode: only after they logged in) |
+| 8770-8775/UDP | hunts (with `--max-hunts` above 6, from 8768 for 8 or 8766 for 10) | players (public mode: only after they logged in) |
 | 8776/UDP | Training Grounds | players (public mode: only after they logged in) |
 | 8777/UDP | Ramsgate | players (public mode: only after they logged in) |
 | 61000/TCP on 127.0.0.1 | backend | this PC |
