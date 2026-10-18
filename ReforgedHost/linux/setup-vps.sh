@@ -111,6 +111,30 @@ install_packages() {
     say "Node.js $(node --version), $(wine --version 2>/dev/null || echo 'Wine: not found')"
 }
 
+MONGODB_REPO=${MONGODB_REPO:-https://repo.mongodb.org/apt/debian}
+
+# Does this repository (version, Debian release) hold mongod for amd64? A release can be listed
+# before its packages are there (trixie/8.0 was, with only the tools).
+mongodb_has_server() {
+    for index in Packages.gz Packages; do
+        url="$MONGODB_REPO/dists/$2/mongodb-org/$1/main/binary-amd64/$index"
+        case "$index" in
+            *.gz) curl -fsSL "$url" 2>/dev/null | gzip -dc 2>/dev/null | grep -q '^Package: mongodb-org-server$' && return 0 ;;
+            *) curl -fsSL "$url" 2>/dev/null | grep -q '^Package: mongodb-org-server$' && return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# "<version> <release>" of the first repository with mongod: this Debian's own, then the one before.
+find_mongodb_repo() {
+    for pick in "8.0 $1" "8.2 $1" "8.0 bookworm" "7.0 bookworm"; do
+        # shellcheck disable=SC2086
+        if mongodb_has_server $pick; then printf '%s\n' "$pick"; return 0; fi
+    done
+    return 1
+}
+
 install_mongodb() {
     step "MongoDB"
     if command -v mongod >/dev/null 2>&1; then
@@ -118,17 +142,16 @@ install_mongodb() {
     else
         # shellcheck disable=SC1091
         codename=$(. /etc/os-release && printf '%s' "${VERSION_CODENAME:-bookworm}")
-        dist=
-        # MongoDB's own repository; the newest Debian it lists when this one is not there yet.
-        for c in "$codename" bookworm; do
-            if curl -fsI "https://repo.mongodb.org/apt/debian/dists/$c/mongodb-org/8.0/Release" >/dev/null 2>&1; then dist=$c; break; fi
-        done
-        [ -n "$dist" ] || die "MongoDB's repository did not answer: install MongoDB 7+ by hand (docs/hosting-linux.md), then run this again"
-        curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor --yes -o /usr/share/keyrings/mongodb-server-8.0.gpg
-        echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian $dist/mongodb-org/8.0 main" > /etc/apt/sources.list.d/mongodb-org-8.0.list
+        pick=$(find_mongodb_repo "$codename") || die "found no MongoDB repository with mongod for Debian $codename or bookworm: install MongoDB 7+ by hand (docs/hosting-linux.md), then run this again"
+        version=${pick% *}
+        dist=${pick#* }
+        # Only ours: an earlier run may have left a repository without mongod.
+        rm -f /etc/apt/sources.list.d/mongodb-org-*.list
+        curl -fsSL "https://www.mongodb.org/static/pgp/server-$version.asc" | gpg --dearmor --yes -o "/usr/share/keyrings/mongodb-server-$version.gpg"
+        echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-$version.gpg ] $MONGODB_REPO $dist/mongodb-org/$version main" > "/etc/apt/sources.list.d/mongodb-org-$version.list"
         apt-get update
-        apt-get install -y mongodb-org-server || die "MongoDB did not install from the $dist repository: see https://www.mongodb.com/docs/manual/tutorial/install-mongodb-on-debian/ and run this again"
-        say "installed from MongoDB's $dist repository: $(command -v mongod)"
+        apt-get install -y mongodb-org-server || die "MongoDB $version did not install from the $dist repository: see https://www.mongodb.com/docs/manual/tutorial/install-mongodb-on-debian/ and run this again"
+        say "MongoDB $version installed from MongoDB's $dist repository: $(command -v mongod)"
     fi
     # The host kit starts its own mongod, as a replica set, on the same port.
     if command -v systemctl >/dev/null 2>&1; then systemctl disable --now mongod >/dev/null 2>&1 || true; fi

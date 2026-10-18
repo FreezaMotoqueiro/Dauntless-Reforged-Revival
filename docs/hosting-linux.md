@@ -111,7 +111,7 @@ systemctl disable --now mongod     # the host kit starts its own MongoDB, as a r
 
 MongoDB names the Debian releases it supports on
 [its install page](https://www.mongodb.com/docs/manual/tutorial/install-mongodb-on-debian/): use
-the newest one listed there (above, `bookworm`) if Debian 13 (`trixie`) is not listed yet.
+the newest one listed there (above, `bookworm`) if Debian 13 (`trixie`) is not listed yet, or is listed without `mongodb-org-server` (`apt` then says "Unable to locate package").
 
 ## 3. A user for the server
 
