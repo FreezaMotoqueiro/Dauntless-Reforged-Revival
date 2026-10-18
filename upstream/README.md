@@ -280,6 +280,20 @@ EJ_PLAYER_BOSUN_JOY`, the first of the game's four default emojis).
 
 `src/chatWheels.test.ts` covers the grant and the wheel defaults.
 
+### 0018: the client gets past the login screen (the login queue's maintenance status)
+
+`ParadoxBackend/src/routes/loginQueue.ts`, mounted in `app.ts`. Before it logs in, the 1.14.7 client asks
+`GET https://login-queue-prod.steelyard.ca/maintenance/status` (no auth). Upstream has no such route, so the
+backend answered 404 (`Unstubbed route GET /maintenance/status`), and the client's
+`CheckCrossPlayAndCrossProgression` login step failed: the runtime's log shows
+`[LoginOpFailed] class=CheckCrossPlayAndCrossProgressionProxy` right after `PrepareForLoginProxy` succeeded,
+and the game shows "An error occurred while communicating with the game servers". Found on the first run of
+the real 1.14.7 client against a Reforged server.
+
+The route answers the captured contract, `{ "show-status": false }`
+([EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation),
+`Login/LoginQueue/MaintenanceStatus.md`). `src/maintenanceStatus.test.ts` covers it.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store

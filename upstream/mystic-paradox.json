@@ -22,6 +22,7 @@
     "patches/0014-runtime-log-hunt-weapon-on-server.patch",
     "patches/0015-runtime-send-dormant-weapons.patch",
     "patches/0016-runtime-always-relevant-weapon-not-culled.patch",
-    "patches/0017-backend-default-quick-chat-and-emojis.patch"
+    "patches/0017-backend-default-quick-chat-and-emojis.patch",
+    "patches/0018-backend-login-queue-maintenance-status.patch"
   ]
 }
