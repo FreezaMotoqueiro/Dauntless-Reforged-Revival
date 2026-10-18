@@ -224,6 +224,10 @@ The first game servers take longer than on Windows (Wine loads the game): the Di
   build it again on the Windows PC and publish it with `--from`.
 - **Bans, registration, news, backups:** as on Windows ([hosting.md](hosting.md#running-it)).
   Back up MongoDB with `mongodump`, and keep `.workspace/config/` and `.workspace/tls/` private.
+- **Supplies refilled at every login:** list per account, in `~/Reforged/.workspace/config/session-supplies.json`,
+  the stacked items (tonics, pylons, grenades...) that go back to a fixed quantity each time that player
+  logs in: `{"accounts": {"<user id>": {"QI_GRENADE_ICE": 1000}}}`. It is read at every login, so no restart
+  is needed; see [upstream patch 0023](../upstream/README.md#0023-supplies-refilled-at-every-game-login).
 - **The allowlist table:** `sudo nft list table inet reforged_revival` shows who can reach the
   game ports right now.
 
@@ -339,6 +343,11 @@ certificado dele ("o certificado de segurança não confere").
    `npm run publish-runtime -- --from ~/runtime` e `npm run gamedata -- --import <pacote>`.
 7. **Ligar:** `sudo sh ~/Reforged/.workspace/config/firewall.sh` e
    `sudo sh ~/Reforged/.workspace/config/systemd/install.sh`. Depois, `npm run invite -- --for "Nome"`.
+
+**Suprimentos reabastecidos a cada login:** em `~/Reforged/.workspace/config/session-supplies.json`,
+liste por conta os itens empilháveis (tônicos, pilões, granadas...) que voltam para uma quantidade fixa
+toda vez que o jogador entra: `{"accounts": {"<id da conta>": {"QI_GRENADE_ICE": 1000}}}`. O arquivo é
+lido a cada login, sem reiniciar nada.
 
 É experimental: o jogo 1.14.7 de verdade ainda não foi rodado no Wine. Se algo falhar, veja
 `journalctl -u reforged -f` e `npm run doctor`.
