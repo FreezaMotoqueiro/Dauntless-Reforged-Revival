@@ -386,6 +386,17 @@ an account it does not name changes nothing. Currencies (`CURRENCY_*`, kept in t
 storage policy keeps as instanced are refused, and a malformed file is logged (`[SessionSupplies]`)
 without blocking the login.
 
+### 0024: supplies without a stack cap
+
+`ParadoxRuntime/dllmain.cpp`. A few tonics carry `MaxQuantity` 30 in the game's own catalog
+(Granny's Heartbreaker `QI_11A_CRIT_POTION`, Granny's Antidote `QI_11A_POISON_CLEANSE` and three test
+tonics), so a stack above 30 (from patch 0023, for example) is dropped from the player's inventory. The
+runtime now sets `MaxQuantity` to 0 (no cap) on every item of the live `UArchonCatalog` tagged `supplies`
+whose cap is above 1, in the player's game and in the game servers, from the game thread (the ProcessEvent
+hooks, at most every 5 seconds); it logs `[SupplyCap]` once per change. Flares and other one-per-account
+items (cap 1) are not touched. `KEEP_SUPPLY_STACK_CAPS.flag` beside the game executable keeps the game's
+caps. It is a runtime patch: build the runtime again and publish it.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
