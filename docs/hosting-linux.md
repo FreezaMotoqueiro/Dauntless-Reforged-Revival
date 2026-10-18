@@ -241,11 +241,17 @@ powershell -ExecutionPolicy Bypass -File .\Deploy-DiscordBot.ps1 -Server 203.0.1
   then `npm start`, `main` or `index.js`) or Python (a virtual environment with `requirements.txt` or
   `pyproject.toml`, then `bot.py`, `main.py`, `app.py` or `run.py`). `-Start "<command>"` covers anything
   else. A `deploy-commands` (or `register-commands`) script registers the slash commands.
-- **Settings:** the bot's `.env` goes along (over SSH) and stays readable only by the bot. Without one,
-  the VPS keeps the `.env` it has; on a first install it makes one from `.env.example` and waits for you
-  to fill it in (`nano /home/discordbot/reforged-discord-bot/.env`, then `systemctl restart reforged-discord-bot`).
-- **Updating:** run it again. `node_modules`, `.git`, virtual environments and logs are never sent;
-  files the bot saved on the VPS stay, files in the upload replace theirs.
+- **Settings:** the bot's `.env` goes along (over SSH), merged with the VPS's: a setting it leaves
+  empty or out keeps the VPS's value, new settings from `.env.example` are added, and the VPS's
+  `DATA_ENCRYPTION_KEY` is never replaced (the bot's data is encrypted with it; one is made when there
+  is none). It stays readable only by the bot. On a first install without a `.env`, one is made from
+  `.env.example` and the bot waits for you to fill it in (`nano /home/discordbot/reforged-discord-bot/.env`,
+  then `systemctl restart reforged-discord-bot`).
+- **Updating, or a new version of the bot:** run it again, with `-Bot` naming the new folder.
+  `node_modules`, `.git`, virtual environments and logs are never sent. Files of the last upload that
+  the new one no longer has are removed, unless they changed on the VPS; files the bot changed on the
+  VPS (its data) are kept. The first update after a version of this script without that list only
+  names the files it would have removed.
 - **Logs:** `journalctl -u reforged-discord-bot -f`. On the VPS by hand: `sudo sh setup-discord-bot.sh --archive <bot.tar.gz>`.
 
 ## When something goes wrong
@@ -302,7 +308,9 @@ certificado dele ("o certificado de segurança não confere").
 envia a pasta do bot (Node.js ou Python, com o `.env` do token) e deixa ele rodando como o serviço
 `reforged-discord-bot`, com usuário próprio, reinício automático e início junto com a VPS:
 `powershell -ExecutionPolicy Bypass -File .\Deploy-DiscordBot.ps1 -Server <IP da VPS> -Bot "C:\pasta\do\bot"`.
-Para atualizar, rode de novo. Log: `journalctl -u reforged-discord-bot -f`.
+Para atualizar (ou instalar uma versão nova, com `-Bot` apontando para a pasta dela), rode de novo:
+o `.env` é mesclado com o da VPS (a `DATA_ENCRYPTION_KEY` da VPS nunca é trocada), arquivos que a
+versão nova não tem mais são removidos e os dados do bot ficam. Log: `journalctl -u reforged-discord-bot -f`.
 
 Ainda é experimental: o 1.14.7 de verdade já rodou Ramsgate e o Training Grounds no Wine numa VPS, com
 login pelo launcher, mas caçadas e sessões longas ainda não foram testadas. Se algo falhar, veja

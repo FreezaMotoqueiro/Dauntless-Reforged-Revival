@@ -11,8 +11,10 @@
       4. sends it with setup-discord-bot.sh, which on the VPS makes a user for the bot (discordbot),
          installs its dependencies, and runs it as the systemd service reforged-discord-bot:
          restarted when it stops, started at every boot
-    The bot's .env (its token) goes along. Run it again after changing the bot: it updates the files,
-    keeps what the bot saved on the VPS, and restarts it.
+    The bot's .env (its token) goes along, merged with the VPS's: settings it leaves empty keep the
+    VPS's value, and the VPS's DATA_ENCRYPTION_KEY is never replaced (one is made when there is none).
+    Run it again after changing the bot, or for a new version of it: it updates the files, removes
+    the ones the new version no longer has, keeps what the bot saved on the VPS, and restarts it.
 
 .PARAMETER Server
     The VPS's public IPv4 address or DNS name.
@@ -30,7 +32,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Server,
-    [string]$Bot = 'C:\Users\Administrator\Documents\Codex\2026-10-18\crie-um-bot-para-o-discord-11\outputs\reforged-discord-bot',
+    [string]$Bot = 'C:\Users\Administrator\Documents\Codex\2026-10-18\crie-um-bot-para-o-discord-11\outputs\reforged-discord-bot-1.0.1\reforged-discord-bot',
     [string]$Name = 'reforged-discord-bot',
     [string]$Start = '',
     [string]$User = 'root',
@@ -100,7 +102,7 @@ if (& $Has 'package.json') {
     Stop-Deploy "no package.json, requirements.txt, pyproject.toml or .py file in ${BotDir}: is it the bot's folder? (or pass -Start)"
 }
 if (& $Has '.env') {
-    Write-Host '.env: found (the token goes to the VPS with it, over SSH)'
+    Write-Host '.env: found (it goes to the VPS over SSH; settings left empty here keep the value the VPS has)'
 } elseif (& $Has '.env.example') {
     Write-Host '.env: none here. The VPS keeps the one it already has; on a first install it makes one from .env.example for you to fill in.' -ForegroundColor Yellow
 } else {
