@@ -14,6 +14,38 @@ for any public server ([players.md](players.md)).
 > **The real Dauntless 1.14.7 has not yet been run under Wine.** Expect to read logs on the first
 > evenings, and report what you find.
 
+## The quick way: one command from your Windows PC
+
+Steps 2 to 7 below, done for you from the Windows PC that has your game, with the SSH client that comes
+with Windows. You need the VPS's public IPv4 address and its `root` password (Hostinger: hPanel > VPS >
+Overview), and step 1 (the provider's firewall) done.
+
+1. Download [`Deploy-FromWindows.ps1`](../ReforgedHost/linux/Deploy-FromWindows.ps1) (on GitHub:
+   **Download raw file**), for example into `Downloads`.
+2. In PowerShell:
+
+   ```powershell
+   cd $HOME\Downloads
+   powershell -ExecutionPolicy Bypass -File .\Deploy-FromWindows.ps1 -Server <VPS IPv4> -Name "Friday Hunts" -Game C:\Dauntless
+   ```
+
+It checks that `C:\Dauntless` is Dauntless 1.14.7 (the folder with `Archon` inside, or the folder
+holding it), asks the VPS password once (it adds an SSH key for this PC), installs everything on the
+VPS with [`setup-vps.sh`](../ReforgedHost/linux/setup-vps.sh), sends the game (about 15 GB: keep the
+window open; a second run skips it when the VPS already has the same files), sends the runtime and the
+newest game data pack when this PC has a Reforged project (`C:\Reforged`, or `-Runtime <folder>` and
+`-GameData <pack>`), starts the server and prints your first invite. Run it again whenever you like:
+every step keeps what is already done.
+
+Without a runtime yet, players can join but not play: send it later with
+`-Runtime <folder> -SkipGame` (step 6 says where it comes from).
+
+On the VPS itself, without Windows: as root, `sh setup-vps.sh --name "Friday Hunts"` (the script is
+in `ReforgedHost/linux/`), copy the game to `/home/reforged/games/Dauntless`, then
+`sh /home/reforged/Reforged/ReforgedHost/linux/setup-vps.sh --finish [--runtime <folder>] [--gamedata <pack>]`.
+
+The rest of this page is the same thing by hand, and what to do when something goes wrong.
+
 ## How it differs from a Windows server
 
 The services (backend, Director, content server, gateway, MongoDB) run natively. The game servers
@@ -203,6 +235,20 @@ The Director passes the game-server key on each game server's command line, as o
 VPS that only the server's user signs in to, nobody else can read it.
 
 ## Resumo em português
+
+**O jeito rápido (um comando no Windows):** libere TCP 443 e UDP 8770-8777 no firewall da VPS na
+Hostinger, baixe o [`Deploy-FromWindows.ps1`](../ReforgedHost/linux/Deploy-FromWindows.ps1) e rode no
+PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Deploy-FromWindows.ps1 -Server <IP da VPS> -Name "Seu Servidor" -Game C:\Dauntless
+```
+
+Ele confere o jogo, pede a senha do root da VPS uma vez, instala tudo, envia o jogo (cerca de 15 GB),
+liga o servidor e mostra o primeiro convite. Pode rodar de novo quando quiser: o que já está feito é
+mantido, e o jogo não é reenviado se já estiver lá.
+
+**Passo a passo à mão:**
 
 1. **Firewall da Hostinger:** libere TCP 443 e UDP 8770-8777 (e mantenha o SSH, TCP 22).
 2. **Pacotes, como root:** `apt install -y git nodejs npm wine wine64 xvfb xauth nftables sudo curl gnupg`
