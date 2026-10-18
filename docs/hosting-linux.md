@@ -37,6 +37,11 @@ newest game data pack when this PC has a Reforged project (`C:\Reforged`, or `-R
 `-GameData <pack>`), starts the server and prints your first invite. Run it again whenever you like:
 every step keeps what is already done.
 
+**A Hostinger Game Panel plan** (or any VPS with a web panel) already serves its panel on port 443.
+Give the server another port with `-PublicPort 4443` (and allow TCP 4443 instead of 443 in the
+firewall): it goes into the invites, and the launcher connects to it. Without it, players' launchers
+reach the panel and refuse its certificate ("the security certificate does not match").
+
 Without a runtime yet, players can join but not play: send it later with
 `-Runtime <folder> -SkipGame` (step 6 says where it comes from).
 
@@ -167,6 +172,7 @@ Linux options (each is kept in `host.json` until you change it):
 | `--proton <path to proton>` | Proton or GE-Proton instead of Wine (`--no-proton` goes back) |
 | `--no-xvfb` | no virtual display (only if the VPS has a real X display in `DISPLAY`) |
 | `--max-hunts 1-6` | at most this many hunts at once (default 3) |
+| `--public-port 4443` | the port players connect to, when 443 is taken (a Hostinger Game Panel plan serves its panel there); `--public-port 443` goes back |
 
 ## 6. The runtime and the game data, from your Windows PC
 
@@ -229,6 +235,7 @@ The first game servers take longer than on Windows (Wine loads the game): the Di
 | `wine: ... is not owned by you` | the Wine prefix belongs to another user: `sudo chown -R reforged: ~/Reforged/.workspace/wine` |
 | `xvfb-run was not found` / `Wine was not found` | `sudo apt install xvfb xauth wine wine64`, then `npm run setup` |
 | players log in but cannot reach Ramsgate | UDP 8770-8777 in the provider's firewall (step 1), and `--firewall-interface` naming the right interface (`ip -br addr`) |
+| the launcher says the certificate does not match | another program holds the gateway's port (a hosting panel on 443): `npm run doctor` names it; give the server another port with `npm run setup -- --public-port 4443` (or `Deploy-FromWindows.ps1 -PublicPort 4443 -SkipGame`), allow TCP 4443 in the provider's firewall, restart, and send new invites |
 | `port 27017 is already taken` | MongoDB's own service: `sudo systemctl disable --now mongod` |
 
 The Director passes the game-server key on each game server's command line, as on Windows; on a
@@ -247,6 +254,10 @@ powershell -ExecutionPolicy Bypass -File .\Deploy-FromWindows.ps1 -Server <IP da
 Ele confere o jogo, pede a senha do root da VPS uma vez, instala tudo, envia o jogo (cerca de 15 GB),
 liga o servidor e mostra o primeiro convite. Pode rodar de novo quando quiser: o que já está feito é
 mantido, e o jogo não é reenviado se já estiver lá.
+
+**Plano Game Panel da Hostinger:** o painel já usa a porta 443. Rode o script com `-PublicPort 4443`
+e libere TCP 4443 (no lugar da 443) no firewall da VPS. Sem isso, o launcher chega no painel e recusa o
+certificado dele ("o certificado de segurança não confere").
 
 **Passo a passo à mão:**
 

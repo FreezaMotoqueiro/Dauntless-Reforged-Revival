@@ -7,8 +7,9 @@
 import { createHash, X509Certificate } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import tls from "node:tls";
 import { PORTS } from "./paths";
-import type { HostConfig } from "./hostconfig";
+import { gatewayPort, type HostConfig } from "./hostconfig";
 
 export const INVITE_SCHEME = "reforged-revival";
 
@@ -41,11 +42,28 @@ export function certificateFingerprint(certFile: string): string {
     return createHash("sha256").update(cert.raw).digest("hex");
 }
 
+// The SHA-256 of the certificate whatever listens on host:port presents (the launcher pins it), or
+// null when nothing answers with TLS.
+export function servedFingerprint(port: number, host = "127.0.0.1", timeoutMs = 4000): Promise<string | null> {
+    return new Promise((resolve) => {
+        const socket = tls.connect({ host, port, rejectUnauthorized: false, timeout: timeoutMs }, () => {
+            const cert = socket.getPeerX509Certificate();
+            socket.destroy();
+            resolve(cert ? createHash("sha256").update(cert.raw).digest("hex") : null);
+        });
+        socket.once("timeout", () => {
+            socket.destroy();
+            resolve(null);
+        });
+        socket.once("error", () => resolve(null));
+    });
+}
+
 export function inviteFor(c: HostConfig, code: string, fp: string | null): string {
     return formatInvite({
         mode: c.mode,
         host: c.host,
-        port: c.mode === "public" ? PORTS.publicGateway : PORTS.privateGateway,
+        port: gatewayPort(c),
         code,
         name: c.name,
         fp: c.mode === "public" ? fp : null,

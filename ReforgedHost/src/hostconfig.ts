@@ -36,7 +36,19 @@ export interface HostConfig {
     multipliers?: { xp: number; rewards: number };
     // Linux only: how the Windows game servers run (wine.ts) and what the allowlist filters.
     linux?: LinuxOptions;
+    // Public servers: the gateway's TCP port when 443 is taken (a hosting panel on the same VPS).
+    // Absent: 443. The port goes into every invite.
+    publicPort?: number;
 }
+
+// The gateway's port: what players' launchers connect to.
+export function gatewayPort(c: Pick<HostConfig, "mode" | "publicPort">): number {
+    return c.mode === "public" ? c.publicPort ?? PORTS.publicGateway : PORTS.privateGateway;
+}
+
+// Ports the server uses itself: never the public gateway's.
+export const RESERVED_PORTS = new Set<number>([PORTS.backend, PORTS.director, PORTS.content, PORTS.allowlist, PORTS.relay, PORTS.mongo, 61003, 61004]);
+
 
 export interface LinuxOptions {
     // The wine program; null: the first wine on PATH when a game server starts.
@@ -184,6 +196,11 @@ export function validateHostConfig(c: HostConfig): HostConfig {
         }
         if (c.mode === "public" && (c.multipliers.xp !== 1 || c.multipliers.rewards !== 1)) throw new Error("XP and reward multipliers are for private (Tailscale) test servers only");
     }
+    if (c.publicPort !== undefined) {
+        if (c.mode !== "public") throw new Error("publicPort is for public servers only");
+        if (!Number.isInteger(c.publicPort) || c.publicPort < 1 || c.publicPort > 65535) throw new Error(`publicPort must be a TCP port from 1 to 65535, not ${c.publicPort}`);
+        if (RESERVED_PORTS.has(c.publicPort) || (c.publicPort >= PORTS.gameFirst && c.publicPort <= PORTS.gameLast)) throw new Error(`publicPort ${c.publicPort} is one the server uses itself: pick another (4443, for example)`);
+    }
     if (c.linux !== undefined) {
         for (const [what, value] of [["wine", c.linux.wine], ["proton", c.linux.proton]] as const) {
             if (value !== null && (typeof value !== "string" || !path.posix.isAbsolute(value))) throw new Error(`linux.${what} must be the full path of the program, or null`);
@@ -322,7 +339,7 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ? [
             ["GATEWAY_TLS", "1"],
             ["GATEWAY_BIND", "0.0.0.0"],
-            ["GATEWAY_PORT", String(PORTS.publicGateway)],
+            ["GATEWAY_PORT", String(gatewayPort(c))],
             ["GATEWAY_CERT", p.certFile],
             ["GATEWAY_KEY", p.keyFile],
             ...common,
