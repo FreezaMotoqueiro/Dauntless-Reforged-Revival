@@ -11,8 +11,10 @@ for any public server ([players.md](players.md)).
 > Grounds through the Wine launcher and stopping them cleanly, a Windows GUI program run the way a
 > game server is run (Mystic Paradox's `winmm.dll` loaded, the arguments, the environment and the
 > readiness line all coming through Wine), and the nftables allowlist changing a real firewall.
-> **The real Dauntless 1.14.7 has not yet been run under Wine.** Expect to read logs on the first
-> evenings, and report what you find.
+> Since then, on a real VPS (Hostinger Game Panel, Debian 13): the real Dauntless 1.14.7 running
+> Ramsgate and the Training Grounds under Wine, and a player logging in from the launcher. Hunts and
+> longer sessions are not covered yet: expect to read logs on the first evenings, and report what you
+> find.
 
 ## The quick way: one command from your Windows PC
 
@@ -225,6 +227,27 @@ The first game servers take longer than on Windows (Wine loads the game): the Di
 - **The allowlist table:** `sudo nft list table inet reforged_revival` shows who can reach the
   game ports right now.
 
+## A Discord bot on the same VPS
+
+`ReforgedHost/linux/Deploy-DiscordBot.ps1` sends a bot's folder from your Windows PC and runs it on the
+VPS as the systemd service `reforged-discord-bot`. It runs as its own user (`discordbot`, no login, no
+sudo) from `/home/discordbot/reforged-discord-bot`, restarts when it stops, and starts at boot:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Deploy-DiscordBot.ps1 -Server 203.0.113.7 -Bot "C:\path\to\the\bot"
+```
+
+- **What it finds on its own:** Node.js (`package.json`: `npm ci`, `npm run build` when there is one,
+  then `npm start`, `main` or `index.js`) or Python (a virtual environment with `requirements.txt` or
+  `pyproject.toml`, then `bot.py`, `main.py`, `app.py` or `run.py`). `-Start "<command>"` covers anything
+  else. A `deploy-commands` (or `register-commands`) script registers the slash commands.
+- **Settings:** the bot's `.env` goes along (over SSH) and stays readable only by the bot. Without one,
+  the VPS keeps the `.env` it has; on a first install it makes one from `.env.example` and waits for you
+  to fill it in (`nano /home/discordbot/reforged-discord-bot/.env`, then `systemctl restart reforged-discord-bot`).
+- **Updating:** run it again. `node_modules`, `.git`, virtual environments and logs are never sent;
+  files the bot saved on the VPS stay, files in the upload replace theirs.
+- **Logs:** `journalctl -u reforged-discord-bot -f`. On the VPS by hand: `sudo sh setup-discord-bot.sh --archive <bot.tar.gz>`.
+
 ## When something goes wrong
 
 | What you see | What to do |
@@ -275,5 +298,12 @@ certificado dele ("o certificado de segurança não confere").
 7. **Ligar:** `sudo sh ~/Reforged/.workspace/config/firewall.sh` e
    `sudo sh ~/Reforged/.workspace/config/systemd/install.sh`. Depois, `npm run invite -- --for "Nome"`.
 
-É experimental: o jogo 1.14.7 de verdade ainda não foi rodado no Wine. Se algo falhar, veja
+**Bot do Discord na mesma VPS:** o [`Deploy-DiscordBot.ps1`](../ReforgedHost/linux/Deploy-DiscordBot.ps1)
+envia a pasta do bot (Node.js ou Python, com o `.env` do token) e deixa ele rodando como o serviço
+`reforged-discord-bot`, com usuário próprio, reinício automático e início junto com a VPS:
+`powershell -ExecutionPolicy Bypass -File .\Deploy-DiscordBot.ps1 -Server <IP da VPS> -Bot "C:\pasta\do\bot"`.
+Para atualizar, rode de novo. Log: `journalctl -u reforged-discord-bot -f`.
+
+Ainda é experimental: o 1.14.7 de verdade já rodou Ramsgate e o Training Grounds no Wine numa VPS, com
+login pelo launcher, mas caçadas e sessões longas ainda não foram testadas. Se algo falhar, veja
 `journalctl -u reforged -f` e `npm run doctor`.
