@@ -9,6 +9,8 @@
 //      [SystemSettings]           the forced graphics level, only when one is chosen.
 //  - GameUserSettings.ini: when a graphics level is forced, its sg.*Quality lines are set to match,
 //    and an impossible saved window size is repaired (display-repair.ts).
+//  - Game.ini (Dauntless 1.14.7 only): Dauntless Revived's [OnlineSubsystemPhoenix] endpoints, which
+//    point the game at 127.0.0.1, are removed (see PHOENIX_ENDPOINTS_SECTION).
 
 import { repairDisplaySettings } from "./display-repair";
 import { promises as fsp } from "node:fs";
@@ -81,6 +83,31 @@ export function rewriteEngineIniText(existing: string[], host: string, port: num
   return [...(sys.length ? [...sys, ""] : []), ...xmppLines(host, port), "", ...keep];
 }
 
+// Dauntless Revived's launcher, in its local-server mode, writes every Phoenix service endpoint into
+// Game.ini as http://127.0.0.1:61000/... (the [OnlineSubsystemPhoenix] section). Every Dauntless
+// version reads the same config folder, so Dauntless 1.14.7 then sends its own login checks
+// (CheckCrossPlayProgressionEndpoint, PhoenixStatusMessageEndpoint, ...) to 127.0.0.1, which the
+// runtime does not redirect and where nothing answers: the login stops at
+// CheckCrossPlayAndCrossProgression ("An error occurred while communicating with the game servers").
+// 1.14.7 needs none of these keys (the runtime redirects the game's own Steelyard addresses), so the
+// section is removed before a 1.14.7 launch. Revived's launcher writes it again before its own.
+export const PHOENIX_ENDPOINTS_SECTION = "OnlineSubsystemPhoenix";
+
+// The lines without one section (its header and everything up to the next header), and how many
+// keys it held.
+export function removeIniSection(lines: string[], section: string): { lines: string[]; removed: number } {
+  const out: string[] = [];
+  let skip = false;
+  let removed = 0;
+  for (const l of lines) {
+    const header = /^\s*\[([^\]]*)\]/.exec(l);
+    if (header) skip = header[1].trim().toLowerCase() === section.toLowerCase();
+    if (!skip) out.push(l);
+    else if (!header && /^\s*[^\s;#][^=]*=/.test(l)) removed++;
+  }
+  return { lines: out, removed };
+}
+
 export function rewriteGameUserSettingsText(lines: string[], graphics: GraphicsPreset): string[] {
   if (graphics < 0) return lines;
   return lines.map((l) => {
@@ -113,11 +140,26 @@ export interface ApplyConfigOptions {
   graphics: GraphicsPreset;
   configDir?: string;
   safeWindow?: boolean;
+  // Dauntless 1.14.7: remove Dauntless Revived's [OnlineSubsystemPhoenix] endpoints from Game.ini.
+  clearPhoenixEndpoints?: boolean;
 }
 
-export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engineIni: string; displayRepaired: boolean }> {
+export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engineIni: string; displayRepaired: boolean; phoenixEndpointsRemoved: number }> {
   const dir = opts.configDir ?? defaultConfigDir();
   await fsp.mkdir(dir, { recursive: true });
+  let phoenixEndpointsRemoved = 0;
+  if (opts.clearPhoenixEndpoints) {
+    const gameIni = path.join(dir, "Game.ini");
+    const gameLines = await readLines(gameIni);
+    if (gameLines !== null) {
+      const cleaned = removeIniSection(gameLines, PHOENIX_ENDPOINTS_SECTION);
+      if (cleaned.lines.length !== gameLines.length) {
+        await fsp.copyFile(gameIni, `${gameIni}.before-reforged`);
+        await writeAtomically(gameIni, encodeIni(cleaned.lines));
+        phoenixEndpointsRemoved = cleaned.removed;
+      }
+    }
+  }
   const engine = path.join(dir, "Engine.ini");
   const existing = (await readLines(engine)) ?? [];
   await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true)));
@@ -131,5 +173,5 @@ export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engin
     const next = opts.graphics >= 0 ? rewriteGameUserSettingsText(display.lines, opts.graphics) : display.lines;
     if (displayRepaired || opts.graphics >= 0) await writeAtomically(gus, encodeIni(next));
   }
-  return { engineIni: engine, displayRepaired };
+  return { engineIni: engine, displayRepaired, phoenixEndpointsRemoved };
 }
