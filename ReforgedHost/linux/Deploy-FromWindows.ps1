@@ -194,6 +194,30 @@ if ($GameData) {
     Write-Host 'game data pack: none (the server uses the project preset, and examples for the two stores)' -ForegroundColor Yellow
 }
 
+# ------------------------------------------------------------------ can this PC reach the VPS?
+
+Write-Step "Reaching $Server on port $Port (SSH)"
+$Reached = $false
+$Client = New-Object Net.Sockets.TcpClient
+try {
+    $Attempt = $Client.BeginConnect($Server, $Port, $null, $null)
+    if ($Attempt.AsyncWaitHandle.WaitOne(15000) -and $Client.Connected) { $Reached = $true }
+} catch {
+    $Reached = $false
+} finally {
+    $Client.Close()
+}
+if (-not $Reached) {
+    Write-Host "no answer from ${Server}:$Port within 15 seconds. Usually one of these:" -ForegroundColor Yellow
+    Write-Host "  - the VPS firewall (its Firewall page in Hostinger's hPanel) drops SSH: add a rule Accept, TCP, port $Port, from any," -ForegroundColor Yellow
+    Write-Host '    next to TCP 443 and UDP 8770-8777, and make sure that firewall is the one active for this VPS' -ForegroundColor Yellow
+    Write-Host '  - the VPS is stopped or still installing (hPanel > VPS > Overview), or the address is not its own' -ForegroundColor Yellow
+    Write-Host "  - this network blocks outgoing SSH (some work, school and public networks): try another one, a phone hotspot" -ForegroundColor Yellow
+    Write-Host "Check again with: Test-NetConnection $Server -Port $Port" -ForegroundColor Yellow
+    Stop-Deploy "cannot reach ${Server}:$Port"
+}
+Write-Host 'the VPS answers'
+
 # ------------------------------------------------------------------ SSH key
 
 if (-not $NoKey) {
