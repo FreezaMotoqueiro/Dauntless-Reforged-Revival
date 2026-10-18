@@ -13,6 +13,8 @@ import { sha256File } from "./publish";
 import { capture } from "./run";
 import { readPin, upstreamState } from "./upstream";
 import { waitForHttp } from "./services";
+import { canBindPort, gameRuntime, linuxOptions, systemdInstalled, UNIT_ALLOWLIST, UNIT_SERVER } from "./linux";
+import { findOnPath, winePrefixReady } from "./wine";
 
 export type Level = "ok" | "warn" | "fail" | "info";
 
@@ -81,6 +83,41 @@ export function gameChecks(gameDir: string | null, opts: { hashExe: boolean }): 
     return out;
 }
 
+// Linux: Wine (or Proton), the virtual display, nftables, the launcher, the prefix and the systemd units.
+export function linuxChecks(p: Paths, config: HostConfig, find: (names: string[]) => string | null = (n) => findOnPath(n)): Check[] {
+    const out: Check[] = [];
+    const lx = linuxOptions(config);
+    const runtime = gameRuntime(lx);
+    const wineVersion = runtime?.kind === "wine" ? capture(runtime.path, ["--version"]) : null;
+    out.push(runtime === null
+        ? { area: "linux", level: "fail", text: "Wine is not installed: the game servers cannot start", fix: "sudo apt install wine wine64 (docs/hosting-linux.md)" }
+        : { area: "linux", level: "ok", text: runtime.kind === "proton" ? `Proton ${runtime.path}` : `${wineVersion ?? "Wine"} (${runtime.path})` });
+    if (lx.xvfb) {
+        const missing = ["xvfb-run", "xauth"].filter((n) => find([n]) === null);
+        out.push(missing.length === 0
+            ? { area: "linux", level: "ok", text: "xvfb-run and xauth (the game servers' virtual display)" }
+            : { area: "linux", level: "fail", text: `${missing.join(" and ")} not installed (the game servers need a virtual display)`, fix: "sudo apt install xvfb xauth" });
+    }
+    if (config.mode === "public") {
+        const nft = ["/usr/sbin/nft", "/sbin/nft"].some((f) => fs.existsSync(f));
+        out.push(nft ? { area: "linux", level: "ok", text: "nftables (the allowlist)" } : { area: "linux", level: "fail", text: "nftables is not installed (the allowlist needs it)", fix: "sudo apt install nftables" });
+    }
+    out.push(fs.existsSync(p.gameserverWrapper)
+        ? { area: "linux", level: "ok", text: `game-server launcher ${p.gameserverWrapper}` }
+        : { area: "linux", level: "fail", text: "the game-server launcher is missing", fix: "npm run setup" });
+    if (runtime?.kind === "wine") {
+        out.push(winePrefixReady(p.winePrefix)
+            ? { area: "linux", level: "ok", text: `Wine prefix ${p.winePrefix}` }
+            : { area: "linux", level: "warn", text: "the Wine prefix is not made yet", fix: "npm run setup (or the first npm run start) makes it" });
+    }
+    const units = config.mode === "public" ? [UNIT_SERVER, UNIT_ALLOWLIST] : [UNIT_SERVER];
+    const installed = units.filter((u) => systemdInstalled(u));
+    out.push(installed.length === units.length
+        ? { area: "linux", level: "ok", text: `systemd units installed (${units.join(", ")})` }
+        : { area: "linux", level: config.mode === "public" && !canBindPort(PORTS.publicGateway) ? "warn" : "info", text: `systemd units not installed${installed.length ? ` (only ${installed.join(", ")})` : ""}: the server does not start at boot${config.mode === "public" ? ", and a public server needs them for port 443 and nftables" : ""}`, fix: "sudo sh .workspace/config/systemd/install.sh" });
+    return out;
+}
+
 export async function runDoctor(p: Paths, opts: { hashExe?: boolean } = {}): Promise<Check[]> {
     const checks: Check[] = [];
     const add = (c: Check) => checks.push(c);
@@ -88,7 +125,7 @@ export async function runDoctor(p: Paths, opts: { hashExe?: boolean } = {}): Pro
     // ---- tools
     add(nodeVersionOk(process.version) ? { area: "tools", level: "ok", text: `Node.js ${process.version}` } : { area: "tools", level: "fail", text: `Node.js ${process.version} is too old`, fix: "install Node.js 20.19 or newer (https://nodejs.org)" });
     const gitVersion = capture("git", ["--version"]);
-    add(gitVersion ? { area: "tools", level: "ok", text: gitVersion } : { area: "tools", level: "fail", text: "git is not installed", fix: "install Git for Windows (https://git-scm.com)" });
+    add(gitVersion ? { area: "tools", level: "ok", text: gitVersion } : { area: "tools", level: "fail", text: "git is not installed", fix: process.platform === "linux" ? "sudo apt install git" : "install Git for Windows (https://git-scm.com)" });
 
     // ---- upstream
     let pinCommit = "?";
@@ -140,17 +177,20 @@ export async function runDoctor(p: Paths, opts: { hashExe?: boolean } = {}): Pro
             if (fs.existsSync(p.certFile)) {
                 add({ area: "network", level: "ok", text: `gateway certificate ${certificateFingerprint(p.certFile)}` });
             } else add({ area: "network", level: "fail", text: "no gateway certificate", fix: "npm run setup" });
-            add({ area: "network", level: "info", text: `open inbound TCP ${PORTS.publicGateway} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} (run .workspace\\config\\firewall.ps1 as administrator); forward them on your router if this PC is behind NAT` });
+            add({ area: "network", level: "info", text: process.platform === "linux"
+                ? `open inbound TCP ${PORTS.publicGateway} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} in your provider's firewall (Hostinger: the VPS's Firewall page in hPanel); sudo sh .workspace/config/firewall.sh adds them to ufw`
+                : `open inbound TCP ${PORTS.publicGateway} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} (run .workspace\\config\\firewall.ps1 as administrator); forward them on your router if this PC is behind NAT` });
         }
+        if (process.platform === "linux") for (const c of linuxChecks(p, config)) add(c);
     }
 
     // ---- SDK, builds, runtime
     const functions = countFunctionFiles(p.sdkDir);
     add(fs.existsSync(p.sdkHeader) && functions > 0
         ? { area: "sdk", level: "ok", text: `Dumper-7 SDK imported (${functions} *_functions.cpp files)` }
-        : { area: "sdk", level: "fail", text: "no SDK in ParadoxRuntime yet", fix: "dump it with Dumper-7 from your own 1.14.7 game (launcher > Settings > Host tools, or docs/sdk-and-game-data.md)" });
-    add(fs.existsSync(p.runtimeDll) ? { area: "runtime", level: "ok", text: "MysticParadox.dll built" } : { area: "runtime", level: "fail", text: "MysticParadox.dll is not built", fix: "build ParadoxRuntime (Host tools page, or ParadoxRuntime\\_build.bat)" });
-    add(fs.existsSync(p.loaderDll) ? { area: "runtime", level: "ok", text: "winmm.dll built" } : { area: "runtime", level: "fail", text: "winmm.dll is not built", fix: "cargo build --release in tools\\RuntimeLoader (Host tools page)" });
+        : { area: "sdk", level: process.platform === "linux" ? "info" : "fail", text: "no SDK in ParadoxRuntime yet", fix: "dump it with Dumper-7 from your own 1.14.7 game (launcher > Settings > Host tools, or docs/sdk-and-game-data.md)" });
+    add(fs.existsSync(p.runtimeDll) ? { area: "runtime", level: "ok", text: "MysticParadox.dll built" } : { area: "runtime", level: process.platform === "linux" ? "info" : "fail", text: "MysticParadox.dll is not built here", fix: process.platform === "linux" ? "it is built on a Windows PC: npm run publish-runtime -- --from <folder> publishes it (docs/hosting-linux.md)" : "build ParadoxRuntime (Host tools page, or ParadoxRuntime\\_build.bat)" });
+    add(fs.existsSync(p.loaderDll) ? { area: "runtime", level: "ok", text: "winmm.dll built" } : { area: "runtime", level: process.platform === "linux" ? "info" : "fail", text: "winmm.dll is not built here", fix: process.platform === "linux" ? "it is built on a Windows PC: npm run publish-runtime -- --from <folder> publishes it" : "cargo build --release in tools\\RuntimeLoader (Host tools page)" });
     const published = RUNTIME_FILE_NAMES.every((n) => fs.existsSync(path.join(p.runtimePublish, n))) && fs.existsSync(path.join(p.runtimePublish, "runtime.json"));
     add(published ? { area: "runtime", level: "ok", text: "runtime published for players" } : { area: "runtime", level: "fail", text: "no runtime published for players", fix: "npm run publish-runtime" });
     if (published && config?.gameDir) {

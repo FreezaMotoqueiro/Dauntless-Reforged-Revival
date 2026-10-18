@@ -19,7 +19,7 @@ Run them in this folder (`cd ReforgedHost`, then `npm install` once).
 | `npm run setup -- --mode public --host 203.0.113.7 --name "Friday Hunts" --game "D:\Games\Dauntless"` | Public server on the internet. A DNS name works too, with `--game-address <public IPv4>` |
 | `npm run start` | Starts everything (MongoDB if managed, backend, Director, content server, allowlist helper in public mode, gateway). Ctrl+C stops it all, the game servers included |
 | `npm run invite -- --for "Alex"` | A one-use invite link (the server must be running). `--uses 5`, `--unlimited`, `--list` |
-| `npm run publish-runtime` | Publishes the built `MysticParadox.dll` and `winmm.dll` for players, and installs them next to the server's game executable |
+| `npm run publish-runtime` | Publishes the built `MysticParadox.dll` and `winmm.dll` for players, and installs them next to the server's game executable. `-- --from <folder>` takes both from that folder instead (a Linux server's runtime, built on Windows) |
 | `npm run gamedata` | Generates the game data from your CatalogExporter export (the progression config from the progression export; `-- --example-sources` uses the examples for the files no export produced; `-- --progression` rebuilds only the progression config; `-- --export [file]` saves it all into one game data pack and `-- --import <file>` puts a pack back; `-- --examples` copies every example, for a start-up test only) |
 | `npm run preset` | The project's server preset in `../preset/`: `-- --create [--generate] [--name "<name>"]` extracts it from your game data (with its provenance), `-- --apply [--force]` applies it now; `setup` applies it on its own where game data is missing or still the example |
 | `npm run multipliers` | Private test servers only: `-- --xp 1-100 --rewards 1-100` multiplies the XP and the hunt loot the game servers grant, `-- --off` turns it off, no arguments shows what is set; restart the server after a change (see `../upstream/README.md`, patch 0007) |
@@ -32,6 +32,27 @@ Other `setup` options: `--registration INVITECODE|OPEN|NONE` (default invite cod
 `--no-manage-mongo` (your own MongoDB, which must be a replica set), `--mongod <path>`,
 `--max-hunts 1-6` (default 3; each hunt is a whole game process), `--skip-install`,
 `--force-upstream`. Running `setup` again with other options changes only those.
+
+Linux (`docs/hosting-linux.md`): `--wine <path>`, `--proton <script>` (`--no-proton`), `--no-xvfb`
+(`--xvfb`), `--firewall-interface <eth0>` (`--no-firewall-interface`). Setup and `start` refuse to run
+as root there.
+
+## On Linux
+
+The game servers are still the Windows executable. Setup writes `.workspace/bin/reforged-gameserver`,
+which the Director starts instead of it (`GAMESERVER_BINARY_PATH`): it runs the executable through
+Wine (or Proton) on `xvfb-run`, with `WINEDLLOVERRIDES=winmm=n,b` so the game loads Mystic Paradox's
+loader, in the prefix `.workspace/wine` (setup makes it once). A stop signal for a game server goes to
+its whole process group (Wine, the game, Xvfb). See `src/wine.ts`, adapted from Dauntless Revived's
+Linux port.
+
+Setup also writes, in `.workspace/config/`:
+
+- `firewall.sh` instead of `firewall.ps1`: lets an active ufw pass TCP 443 and UDP 8770-8777.
+- `systemd/`: `reforged-allowlist.service` (public: the allowlist helper with `CAP_NET_ADMIN` only,
+  `ALLOWLIST_FIREWALL=nftables`), `reforged.service` (`start`, with `CAP_NET_BIND_SERVICE` only in
+  public mode, and `REFORGED_ALLOWLIST=external` so it waits for the other unit instead of starting
+  the helper) and `install.sh`. Both run as the user who ran setup.
 
 ## What setup does
 
@@ -48,7 +69,8 @@ Other `setup` options: `--registration INVITECODE|OPEN|NONE` (default invite cod
      **Never share it.** Changing it logs everyone out or breaks the invites already sent.
    - `backend.env`, `director.env`, `content.env`, `gateway.env`, `allowlist.env` (public mode):
      written from the two files above every time setup runs.
-   - `firewall.ps1`: the Windows Firewall rules to add once, as administrator.
+   - `firewall.ps1`: the Windows Firewall rules to add once, as administrator (Linux: `firewall.sh`
+     and `systemd/`, see above).
 4. **Public mode**: the gateway's self-signed certificate in `.workspace/tls/` (made once; a new one
    changes the fingerprint in every invite). The fingerprint is printed.
 

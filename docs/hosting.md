@@ -16,6 +16,10 @@ Two kinds of server, as in Dauntless Revived:
 
 Start private: it needs no router changes and nothing is exposed to the internet.
 
+A public server can also run on a Linux VPS (Debian 13), with the game servers under Wine: see
+[hosting-linux.md](hosting-linux.md). It still needs this guide's Windows steps once, on a PC with
+your game, for the runtime and the game data.
+
 ## What you need
 
 - Windows 10/11 x64, about 20 GB free for the game plus a few GB for the tools.
@@ -188,7 +192,8 @@ button for it.
   game servers only, not on your own game client. Delete the file to turn it off.
 - One PC for everything: the services, the database and the game servers. Each hunt is a whole game
   process (about 1 GB of RAM); `--max-hunts` caps them (default 3).
-- Windows only for the server and the launcher, like the game and the runtime.
+- Windows for the launcher, the runtime build and the SDK, like the game. The server itself can also
+  run on Linux, with the game servers under Wine ([hosting-linux.md](hosting-linux.md), experimental).
 
 ## Ports
 

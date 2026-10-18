@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { CheckAllowlistIp } from "../ip";
-import { CheckPorts } from "./config";
+import type { AllowlistConfig } from "./config";
+import { CheckPorts } from "./ports";
+import { BuildNftScript } from "./nft";
 
 // The one Windows Firewall rule this helper owns. Name is the stable id; DisplayName is what
 // the host sees in "Windows Defender Firewall with Advanced Security".
@@ -52,6 +54,13 @@ export function BuildFirewallScript(Addresses: readonly string[], Ports: string)
     }
 
     return Lines.join("\r\n") + "\r\n";
+}
+
+// The script for this helper's firewall: PowerShell for Windows Firewall, or an nftables script.
+export function BuildScriptFor(Config: Pick<AllowlistConfig, "firewall" | "ports" | "nft">, Addresses: readonly string[]): string {
+    return Config.firewall === "nftables"
+        ? BuildNftScript(Addresses, Config.ports, Config.nft)
+        : BuildFirewallScript(Addresses, Config.ports);
 }
 
 // Runs a script in Windows PowerShell 5.1 fed through stdin (no temp file, no command-line

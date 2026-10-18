@@ -12,6 +12,8 @@ its game servers.
   at their own Dauntless 1.14.7 and press PLAY. → [docs/players.md](docs/players.md)
 - **Hosts** run the server on a Windows PC: privately for friends over Tailscale, or publicly on the
   internet. → [docs/hosting.md](docs/hosting.md)
+- **Or on a Linux VPS** (Debian 13, for example at Hostinger), publicly, with the game servers under
+  Wine (experimental). → [docs/hosting-linux.md](docs/hosting-linux.md)
 
 The launcher speaks **English** and **Brazilian Portuguese**.
 
@@ -59,7 +61,7 @@ The launcher speaks **English** and **Brazilian Portuguese**.
 | [`ReforgedHost/`](ReforgedHost) | The host kit: `npm run setup`, `start`, `invite`, `doctor`, `gamedata`, `publish-runtime` |
 | [`upstream/`](upstream) | The pinned Mystic Paradox commit and the Reforged patches to it |
 | [`brand/`](brand) | The logo and the icons |
-| [`docs/`](docs) | Guides for players and hosts, the SDK and game data, and the architecture |
+| [`docs/`](docs) | Guides for players and hosts (Windows and Linux), the SDK and game data, and the architecture |
 
 ## Status
 

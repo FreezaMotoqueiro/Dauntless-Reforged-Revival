@@ -65,6 +65,8 @@ describe("gateway and allowlist helper together (in process, DRY-RUN)", () => {
             auditLog: path.join(Dir, "audit.log"),
             stateFile: path.join(Dir, "state.json"),
             powershell: DefaultPowerShell(),
+            firewall: "windows",
+            nft: { binary: "/usr/sbin/nft", table: "reforged_revival", iface: undefined },
         };
         const Audit = new AuditLog(HelperConfig.auditLog);
         Helper = new AllowlistHelper(HelperConfig, { audit: Audit, runner: DryRunRunner(Audit) });

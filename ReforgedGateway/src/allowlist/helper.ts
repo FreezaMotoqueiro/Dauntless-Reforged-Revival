@@ -5,7 +5,7 @@ import path from "node:path";
 import { CheckAllowlistIp, ParseIp } from "../ip";
 import { logger, LogThrottle } from "../log";
 import { AllowlistConfig } from "./config";
-import { BuildFirewallScript, ScriptRunner } from "./firewall";
+import { BuildScriptFor, ScriptRunner } from "./firewall";
 import { AllowlistState } from "./state";
 import { ApplyResult, FirewallSync } from "./sync";
 
@@ -91,7 +91,7 @@ export class AllowlistHelper {
         const Runner = Deps.runner;
         // The interval between rule changes is real time, whatever clock the entries use.
         this.Sync = new FirewallSync(
-            (Ips) => Runner(BuildFirewallScript(Ips, Config.ports)),
+            (Ips) => Runner(BuildScriptFor(Config, Ips)),
             Config.minIntervalMs,
             (Result) => this.OnApplied(Result),
         );

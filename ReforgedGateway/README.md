@@ -126,6 +126,16 @@ backoff, saved across restarts and written to an audit log. `ALLOWLIST_DRY_RUN=1
 the firewall and writes the exact PowerShell it would run to the audit log instead; every test
 uses it. `node dist/allowlist/server.js --close-ports` disables the rule once (for stop scripts).
 
+On Linux, `ALLOWLIST_FIREWALL=nftables` (the default is `windows`) keeps one nftables table instead,
+`ALLOWLIST_NFT_TABLE` (`reforged_revival`), adapted from Dauntless Revived's Linux port: an input
+chain at priority -5 that accepts UDP on `ALLOWLIST_PORTS` from the live set (two sets, IPv4 and
+IPv6), drops the rest of it, and never filters loopback; `ALLOWLIST_INTERFACE` limits it to one
+interface. Every change replaces the whole table in one `nft -f` transaction, and an empty set (or
+`--close-ports`) leaves the ports closed, since Linux has no default-deny firewall. `nft` is found at
+a fixed path (`/usr/sbin/nft`, or `ALLOWLIST_NFT`), never in PATH, and real mode refuses to start
+without root or `CAP_NET_ADMIN`. `REFORGED_TEST_NFT=1 npm test` (Linux, as root) also applies the
+scripts to a test table of its own.
+
 What else must be true on a public server: Windows Firewall on with default inbound **Block**, no
 other rule allowing UDP 8770-8777 or the game exe, inbound TCP 443 open for the gateway, nothing
 open for 61000-61005 (they listen on loopback), and the backend with `AUTH_MODE=APIKEY`.

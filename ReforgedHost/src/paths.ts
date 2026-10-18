@@ -61,6 +61,12 @@ export interface Paths {
     gameserverLogs: string;
     branding: string;
     newsFile: string;
+    // Linux: what runs the Windows game servers (wine.ts) and the systemd units.
+    bin: string;
+    gameserverWrapper: string;
+    winePrefix: string;
+    protonData: string;
+    systemd: string;
 }
 
 // root: the Dauntless Reforged Revival checkout (the folder with ReforgedHost/ and upstream/).
@@ -108,6 +114,11 @@ export function paths(root: string): Paths {
         gameserverLogs: path.join(logs, "gameservers"),
         branding: path.join(workspace, "branding"),
         newsFile: path.join(config, "news.json"),
+        bin: path.join(workspace, "bin"),
+        gameserverWrapper: path.join(workspace, "bin", "reforged-gameserver"),
+        winePrefix: path.join(workspace, "wine"),
+        protonData: path.join(workspace, "proton"),
+        systemd: path.join(config, "systemd"),
     };
 }
 

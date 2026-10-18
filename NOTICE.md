@@ -31,6 +31,13 @@ Undaunted or any other project named here, and none of them endorses it.
     Paradox backend and its `/__origin/` paths, a plain-HTTP private mode).
   - `ReforgedContent/` is based on `UndauntedContent/` (the key check, limits, news and art pack;
     it serves the game runtime instead of game files).
+  - The Linux server support is adapted from Dauntless Revived's Linux port (`deploy/linux-server/`
+    and `deploy/unix-common/`): the Wine/Proton game-server runner on `xvfb-run`
+    (`ReforgedHost/src/wine.ts`), the nftables allowlist table (`ReforgedGateway/src/allowlist/nft.ts`)
+    and the idea of systemd units with one capability each (`ReforgedHost/src/linux.ts`). Changed for
+    1.14.7: Mystic Paradox's `winmm.dll` loader instead of `dxgi.dll`, the table swapped in one
+    transaction from a private file (nft no longer reads a pipe), the host kit's own supervisor run by
+    one unit, and no root anywhere.
   - `ReforgedLauncher/src/main/revived/` plays Dauntless Revived's own servers (Dauntless 1.4.4) the
     way their launcher 0.1.35 does ([tag `launcher-v0.1.35`](https://github.com/mixutin/dauntless-revived/releases/tag/launcher-v0.1.35),
     commit `0e2b1e6730b9f14f1020d7c903a6955464fa4586`). Taken over from that release: the game

@@ -1,6 +1,7 @@
 import { logger } from "../log";
 import { AllowlistConfig, LoadAllowlistConfig } from "./config";
-import { BuildFirewallScript, IsElevated, PowerShellRunner, ScriptRunner } from "./firewall";
+import { BuildScriptFor, IsElevated, PowerShellRunner, ScriptRunner } from "./firewall";
+import { CanManageNft, NftRunner } from "./nft";
 import { AllowlistHelper, AuditLog, DryRunRunner } from "./helper";
 
 function Fatal(Message: string): never {
@@ -27,9 +28,18 @@ async function Main(){
         Runner = DryRunRunner(Audit);
         logger.warn("DRY RUN: the firewall is never changed; every change is only written to the audit log");
     }
+    else if(Config.firewall === "nftables"){
+        if(process.platform !== "linux"){
+            Fatal("ALLOWLIST_FIREWALL=nftables needs Linux");
+        }
+        if(!CanManageNft(Config.nft.binary)){
+            Fatal(`${Config.nft.binary} could not list the firewall: install nftables (apt install nftables) and run the helper as root or with CAP_NET_ADMIN (the reforged-allowlist systemd unit does)`);
+        }
+        Runner = NftRunner(Config.nft.binary);
+    }
     else{
         if(process.platform !== "win32"){
-            Fatal("ALLOWLIST_DRY_RUN=0 needs Windows (Windows Firewall through PowerShell)");
+            Fatal("ALLOWLIST_FIREWALL=windows needs Windows (Windows Firewall through PowerShell); on Linux use ALLOWLIST_FIREWALL=nftables");
         }
         if(!(await IsElevated(Config.powershell))){
             Fatal("ALLOWLIST_DRY_RUN=0 needs administrator rights: run it as a scheduled task with \"Run with highest privileges\"");
@@ -39,7 +49,7 @@ async function Main(){
 
     if(CloseOnly){
         try{
-            await Runner(BuildFirewallScript([], Config.ports));
+            await Runner(BuildScriptFor(Config, []));
             Audit.Write("closed_ports", { dryRun: Config.dryRun });
             process.exit(0);
         }
@@ -59,6 +69,7 @@ async function Main(){
     logger.info("allowlist helper ready", {
         listen: `${Config.bindHost}:${Config.port}`,
         dryRun: Config.dryRun,
+        firewall: Config.firewall,
         ports: Config.ports,
         ttlSeconds: Config.ttlMs / 1000,
         minIntervalMs: Config.minIntervalMs,

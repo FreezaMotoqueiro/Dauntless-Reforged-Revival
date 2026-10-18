@@ -263,6 +263,8 @@ function HelperConfig(Port: number, Dir: string, Change: Partial<AllowlistConfig
         auditLog: path.join(Dir, "audit.log"),
         stateFile: path.join(Dir, "state.json"),
         powershell: DefaultPowerShell(),
+        firewall: "windows",
+        nft: { binary: "/usr/sbin/nft", table: "reforged_revival", iface: undefined },
         ...Change,
     };
 }

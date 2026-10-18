@@ -1,12 +1,18 @@
 import path from "node:path";
 import { CheckSecret } from "../config";
+import { CheckInterface, CheckNftTable, DefaultNft, NFT_TABLE, type NftOptions } from "./nft";
+import { CheckPorts } from "./ports";
+
+// windows: Windows Firewall through PowerShell. nftables: one nftables table on Linux.
+export type FirewallKind = "windows" | "nftables";
 
 export type AllowlistConfig = {
     bindHost: string;
     port: number;
     secret: string;
-    // true: only log the PowerShell it would run. Never touches the firewall.
+    // true: only log the script it would run. Never touches the firewall.
     dryRun: boolean;
+    firewall: FirewallKind;
     allowPrivate: boolean;
     ttlMs: number;
     minIntervalMs: number;
@@ -16,6 +22,7 @@ export type AllowlistConfig = {
     auditLog: string;
     stateFile: string;
     powershell: string;
+    nft: NftOptions;
 };
 
 function Int(Env: NodeJS.ProcessEnv, Name: string, Default: number, Min: number, Max: number): number {
@@ -35,18 +42,11 @@ function Optional(Env: NodeJS.ProcessEnv, Name: string): string | undefined {
     return Raw === undefined || Raw.trim() === "" ? undefined : Raw.trim();
 }
 
-// "8770-8777" or "8777": ports 1-65535, a range low to high, nothing else.
-export function CheckPorts(Text: string): string {
-    const Match = /^(\d{1,5})(?:-(\d{1,5}))?$/.exec(Text);
-    if(Match === null){
-        throw new Error(`ALLOWLIST_PORTS must be a port or a range like 8770-8777 (got ${JSON.stringify(Text)})`);
-    }
-    const Low = Number(Match[1]);
-    const High = Match[2] === undefined ? Low : Number(Match[2]);
-    if(Low < 1 || High > 65535 || Low > High){
-        throw new Error("ALLOWLIST_PORTS must be within 1-65535, low to high");
-    }
-    return Match[2] === undefined ? String(Low) : `${Low}-${High}`;
+// The port check lives in ports.ts (nft.ts needs it too); kept exported from here.
+export { CheckPorts } from "./ports";
+
+function InterfaceOf(Name: string | undefined): string | undefined {
+    return Name === undefined ? undefined : CheckInterface(Name);
 }
 
 export function DefaultPowerShell(): string {
@@ -66,11 +66,22 @@ export function LoadAllowlistConfig(Env: NodeJS.ProcessEnv = process.env): Allow
         throw new Error("ALLOWLIST_BIND must be 127.0.0.1 or ::1: the helper runs with administrator rights and only the gateway on this machine may reach it");
     }
 
+    // Windows unless the env file says otherwise: the host kit writes nftables on Linux.
+    const FirewallRaw = Optional(Env, "ALLOWLIST_FIREWALL") ?? "windows";
+    if(FirewallRaw !== "windows" && FirewallRaw !== "nftables"){
+        throw new Error(`ALLOWLIST_FIREWALL must be windows (Windows Firewall) or nftables (Linux), not ${JSON.stringify(FirewallRaw)}`);
+    }
+    const Nft = Optional(Env, "ALLOWLIST_NFT");
+    if(Nft !== undefined && !path.posix.isAbsolute(Nft)){
+        throw new Error("ALLOWLIST_NFT must be the absolute path of nft (the helper never looks it up in PATH)");
+    }
+
     return {
         bindHost: BindHost,
         port: Int(Env, "ALLOWLIST_PORT", 61005, 1, 65535),
         secret: CheckSecret(Optional(Env, "ALLOWLIST_SECRET"), "ALLOWLIST_SECRET"),
         dryRun: DryRunRaw === "1",
+        firewall: FirewallRaw,
         allowPrivate: Env.ALLOWLIST_ALLOW_PRIVATE === "1",
         ttlMs: Int(Env, "ALLOWLIST_TTL_SECONDS", 600, 1, 86_400) * 1000,
         minIntervalMs: Int(Env, "ALLOWLIST_MIN_INTERVAL_MS", 3000, 50, 600_000),
@@ -79,5 +90,10 @@ export function LoadAllowlistConfig(Env: NodeJS.ProcessEnv = process.env): Allow
         auditLog: path.resolve(Optional(Env, "ALLOWLIST_AUDIT_LOG") ?? "allowlist-audit.log"),
         stateFile: path.resolve(Optional(Env, "ALLOWLIST_STATE_FILE") ?? "allowlist-state.json"),
         powershell: Optional(Env, "ALLOWLIST_POWERSHELL") ?? DefaultPowerShell(),
+        nft: {
+            binary: Nft ?? DefaultNft(),
+            table: CheckNftTable(Optional(Env, "ALLOWLIST_NFT_TABLE") ?? NFT_TABLE),
+            iface: InterfaceOf(Optional(Env, "ALLOWLIST_INTERFACE")),
+        },
     };
 }
