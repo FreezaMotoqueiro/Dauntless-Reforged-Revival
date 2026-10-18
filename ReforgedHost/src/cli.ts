@@ -710,7 +710,7 @@ async function gamedata(p: Paths, args: Args): Promise<void> {
     if (args.examples === true) {
         const copied = [...useExamples(p.backendGameData, BACKEND_GAME_DATA), ...useExamples(p.directorGameData, DIRECTOR_GAME_DATA)];
         say(copied.length ? `Copied the example data for ${copied.join(", ")}.` : "Nothing was missing.");
-        say("Example data lets the services start for a test. It is not playable: export the real data from your game (docs/sdk-and-game-data.md).");
+        if (copied.length) say("Example data lets the services start for a test. It is not playable: export the real data from your game (docs/sdk-and-game-data.md).");
         return;
     }
     say("Generating the game data from your export (Items_Analysis):");

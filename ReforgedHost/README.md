@@ -46,6 +46,11 @@ loader, in the prefix `.workspace/wine` (setup makes it once). A stop signal for
 its whole process group (Wine, the game, Xvfb). See `src/wine.ts`, adapted from Dauntless Revived's
 Linux port.
 
+`linux/setup-vps.sh` (as root on a Debian 13 VPS: packages, MongoDB, the server's user, the project,
+setup; `--finish` places the game, publishes the runtime, imports the game data, starts the units and
+makes an invite) and `linux/Deploy-FromWindows.ps1` (runs both over SSH from the Windows PC that has
+the game, and sends the game) do the whole of `docs/hosting-linux.md`.
+
 Setup also writes, in `.workspace/config/`:
 
 - `firewall.sh` instead of `firewall.ps1`: lets an active ufw pass TCP 443 and UDP 8770-8777.

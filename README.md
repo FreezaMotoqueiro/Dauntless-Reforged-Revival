@@ -13,7 +13,7 @@ its game servers.
 - **Hosts** run the server on a Windows PC: privately for friends over Tailscale, or publicly on the
   internet. → [docs/hosting.md](docs/hosting.md)
 - **Or on a Linux VPS** (Debian 13, for example at Hostinger), publicly, with the game servers under
-  Wine (experimental). → [docs/hosting-linux.md](docs/hosting-linux.md)
+  Wine (experimental), set up from your Windows PC with one command. → [docs/hosting-linux.md](docs/hosting-linux.md)
 
 The launcher speaks **English** and **Brazilian Portuguese**.
 
