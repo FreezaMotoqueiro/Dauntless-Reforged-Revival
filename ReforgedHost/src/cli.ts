@@ -23,6 +23,7 @@ import { applyPreset, createPreset, readPresetManifest } from "./preset";
 import {
     DEFAULT_MONGO_URI,
     buildEnvFiles,
+    gamePortsText,
     gatewayPort,
     isPublicIPv4,
     isTailscaleIPv4,
@@ -36,6 +37,7 @@ import {
     LINUX_INTERFACE,
     performanceOptions,
     validFps,
+    validMegabytes,
     type HostConfig,
     type LinuxOptions,
     type PerformanceOptions,
@@ -172,7 +174,8 @@ export function publicPortFromArgs(args: Args, mode: HostConfig["mode"], existin
 }
 
 // --server-fps <0|10-240>, --idle-fps <0|1-240>, --training-on-demand (--training-at-boot),
-// --verbose-game-logs (--quiet-game-logs). Each one keeps what host.json had when it is not given.
+// --verbose-game-logs (--quiet-game-logs), --memory-guard (--no-memory-guard), --min-free-ram <MB>,
+// --hunt-ram <MB>. Each one keeps what host.json had when it is not given.
 export function performanceFromArgs(args: Args, existing: HostConfig["performance"]): PerformanceOptions {
     const current = performanceOptions({ performance: existing });
     const fps = (name: string, min: number, fallback: number, meaning: string): number => {
@@ -182,11 +185,21 @@ export function performanceFromArgs(args: Args, existing: HostConfig["performanc
         if (!validFps(value, min)) throw new Error(`--${name} must be 0 (${meaning}) or ${min} to 240 frames per second (got ${raw})`);
         return value;
     };
+    const megabytes = (name: string, min: number, fallback: number): number => {
+        const raw = str(args, name);
+        if (raw === undefined) return fallback;
+        const value = Number(raw.replace(/\s*mb$/i, ""));
+        if (!validMegabytes(value, min)) throw new Error(`--${name} must be a whole number of megabytes, at least ${min} (got ${raw})`);
+        return value;
+    };
     return {
         serverFps: fps("server-fps", 10, current.serverFps, "no cap"),
         idleFps: fps("idle-fps", 1, current.idleFps, "the same as --server-fps"),
         trainingOnDemand: args["training-at-boot"] === true ? false : args["training-on-demand"] === true ? true : current.trainingOnDemand,
         verboseGameLogs: args["quiet-game-logs"] === true ? false : args["verbose-game-logs"] === true ? true : current.verboseGameLogs,
+        memoryGuard: args["no-memory-guard"] === true ? false : args["memory-guard"] === true ? true : current.memoryGuard,
+        minFreeMemoryMb: megabytes("min-free-ram", 0, current.minFreeMemoryMb),
+        huntMemoryMb: megabytes("hunt-ram", 256, current.huntMemoryMb),
     };
 }
 
@@ -194,7 +207,8 @@ export function performanceSummary(c: HostConfig): string {
     const perf = performanceOptions(c);
     const fps = perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap";
     const idle = perf.idleFps > 0 ? `${perf.idleFps} fps after 15 s without players` : "no idle cap";
-    return `Game servers: ${fps}, ${idle}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${c.maxHuntServers} hunt${c.maxHuntServers === 1 ? "" : "s"} at once`;
+    const memory = perf.memoryGuard ? `a new hunt only with ${perf.huntMemoryMb + perf.minFreeMemoryMb} MB free` : "no memory guard";
+    return `Game servers: ${fps}, ${idle}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${c.maxHuntServers} hunt${c.maxHuntServers === 1 ? "" : "s"} at once (UDP ${gamePortsText(c)}), ${memory}`;
 }
 
 export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null; platform?: NodeJS.Platform }): HostConfig {
@@ -287,13 +301,13 @@ export function firewallScript(c: HostConfig, nodeExe: string): string {
         lines.push(
             `Add-Rule 'ReforgedRevival-Gateway' 'Dauntless Reforged Revival gateway (TCP ${gatewayPort(c)})' 'TCP' '${gatewayPort(c)}' ${q(nodeExe)} $null 'True'`,
             "# The game ports start closed: the allowlist helper opens them only for players who logged in.",
-            `Add-Rule 'ReforgedRevival-GamePorts-Allowlist' 'Dauntless Reforged Revival game ports (allowlist)' 'UDP' '${PORTS.gameFirst}-${PORTS.gameLast}' ${exe ? q(exe) : "$null"} $null 'False'`,
+            `Add-Rule 'ReforgedRevival-GamePorts-Allowlist' 'Dauntless Reforged Revival game ports (allowlist)' 'UDP' '${gamePortsText(c)}' ${exe ? q(exe) : "$null"} $null 'False'`,
         );
     } else {
         lines.push(
             "# Only from Tailscale addresses: nobody else can reach these.",
             `Add-Rule 'ReforgedRevival-Gateway-Tailnet' 'Dauntless Reforged Revival gateway (TCP ${PORTS.privateGateway}, Tailscale)' 'TCP' '${PORTS.privateGateway}' ${q(nodeExe)} '100.64.0.0/10' 'True'`,
-            `Add-Rule 'ReforgedRevival-GamePorts-Tailnet' 'Dauntless Reforged Revival game ports (Tailscale)' 'UDP' '${PORTS.gameFirst}-${PORTS.gameLast}' ${exe ? q(exe) : "$null"} '100.64.0.0/10' 'True'`,
+            `Add-Rule 'ReforgedRevival-GamePorts-Tailnet' 'Dauntless Reforged Revival game ports (Tailscale)' 'UDP' '${gamePortsText(c)}' ${exe ? q(exe) : "$null"} '100.64.0.0/10' 'True'`,
         );
     }
     return lines.join("\r\n") + "\r\n";
@@ -890,10 +904,11 @@ async function main(): Promise<void> {
             say("Dauntless Reforged Revival host kit. Commands (from the ReforgedHost folder):");
             say("  npm run setup -- --mode private|public [--host <address>] --name \"<server name>\" --game \"<Dauntless 1.14.7 folder>\"");
             say("                   [--game-address <IPv4>] [--registration INVITECODE|OPEN|NONE] [--share <Tailscale share link>]");
-            say("                   [--mongo-uri <uri>] [--no-manage-mongo] [--mongod <path>] [--max-hunts 1-6] [--skip-install] [--force-upstream]");
+            say("                   [--mongo-uri <uri>] [--no-manage-mongo] [--mongod <path>] [--max-hunts 1-10] [--skip-install] [--force-upstream]");
             say("                   public: [--public-port <port>] (when 443 is taken, by a hosting panel for example)");
             say("                   Linux: [--wine <path>] [--proton <script> | --no-proton] [--no-xvfb | --xvfb] [--firewall-interface <eth0> | --no-firewall-interface]");
             say("                   CPU/RAM: [--server-fps 0|10-240] [--idle-fps 0|1-240] [--training-on-demand | --training-at-boot] [--quiet-game-logs | --verbose-game-logs]");
+            say("                            [--memory-guard | --no-memory-guard] [--min-free-ram <MB>] [--hunt-ram <MB>]");
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list] [--json]");
             say("  npm run doctor [-- --no-hash]");

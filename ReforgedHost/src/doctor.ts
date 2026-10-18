@@ -3,9 +3,10 @@
 
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { gameDataState, BACKEND_GAME_DATA, DIRECTOR_GAME_DATA } from "./gamedata";
-import { gatewayPort, performanceOptions, readHostConfig, readEnvFile, SECRET_FILE, type HostConfig } from "./hostconfig";
+import { gamePortsText, gatewayPort, performanceOptions, readHostConfig, readEnvFile, SECRET_FILE, type HostConfig } from "./hostconfig";
 import { certificateFingerprint, servedFingerprint } from "./invite";
 import { ensureReplicaSet } from "./mongo";
 import { GAME_EXE_RELATIVE, GAME_VERSION_TEXT, PINNED_EXE_SHA256, PORTS, RUNTIME_FILE_NAMES, type Paths } from "./paths";
@@ -106,14 +107,29 @@ export function runtimeCpuPatches(dll: string): { cpuFixes: boolean; frameCap: b
     };
 }
 
-export function performanceChecks(config: HostConfig, publishedDll: string | null): Check[] {
+// What the services other than the game servers use (backend, Director, gateway, content, MongoDB), roughly.
+export const SERVICES_MEMORY_MB = 1536;
+
+// How many hunts fit in this machine's memory next to Ramsgate, the Training Grounds and the services.
+export function huntsThatFit(totalMb: number, perf: { huntMemoryMb: number; minFreeMemoryMb: number }): number {
+    return Math.max(0, Math.floor((totalMb - SERVICES_MEMORY_MB - perf.minFreeMemoryMb - 2 * perf.huntMemoryMb) / perf.huntMemoryMb));
+}
+
+export function performanceChecks(config: HostConfig, publishedDll: string | null, totalMemoryMb: number = Math.floor(os.totalmem() / (1024 * 1024))): Check[] {
     const perf = performanceOptions(config);
     const out: Check[] = [{
         area: "performance",
         level: "info",
-        text: `game servers at ${perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap"}${perf.idleFps > 0 ? `, ${perf.idleFps} fps after 15 s without players` : ""}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${config.maxHuntServers} hunts`,
+        text: `game servers at ${perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap"}${perf.idleFps > 0 ? `, ${perf.idleFps} fps after 15 s without players` : ""}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${config.maxHuntServers} hunts (UDP ${gamePortsText(config)}); ${perf.memoryGuard ? `a new hunt only with ${perf.huntMemoryMb + perf.minFreeMemoryMb} MB free` : "no memory guard"}`,
         fix: "npm run setup -- --server-fps 30 --idle-fps 10 --training-on-demand --quiet-game-logs (each one is optional)",
     }];
+    const fit = huntsThatFit(totalMemoryMb, perf);
+    if (fit < config.maxHuntServers) {
+        const total = (totalMemoryMb / 1024).toFixed(1);
+        out.push(perf.memoryGuard
+            ? { area: "performance", level: "info", text: `${config.maxHuntServers} hunts at once may need more than this machine's ${total} GB: about ${fit} fit; the memory guard refuses a new hunt while there is not ${perf.huntMemoryMb + perf.minFreeMemoryMb} MB free` }
+            : { area: "performance", level: "warn", text: `${config.maxHuntServers} hunts at once may need more than this machine's ${total} GB (about ${fit} fit), and the memory guard is off: a full server can run out of memory`, fix: `npm run setup -- --memory-guard, or --max-hunts ${Math.max(1, fit)}` });
+    }
     const found = publishedDll ? runtimeCpuPatches(publishedDll) : null;
     if (found) {
         const missing = [...(found.cpuFixes ? [] : ["0019 (CPU fixes)"]), ...(found.frameCap ? [] : ["0020 (frame cap)"])];
@@ -229,8 +245,8 @@ export async function runDoctor(p: Paths, opts: { hashExe?: boolean } = {}): Pro
                 else add({ area: "running", level: "info", text: `the gateway is not running (port ${port})` });
             } else add({ area: "network", level: "fail", text: "no gateway certificate", fix: "npm run setup" });
             add({ area: "network", level: "info", text: process.platform === "linux"
-                ? `open inbound TCP ${gatewayPort(config)} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} in your provider's firewall (Hostinger: the VPS's Firewall page in hPanel); sudo sh .workspace/config/firewall.sh adds them to ufw`
-                : `open inbound TCP ${gatewayPort(config)} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} (run .workspace\\config\\firewall.ps1 as administrator); forward them on your router if this PC is behind NAT` });
+                ? `open inbound TCP ${gatewayPort(config)} and UDP ${gamePortsText(config)} in your provider's firewall (Hostinger: the VPS's Firewall page in hPanel); sudo sh .workspace/config/firewall.sh adds them to ufw`
+                : `open inbound TCP ${gatewayPort(config)} and UDP ${gamePortsText(config)} (run .workspace\\config\\firewall.ps1 as administrator); forward them on your router if this PC is behind NAT` });
         }
         if (process.platform === "linux") for (const c of linuxChecks(p, config)) add(c);
     }

@@ -352,6 +352,23 @@ The Director passes its environment to every game server, so the host kit writes
   `LogPhoenixCharacter VeryVerbose, LogOnline Verbose, LogLoad Off`). Letters, digits, underscores, spaces and
   commas only; anything else keeps the default (logged).
 
+### 0022: a new hunt only when the memory for it is free
+
+`ParadoxDirector/src/controllers/memoryAdmission.ts` (new, with `memoryAdmission.test.ts`) and
+`gameservers.ts`, after Dauntless Revived's `MemoryAdmission`. `MAX_CONCURRENT_HUNT_SERVERS` alone does not know
+how much memory is left, and on a small server the last hunts it allows can run the machine out of memory, when
+the kernel kills whatever it picks (Ramsgate, MongoDB). With `GAMESERVER_MEMORY_GUARD=1` a hunt starts only when
+the memory available now (Linux's `MemAvailable`; `os.freemem()` elsewhere), minus what hunts started in the last
+`GAMESERVER_MEMORY_RESERVATION_SECONDS` (default 120) have yet to allocate, covers `GAMESERVER_HUNT_MEMORY_MB`
+(default 1536) and leaves `GAMESERVER_MIN_FREE_MB` (default 1024) free. Otherwise the request is refused like a
+full hunt cap, before a port or a process is taken (`[MemoryGuard] refusing a new hunt` in the Director's log);
+running hunts and the hubs are never touched, and memory it cannot read never blocks a hunt. A failed start gives
+its reservation back at once. Without `GAMESERVER_MEMORY_GUARD=1` nothing changes; the host kit turns it on.
+
+The host kit also lets a server run up to 10 hunts (`--max-hunts 1-10`): up to 6 the game ports stay UDP
+8770-8777, and each hunt above 6 takes one more port below 8770 (`PORT_RANGE_BEGIN` 8768 for 8, 8766 for 10).
+Ramsgate (8777) and the Training Grounds (8776) do not move.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store

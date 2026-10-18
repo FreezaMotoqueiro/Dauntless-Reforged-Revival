@@ -49,7 +49,7 @@ describe("the public gateway's port (--public-port, when 443 is taken)", () => {
 
     it("is checked: a real port, not one the server uses itself, public servers only", () => {
         assert.equal(validateHostConfig(MOVED).publicPort, 4443);
-        for (const bad of [0, 70000, 61000, 61005, 27017, 8777, 61100]) {
+        for (const bad of [0, 70000, 61000, 61005, 27017, 8777, 8766, 61100]) {
             assert.throws(() => validateHostConfig({ ...PUBLIC, publicPort: bad }), /publicPort/, String(bad));
         }
         assert.throws(() => validateHostConfig({ ...PUBLIC, mode: "private", host: "100.101.102.103", gameAddress: "100.101.102.103", publicPort: 4443 }), /public servers only/);

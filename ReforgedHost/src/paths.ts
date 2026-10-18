@@ -19,9 +19,22 @@ export const PORTS = {
     privateGateway: 61000,
     relay: 61100,
     mongo: 27017,
+    // The game servers' UDP ports: Ramsgate on gameLast, the Training Grounds on the one below, hunts below
+    // that. Up to 6 hunts they are 8770-8777, as always; more hunts reach further down (gamePortRange).
     gameFirst: 8770,
     gameLast: 8777,
+    gameLowest: 8766,
 } as const;
+
+// Hunts at once: 1 to MAX_HUNTS (the ports from gameLowest to gameLast).
+export const MAX_HUNTS = PORTS.gameLast - PORTS.gameLowest - 1;
+
+// The UDP ports the game servers use with this many hunts at once: 8770-8777 up to 6 (unchanged, so a
+// firewall opened for them keeps working), one more port below 8770 for each hunt above 6 (8766-8777 at 10).
+export function gamePortRange(maxHunts: number): { first: number; last: number } {
+    const hunts = Math.min(Math.max(Math.trunc(maxHunts) || 1, 1), MAX_HUNTS);
+    return { first: Math.min(PORTS.gameFirst, PORTS.gameLast - 1 - hunts), last: PORTS.gameLast };
+}
 
 export interface Paths {
     repo: string;

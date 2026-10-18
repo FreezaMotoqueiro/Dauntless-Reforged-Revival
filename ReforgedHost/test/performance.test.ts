@@ -3,8 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { hostConfigFromArgs, parseArgs, performanceFromArgs, performanceSummary } from "../src/cli";
-import { performanceChecks, runtimeCpuPatches } from "../src/doctor";
-import { buildEnvFiles, DEFAULT_MONGO_URI, DEFAULT_PERFORMANCE, newSecrets, QUIET_GAME_LOG_CMDS, validateHostConfig, type HostConfig } from "../src/hostconfig";
+import { huntsThatFit, performanceChecks, runtimeCpuPatches } from "../src/doctor";
+import { buildEnvFiles, DEFAULT_MONGO_URI, DEFAULT_PERFORMANCE, gamePorts, newSecrets, QUIET_GAME_LOG_CMDS, validateHostConfig, type HostConfig } from "../src/hostconfig";
+import { linuxFirewallScript } from "../src/linux";
 import { MONGO_CACHE_GB, mongodArgs } from "../src/mongo";
 import { paths } from "../src/paths";
 import { tempDir, write } from "./helpers";
@@ -40,15 +41,35 @@ describe("performance: director.env", () => {
             assert.equal(get(f.director, "REFORGED_SERVER_IDLE_FPS"), "10");
             assert.equal(get(f.director, "TRAINING_ON_DEMAND"), "1");
             assert.equal(get(f.director, "GAMESERVER_LOG_CMDS"), QUIET_GAME_LOG_CMDS);
+            assert.equal(get(f.director, "GAMESERVER_MEMORY_GUARD"), "1");
+            assert.equal(get(f.director, "GAMESERVER_MIN_FREE_MB"), "1024");
+            assert.equal(get(f.director, "GAMESERVER_HUNT_MEMORY_MB"), "1536");
         }
     });
 
+    it("keeps UDP 8770-8777 up to 6 hunts and reaches one port further down per hunt above that", () => {
+        assert.deepEqual(gamePorts({ maxHuntServers: 3 }), { first: 8770, last: 8777 });
+        assert.deepEqual(gamePorts({ maxHuntServers: 6 }), { first: 8770, last: 8777 });
+        assert.deepEqual(gamePorts({ maxHuntServers: 8 }), { first: 8768, last: 8777 });
+        assert.deepEqual(gamePorts({ maxHuntServers: 10 }), { first: 8766, last: 8777 });
+        const eight = { ...PUBLIC, maxHuntServers: 8 };
+        const f = buildEnvFiles(eight, s, p, { platform: "linux" });
+        assert.equal(get(f.director, "PORT_RANGE_BEGIN"), "8768", "Ramsgate 8777, Training 8776, eight hunts 8768-8775");
+        assert.equal(get(f.director, "PORT_RANGE_END"), "8777");
+        assert.equal(get(f.director, "MAX_CONCURRENT_HUNT_SERVERS"), "8");
+        assert.equal(get(f.allowlist ?? [], "ALLOWLIST_PORTS"), "8768-8777");
+        assert.match(linuxFirewallScript(eight), /ufw allow 8768:8777\/udp/);
+        assert.match(linuxFirewallScript(eight), /UDP 8768-8777 in your provider's firewall/);
+        assert.equal(get(buildEnvFiles(PUBLIC, s, p, { platform: "linux" }).allowlist ?? [], "ALLOWLIST_PORTS"), "8770-8777");
+    });
+
     it("follows host.json: no cap, Training Grounds at boot, upstream's verbose logs", () => {
-        const f = buildEnvFiles({ ...PUBLIC, performance: { serverFps: 0, idleFps: 0, trainingOnDemand: false, verboseGameLogs: true } }, s, p, { platform: "linux" });
+        const f = buildEnvFiles({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, serverFps: 0, idleFps: 0, trainingOnDemand: false, verboseGameLogs: true, memoryGuard: false } }, s, p, { platform: "linux" });
         assert.equal(get(f.director, "REFORGED_SERVER_MAX_FPS"), "0");
         assert.equal(get(f.director, "REFORGED_SERVER_IDLE_FPS"), "0");
         assert.equal(get(f.director, "TRAINING_ON_DEMAND"), "0");
         assert.equal(get(f.director, "GAMESERVER_LOG_CMDS"), undefined, "the Director keeps its own default");
+        assert.equal(get(f.director, "GAMESERVER_MEMORY_GUARD"), "0");
     });
 
     it("writes only values the runtime and the Director accept", () => {
@@ -60,6 +81,8 @@ describe("performance: director.env", () => {
         const director = fs.readFileSync(path.join(repo, "upstream", "patches", "0021-director-training-on-demand-and-log-levels.patch"), "utf8");
         assert.ok(director.includes("process.env.TRAINING_ON_DEMAND"));
         assert.ok(director.includes("process.env.GAMESERVER_LOG_CMDS"));
+        const memory = fs.readFileSync(path.join(repo, "upstream", "patches", "0022-director-hunt-memory-guard.patch"), "utf8");
+        for (const name of ["env.GAMESERVER_MEMORY_GUARD", '"GAMESERVER_MIN_FREE_MB"', '"GAMESERVER_HUNT_MEMORY_MB"']) assert.ok(memory.includes(name), name);
     });
 
     it("refuses frame rates and switches the runtime would not take", () => {
@@ -74,6 +97,11 @@ describe("performance: director.env", () => {
             assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, ...perf } }), error);
         }
         assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, trainingOnDemand: "yes" as unknown as boolean } }), /trainingOnDemand/);
+        assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, huntMemoryMb: 100 } }), /huntMemoryMb/);
+        assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, minFreeMemoryMb: -1 } }), /minFreeMemoryMb/);
+        // A host.json written before the memory guard existed: the defaults fill the new fields.
+        const older = { ...PUBLIC, performance: { serverFps: 30, idleFps: 10, trainingOnDemand: true, verboseGameLogs: false } as unknown as HostConfig["performance"] };
+        assert.equal(get(buildEnvFiles(validateHostConfig(older), s, p, { platform: "linux" }).director, "GAMESERVER_MEMORY_GUARD"), "1");
         assert.equal(validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, idleFps: 1 } }).performance?.idleFps, 1);
     });
 });
@@ -81,12 +109,14 @@ describe("performance: director.env", () => {
 describe("performance: setup options", () => {
     it("defaults, keeps what host.json had, and takes each option", () => {
         assert.deepEqual(performanceFromArgs(parseArgs([]), undefined), DEFAULT_PERFORMANCE);
-        const set = performanceFromArgs(parseArgs(["--server-fps", "60", "--idle-fps", "0", "--training-at-boot", "--verbose-game-logs"]), undefined);
-        assert.deepEqual(set, { serverFps: 60, idleFps: 0, trainingOnDemand: false, verboseGameLogs: true });
+        const set = performanceFromArgs(parseArgs(["--server-fps", "60", "--idle-fps", "0", "--training-at-boot", "--verbose-game-logs", "--no-memory-guard", "--min-free-ram", "512", "--hunt-ram", "2048"]), undefined);
+        assert.deepEqual(set, { serverFps: 60, idleFps: 0, trainingOnDemand: false, verboseGameLogs: true, memoryGuard: false, minFreeMemoryMb: 512, huntMemoryMb: 2048 });
         assert.deepEqual(performanceFromArgs(parseArgs([]), set), set, "kept on the next setup");
         assert.deepEqual(performanceFromArgs(parseArgs(["--training-on-demand", "--quiet-game-logs"]), set), { ...set, trainingOnDemand: true, verboseGameLogs: false });
         assert.throws(() => performanceFromArgs(parseArgs(["--server-fps", "5"]), undefined), /--server-fps/);
         assert.throws(() => performanceFromArgs(parseArgs(["--idle-fps", "fast"]), undefined), /--idle-fps/);
+        assert.throws(() => performanceFromArgs(parseArgs(["--hunt-ram", "100"]), undefined), /--hunt-ram/);
+        assert.equal(performanceFromArgs(parseArgs(["--memory-guard"]), set).memoryGuard, true);
     });
 
     it("goes into host.json with setup, and an older host.json without it gets the defaults", () => {
@@ -96,7 +126,8 @@ describe("performance: setup options", () => {
         const again = hostConfigFromArgs(parseArgs([]), c, detect);
         assert.equal(again.performance?.serverFps, 45);
         assert.deepEqual(hostConfigFromArgs(parseArgs([]), PUBLIC, detect).performance, DEFAULT_PERFORMANCE);
-        assert.match(performanceSummary(PUBLIC), /30 fps, 10 fps after 15 s without players; Training Grounds on demand; quiet game logs; at most 3 hunts/);
+        assert.match(performanceSummary(PUBLIC), /30 fps, 10 fps after 15 s without players; Training Grounds on demand; quiet game logs; at most 3 hunts at once \(UDP 8770-8777\), a new hunt only with 2560 MB free/);
+        assert.equal(hostConfigFromArgs(parseArgs(["--max-hunts", "8"]), PUBLIC, detect).maxHuntServers, 8);
     });
 });
 
@@ -110,12 +141,24 @@ describe("performance: doctor", () => {
         assert.deepEqual(runtimeCpuPatches(both), { cpuFixes: true, frameCap: true });
         assert.deepEqual(runtimeCpuPatches(old), { cpuFixes: false, frameCap: false });
         assert.equal(runtimeCpuPatches(path.join(dir, "none.dll")), null);
-        const warn = performanceChecks(PUBLIC, old);
+        const warn = performanceChecks(PUBLIC, old, 16384);
         assert.equal(warn[0].level, "info");
         assert.equal(warn[1].level, "warn");
         assert.match(warn[1].text, /0019 \(CPU fixes\) and 0020 \(frame cap\)/);
-        assert.equal(performanceChecks(PUBLIC, both)[1].level, "ok");
-        assert.equal(performanceChecks(PUBLIC, null).length, 1, "nothing published: only the settings");
+        assert.equal(performanceChecks(PUBLIC, both, 16384)[1].level, "ok");
+        assert.equal(performanceChecks(PUBLIC, null, 16384).length, 1, "nothing published: only the settings");
+    });
+
+    it("says how many hunts fit in this machine's memory", () => {
+        assert.equal(huntsThatFit(16 * 1024, DEFAULT_PERFORMANCE), 7, "16 GB: 7 hunts of 1.5 GB next to the hubs, the services and 1 GB free");
+        assert.equal(huntsThatFit(15 * 1024, DEFAULT_PERFORMANCE), 6, "a \"16 GB\" VPS often reports less");
+        const eight = { ...PUBLIC, maxHuntServers: 8 };
+        const guarded = performanceChecks(eight, null, 16 * 1024);
+        assert.equal(guarded[1].level, "info");
+        assert.match(guarded[1].text, /8 hunts at once may need more than this machine's 16.0 GB: about 7 fit; the memory guard refuses/);
+        const unguarded = performanceChecks({ ...eight, performance: { ...DEFAULT_PERFORMANCE, memoryGuard: false } }, null, 16 * 1024);
+        assert.equal(unguarded[1].level, "warn");
+        assert.equal(performanceChecks(eight, null, 32 * 1024).length, 1, "32 GB: they fit, nothing to say");
     });
 });
 

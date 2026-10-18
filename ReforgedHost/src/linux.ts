@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { gatewayPort, type HostConfig, type LinuxOptions } from "./hostconfig";
+import { gamePortsText, gatewayPort, type HostConfig, type LinuxOptions } from "./hostconfig";
 import { PORTS, type Paths } from "./paths";
 import { run } from "./run";
 import { dllOverrides, findOnPath, findWine, winePrefixReady } from "./wine";
@@ -253,7 +253,7 @@ export function systemdInstalled(unit: string = UNIT_SERVER): boolean {
 // The allowlist's own nftables table already keeps the game ports closed to everyone who has not
 // logged in. This only opens the way through a host firewall (ufw), when one is active.
 export function linuxFirewallScript(c: HostConfig): string {
-    const game = `${PORTS.gameFirst}:${PORTS.gameLast}`;
+    const game = gamePortsText(c, ":");
     const lines = [
         "#!/bin/sh",
         "# Dauntless Reforged Revival: lets a host firewall (ufw) pass this server's traffic. Written by `npm run setup`.",
@@ -271,7 +271,7 @@ export function linuxFirewallScript(c: HostConfig): string {
             "else",
             "    echo 'No active ufw: nothing to add here (the allowlist manages the game ports itself).'",
             "fi",
-            `echo "Also allow inbound TCP ${gatewayPort(c)} and UDP ${PORTS.gameFirst}-${PORTS.gameLast} in your provider's firewall, if it has one (Hostinger: the VPS's Firewall page in hPanel)."`,
+            `echo "Also allow inbound TCP ${gatewayPort(c)} and UDP ${gamePortsText(c)} in your provider's firewall, if it has one (Hostinger: the VPS's Firewall page in hPanel)."`,
         );
     } else {
         lines.push(
@@ -279,7 +279,7 @@ export function linuxFirewallScript(c: HostConfig): string {
             `    ufw allow in on tailscale0 to any port ${game} proto udp comment 'Dauntless Reforged Revival game ports (Tailscale)'`,
             "    echo 'ufw: added the rules'",
             "else",
-            `    echo 'No active ufw. The game ports (UDP ${PORTS.gameFirst}-${PORTS.gameLast}) are reachable from every network: block them outside Tailscale, for example with ufw (ufw allow OpenSSH; ufw allow in on tailscale0; ufw enable).'`,
+            `    echo 'No active ufw. The game ports (UDP ${gamePortsText(c)}) are reachable from every network: block them outside Tailscale, for example with ufw (ufw allow OpenSSH; ufw allow in on tailscale0; ufw enable).'`,
             "fi",
         );
     }

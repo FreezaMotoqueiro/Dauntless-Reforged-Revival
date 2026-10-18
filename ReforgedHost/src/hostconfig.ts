@@ -7,7 +7,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { formatEnv, parseEnv, type EnvMap } from "./envfile";
-import { GAME_CHANGELIST, GAME_EXE_RELATIVE, PINNED_EXE_SHA256, PORTS, type Paths } from "./paths";
+import { GAME_CHANGELIST, GAME_EXE_RELATIVE, gamePortRange, MAX_HUNTS, PINNED_EXE_SHA256, PORTS, type Paths } from "./paths";
 
 export type ServerMode = "private" | "public";
 
@@ -45,6 +45,11 @@ export interface HostConfig {
 }
 
 export interface PerformanceOptions {
+    // A new hunt starts only when the machine has memory for it (GAMESERVER_MEMORY_GUARD, Director patch
+    // 0022): huntMemoryMb for the hunt, and minFreeMemoryMb left free after it.
+    memoryGuard: boolean;
+    minFreeMemoryMb: number;
+    huntMemoryMb: number;
     // Frames per second of each game server's game thread while a player is connected
     // (REFORGED_SERVER_MAX_FPS, runtime patch 0020): 10 to 240, or 0 for no cap.
     serverFps: number;
@@ -59,7 +64,7 @@ export interface PerformanceOptions {
     verboseGameLogs: boolean;
 }
 
-export const DEFAULT_PERFORMANCE: PerformanceOptions = { serverFps: 30, idleFps: 10, trainingOnDemand: true, verboseGameLogs: false };
+export const DEFAULT_PERFORMANCE: PerformanceOptions = { serverFps: 30, idleFps: 10, trainingOnDemand: true, verboseGameLogs: false, memoryGuard: true, minFreeMemoryMb: 1024, huntMemoryMb: 1536 };
 
 // The game servers' log levels when verboseGameLogs is off: warnings and errors, and LogLoad off as upstream has it.
 export const QUIET_GAME_LOG_CMDS = "LogPhoenixCharacter Warning, LogOnline Warning, LogLoad Off";
@@ -68,8 +73,22 @@ export function performanceOptions(c: Pick<HostConfig, "performance">): Performa
     return { ...DEFAULT_PERFORMANCE, ...(c.performance ?? {}) };
 }
 
+export function validMegabytes(value: unknown, min: number): boolean {
+    return typeof value === "number" && Number.isInteger(value) && value >= min && value <= 1048576;
+}
+
 export function validFps(value: unknown, min: number): boolean {
     return typeof value === "number" && Number.isInteger(value) && (value === 0 || (value >= min && value <= 240));
+}
+
+// The game servers' UDP ports for this server's hunt cap (8770-8777 up to 6 hunts, down to 8766 at 10).
+export function gamePorts(c: Pick<HostConfig, "maxHuntServers">): { first: number; last: number } {
+    return gamePortRange(c.maxHuntServers);
+}
+
+export function gamePortsText(c: Pick<HostConfig, "maxHuntServers">, separator = "-"): string {
+    const { first, last } = gamePorts(c);
+    return `${first}${separator}${last}`;
 }
 
 // The gateway's port: what players' launchers connect to.
@@ -220,7 +239,7 @@ export function validateHostConfig(c: HostConfig): HostConfig {
     if (!["INVITECODE", "OPEN", "NONE"].includes(c.registration)) throw new Error("registration must be INVITECODE, OPEN or NONE");
     if (c.shareUrl !== null && !/^https:\/\/login\.tailscale\.com\/[A-Za-z0-9/_?=&.%-]+$/.test(c.shareUrl)) throw new Error("shareUrl must be a https://login.tailscale.com/ link");
     if (!/^mongodb(\+srv)?:\/\//.test(c.mongo.uri)) throw new Error("mongo.uri must be a mongodb:// connection string");
-    if (!Number.isInteger(c.maxHuntServers) || c.maxHuntServers < 1 || c.maxHuntServers > 6) throw new Error("maxHuntServers must be 1 to 6 (8 game ports: Ramsgate, the Training Grounds and the hunts)");
+    if (!Number.isInteger(c.maxHuntServers) || c.maxHuntServers < 1 || c.maxHuntServers > MAX_HUNTS) throw new Error(`maxHuntServers must be 1 to ${MAX_HUNTS} (UDP ${PORTS.gameFirst}-${PORTS.gameLast} up to 6 hunts, ${PORTS.gameLowest}-${PORTS.gameLast} at ${MAX_HUNTS})`);
     if (c.multipliers !== undefined) {
         for (const [what, value] of Object.entries(c.multipliers)) {
             if (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > MAX_MULTIPLIER) throw new Error(`the ${what} multiplier must be a number from 1 to ${MAX_MULTIPLIER}, not ${value}`);
@@ -230,14 +249,18 @@ export function validateHostConfig(c: HostConfig): HostConfig {
     if (c.publicPort !== undefined) {
         if (c.mode !== "public") throw new Error("publicPort is for public servers only");
         if (!Number.isInteger(c.publicPort) || c.publicPort < 1 || c.publicPort > 65535) throw new Error(`publicPort must be a TCP port from 1 to 65535, not ${c.publicPort}`);
-        if (RESERVED_PORTS.has(c.publicPort) || (c.publicPort >= PORTS.gameFirst && c.publicPort <= PORTS.gameLast)) throw new Error(`publicPort ${c.publicPort} is one the server uses itself: pick another (4443, for example)`);
+        if (RESERVED_PORTS.has(c.publicPort) || (c.publicPort >= PORTS.gameLowest && c.publicPort <= PORTS.gameLast)) throw new Error(`publicPort ${c.publicPort} is one the server uses itself: pick another (4443, for example)`);
     }
     if (c.performance !== undefined) {
-        const perf = c.performance;
+        // Checked with the defaults filled in: a host.json from an older setup lacks the newer fields.
+        const perf = performanceOptions(c);
         if (!validFps(perf.serverFps, 10)) throw new Error(`performance.serverFps must be 0 (no cap) or 10 to 240 frames per second, not ${perf.serverFps}`);
         if (!validFps(perf.idleFps, 1)) throw new Error(`performance.idleFps must be 0 (same as serverFps) or 1 to 240 frames per second, not ${perf.idleFps}`);
         if (typeof perf.trainingOnDemand !== "boolean") throw new Error("performance.trainingOnDemand must be true or false");
         if (typeof perf.verboseGameLogs !== "boolean") throw new Error("performance.verboseGameLogs must be true or false");
+        if (typeof perf.memoryGuard !== "boolean") throw new Error("performance.memoryGuard must be true or false");
+        if (!validMegabytes(perf.minFreeMemoryMb, 0)) throw new Error(`performance.minFreeMemoryMb must be a whole number of MB, not ${perf.minFreeMemoryMb}`);
+        if (!validMegabytes(perf.huntMemoryMb, 256)) throw new Error(`performance.huntMemoryMb must be at least 256 MB, not ${perf.huntMemoryMb}`);
     }
     if (c.linux !== undefined) {
         for (const [what, value] of [["wine", c.linux.wine], ["proton", c.linux.proton]] as const) {
@@ -335,8 +358,8 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ["BIND_HOST", "127.0.0.1"],
         ["MY_IP", c.gameAddress],
         // Ramsgate on the last port, the Training Grounds on the one before, hunts below.
-        ["PORT_RANGE_BEGIN", String(PORTS.gameFirst)],
-        ["PORT_RANGE_END", String(PORTS.gameLast)],
+        ["PORT_RANGE_BEGIN", String(gamePorts(c).first)],
+        ["PORT_RANGE_END", String(gamePorts(c).last)],
         // Linux: the launcher that runs the Windows executable through Wine (wine.ts).
         ["GAMESERVER_BINARY_PATH", linux ? p.gameserverWrapper : exe],
         ...(linux ? [
@@ -354,6 +377,10 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ["MAX_CONCURRENT_HUNT_SERVERS", String(c.maxHuntServers)],
         // The Training Grounds start the first time someone goes there (Director patch 0021).
         ["TRAINING_ON_DEMAND", perf.trainingOnDemand ? "1" : "0"],
+        // A new hunt only when the memory for it is free (Director patch 0022).
+        ["GAMESERVER_MEMORY_GUARD", perf.memoryGuard ? "1" : "0"],
+        ["GAMESERVER_MIN_FREE_MB", String(perf.minFreeMemoryMb)],
+        ["GAMESERVER_HUNT_MEMORY_MB", String(perf.huntMemoryMb)],
         // The game servers inherit these two: the runtime caps each one's frame rate (runtime patch 0020).
         ["REFORGED_SERVER_MAX_FPS", String(perf.serverFps)],
         ["REFORGED_SERVER_IDLE_FPS", String(perf.idleFps)],
@@ -412,7 +439,7 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
             ["ALLOWLIST_BIND", "127.0.0.1"],
             ["ALLOWLIST_PORT", String(PORTS.allowlist)],
             ["ALLOWLIST_SECRET", s.allowlistSecret],
-            ["ALLOWLIST_PORTS", `${PORTS.gameFirst}-${PORTS.gameLast}`],
+            ["ALLOWLIST_PORTS", gamePortsText(c)],
             ["ALLOWLIST_AUDIT_LOG", path.join(p.logs, "allowlist-audit.log")],
             ["ALLOWLIST_STATE_FILE", path.join(p.config, "allowlist-state.json")],
         ]
