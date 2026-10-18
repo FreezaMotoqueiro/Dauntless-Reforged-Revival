@@ -34,8 +34,11 @@ import {
     writeEnvFiles,
     writeHostConfig,
     LINUX_INTERFACE,
+    performanceOptions,
+    validFps,
     type HostConfig,
     type LinuxOptions,
+    type PerformanceOptions,
 } from "./hostconfig";
 import { certificateFingerprint, createInviteCode, inviteFor, listInviteCodes } from "./invite";
 import { ensureReplicaSet, findMongod, mongodArgs } from "./mongo";
@@ -168,6 +171,32 @@ export function publicPortFromArgs(args: Args, mode: HostConfig["mode"], existin
     return { publicPort: port };
 }
 
+// --server-fps <0|10-240>, --idle-fps <0|1-240>, --training-on-demand (--training-at-boot),
+// --verbose-game-logs (--quiet-game-logs). Each one keeps what host.json had when it is not given.
+export function performanceFromArgs(args: Args, existing: HostConfig["performance"]): PerformanceOptions {
+    const current = performanceOptions({ performance: existing });
+    const fps = (name: string, min: number, fallback: number, meaning: string): number => {
+        const raw = str(args, name);
+        if (raw === undefined) return fallback;
+        const value = Number(raw);
+        if (!validFps(value, min)) throw new Error(`--${name} must be 0 (${meaning}) or ${min} to 240 frames per second (got ${raw})`);
+        return value;
+    };
+    return {
+        serverFps: fps("server-fps", 10, current.serverFps, "no cap"),
+        idleFps: fps("idle-fps", 1, current.idleFps, "the same as --server-fps"),
+        trainingOnDemand: args["training-at-boot"] === true ? false : args["training-on-demand"] === true ? true : current.trainingOnDemand,
+        verboseGameLogs: args["quiet-game-logs"] === true ? false : args["verbose-game-logs"] === true ? true : current.verboseGameLogs,
+    };
+}
+
+export function performanceSummary(c: HostConfig): string {
+    const perf = performanceOptions(c);
+    const fps = perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap";
+    const idle = perf.idleFps > 0 ? `${perf.idleFps} fps after 15 s without players` : "no idle cap";
+    return `Game servers: ${fps}, ${idle}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${c.maxHuntServers} hunt${c.maxHuntServers === 1 ? "" : "s"} at once`;
+}
+
 export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null; platform?: NodeJS.Platform }): HostConfig {
     const mode = (str(args, "mode") ?? existing?.mode) as HostConfig["mode"] | undefined;
     if (mode !== "private" && mode !== "public") throw new Error("say which kind of server: --mode private (friends over Tailscale) or --mode public (a server on the internet)");
@@ -208,6 +237,7 @@ export function hostConfigFromArgs(args: Args, existing: HostConfig | null, dete
         maxHuntServers: Number(str(args, "max-hunts") ?? existing?.maxHuntServers ?? 3),
         multipliers: multipliersFromArgs(args, mode, existing?.mode === mode ? existing.multipliers : undefined),
         ...publicPortFromArgs(args, mode, existing),
+        performance: performanceFromArgs(args, existing?.performance),
         ...((detect.platform ?? process.platform) === "linux" ? { linux: linuxFromArgs(args, existing?.linux) } : existing?.linux ? { linux: existing.linux } : {}),
     };
 }
@@ -302,6 +332,7 @@ async function setup(p: Paths, args: Args): Promise<void> {
     }
     say(`\n${config.mode === "public" ? "Public" : "Private"} server "${config.name}" at ${config.host} (game servers on ${config.gameAddress})`);
     if (multipliersOn(config)) say(`Test multipliers ON: XP x${config.multipliers!.xp}, rewards x${config.multipliers!.rewards} (npm run multipliers -- --off turns them off)`);
+    say(performanceSummary(config));
 
     say("\n1. Mystic Paradox at the pinned commit, with the Reforged patches");
     const pin = readPin(p.upstreamPin);
@@ -862,6 +893,7 @@ async function main(): Promise<void> {
             say("                   [--mongo-uri <uri>] [--no-manage-mongo] [--mongod <path>] [--max-hunts 1-6] [--skip-install] [--force-upstream]");
             say("                   public: [--public-port <port>] (when 443 is taken, by a hosting panel for example)");
             say("                   Linux: [--wine <path>] [--proton <script> | --no-proton] [--no-xvfb | --xvfb] [--firewall-interface <eth0> | --no-firewall-interface]");
+            say("                   CPU/RAM: [--server-fps 0|10-240] [--idle-fps 0|1-240] [--training-on-demand | --training-at-boot] [--quiet-game-logs | --verbose-game-logs]");
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list] [--json]");
             say("  npm run doctor [-- --no-hash]");

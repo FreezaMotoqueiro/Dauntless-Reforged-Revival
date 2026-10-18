@@ -225,6 +225,66 @@ The first game servers take longer than on Windows (Wine loads the game): the Di
 - **The allowlist table:** `sudo nft list table inet reforged_revival` shows who can reach the
   game ports right now.
 
+## CPU and RAM
+
+Almost all of the server's CPU and RAM goes to the game servers: Ramsgate, the Training Grounds and one
+per hunt, each a whole Dauntless process under Wine. Before patches 0019 to 0021 (see
+[upstream/README.md](../upstream/README.md)) every one of them, empty or not, walked all ~208,000 game
+objects on every frame, built a function name and ran about 90 text searches for every reflected call (tens
+of thousands a second with players), asked the disk for flag files several times a frame (a whole folder
+scan under Wine), and ran its frames as fast as the CPU allowed. A 4 vCPU VPS sat near 40% with nobody
+online and above 80% with two players.
+
+What the server does now (each part can be changed):
+
+| | Default | Change it with `npm run setup -- ...` |
+|---|---|---|
+| Frames per second of a game server with players (runtime patch 0020) | 30 (the network rate) | `--server-fps 10-240`, `0` for no cap |
+| Frames per second after 15 s without players | 10 | `--idle-fps 1-240`, `0` for the same as above |
+| Training Grounds (Director patch 0021) | started the first time someone goes there | `--training-at-boot` (`--training-on-demand` goes back) |
+| Game-server logs | warnings and errors | `--verbose-game-logs` (`--quiet-game-logs` goes back) |
+| Hunts at once | 3 | `--max-hunts 1-6` |
+| MongoDB's cache | 1 GB (it used to take up to half the RAM) | |
+
+Restart the server after a change (`sudo systemctl restart reforged`).
+
+**The runtime has to be built again.** The frame cap and the CPU fixes are in `MysticParadox.dll`, which is
+built on the Windows PC: there, `npm run update`, build the runtime again (the launcher's Host tools page),
+`npm run publish-runtime`, then send it to the VPS (`Deploy-FromWindows.ps1 ... -SkipGame`, or copy
+`.workspace\runtime` and `npm run publish-runtime -- --from ~/runtime` on the VPS) and restart. Players
+accept the new runtime once in the launcher. `npm run doctor` says whether the published runtime has
+patches 0019 and 0020; the Training Grounds, the logs and MongoDB's cache work as soon as setup has run.
+
+**See where the CPU goes:**
+
+```sh
+top -o %CPU                                                # P sorts by CPU, M by memory, q quits
+ps -eo pid,pcpu,pmem,rss,etime,args --sort=-pcpu | head -15 # the busiest processes
+free -h                                                    # "available" is what is really free
+grep -h "FramePace\|PENameCache\|PECategoryCache\|FlagCache\|ExpectedPlayerCount\] lookup" ~/games/Dauntless/Archon/Binaries/Win64/mysticparadox_dll_port*.log | tail
+```
+
+`Dauntless-Win64-Shipping.exe` lines are the game servers (Ramsgate on port 8777, the Training Grounds on
+8776, hunts below). The runtime writes its own log beside the game executable, one file per port
+(`mysticparadox_dll_port8777.log` for Ramsgate; use your `--game` folder if it is not `~/games/Dauntless`).
+The `grep` shows whether the running runtime has the new code: `[FramePace] server frame cap: 30 fps, idle
+(no client for 15 s): 10 fps` at start, `no client for 15 s: 10 fps` when a server goes idle and
+`client connected: 30 fps` when someone joins.
+
+**If `wineserver` itself uses a lot of CPU** (a line of its own in `top`, often 10-30% while players are on):
+plain Wine sends every thread wait of the game through that one process. Proton (or GE-Proton) has fsync,
+which keeps those waits in the kernel (Debian 13's kernel supports it). It is optional and less tested here:
+download a GE-Proton release from <https://github.com/GloriousEggroll/proton-ge-custom/releases>, unpack it into
+`~/.local/share/Steam/compatibilitytools.d/`, then
+
+```sh
+cd ~/Reforged/ReforgedHost
+npm run setup -- --proton ~/.local/share/Steam/compatibilitytools.d/<GE-Proton folder>/proton
+sudo systemctl restart reforged
+```
+
+and compare `top` with players on. `npm run setup -- --no-proton` goes back to Wine.
+
 ## When something goes wrong
 
 | What you see | What to do |
@@ -277,3 +337,19 @@ certificado dele ("o certificado de segurança não confere").
 
 É experimental: o jogo 1.14.7 de verdade ainda não foi rodado no Wine. Se algo falhar, veja
 `journalctl -u reforged -f` e `npm run doctor`.
+
+**CPU e RAM** ([detalhes](#cpu-and-ram)): quase todo o consumo vem dos servidores de jogo (Ramsgate, Training
+Grounds e um por caçada), cada um um processo inteiro do Dauntless no Wine. Agora:
+
+- cada servidor de jogo roda a no máximo 30 FPS, e a 10 FPS depois de 15 s sem jogadores
+  (`--server-fps`, `--idle-fps`; `0` desliga);
+- o Training Grounds só sobe quando alguém vai para lá (`--training-at-boot` volta ao antigo);
+- os servidores de jogo registram só avisos e erros (`--verbose-game-logs` volta ao antigo);
+- o MongoDB usa no máximo 1 GB de cache (antes podia usar metade da RAM).
+
+O limite de FPS e as correções de CPU (patches 0019 e 0020) ficam no runtime (`MysticParadox.dll`), que é
+compilado no PC com Windows: lá, `npm run update`, compile o runtime de novo (página Host tools do launcher),
+`npm run publish-runtime`, e envie para a VPS (`Deploy-FromWindows.ps1 ... -SkipGame`). Depois
+`sudo systemctl restart reforged`. Os jogadores aceitam o runtime novo uma vez no launcher. `npm run doctor`
+diz se o runtime publicado já tem os patches. Para ver quem usa a CPU: `top -o %CPU`. Se o `wineserver`
+aparecer alto, experimente o GE-Proton (`npm run setup -- --proton <pasta>/proton`, seção em inglês acima).

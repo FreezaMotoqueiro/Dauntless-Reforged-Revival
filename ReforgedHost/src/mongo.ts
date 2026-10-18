@@ -13,8 +13,12 @@ import { capture } from "./run";
 
 export const REPLICA_SET = "rs0";
 
+// WiredTiger's cache defaults to half of (RAM - 1 GB): 7.5 GB on a 16 GB server, which the game servers
+// need far more. A friends' server's database is a few megabytes, so 1 GB is plenty.
+export const MONGO_CACHE_GB = 1;
+
 export function mongodArgs(dataDir: string, logFile: string, port: number): string[] {
-    return ["--replSet", REPLICA_SET, "--bind_ip", "127.0.0.1", "--port", String(port), "--dbpath", dataDir, "--logpath", logFile, "--logappend"];
+    return ["--replSet", REPLICA_SET, "--bind_ip", "127.0.0.1", "--port", String(port), "--dbpath", dataDir, "--logpath", logFile, "--logappend", "--wiredTigerCacheSizeGB", String(MONGO_CACHE_GB)];
 }
 
 // mongod on PATH, or in the usual Windows install folder (the newest version).

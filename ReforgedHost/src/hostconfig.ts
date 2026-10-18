@@ -39,6 +39,37 @@ export interface HostConfig {
     // Public servers: the gateway's TCP port when 443 is taken (a hosting panel on the same VPS).
     // Absent: 443. The port goes into every invite.
     publicPort?: number;
+    // How much CPU and RAM the game servers may use (upstream/README.md, patches 0020 and 0021).
+    // Absent: DEFAULT_PERFORMANCE.
+    performance?: PerformanceOptions;
+}
+
+export interface PerformanceOptions {
+    // Frames per second of each game server's game thread while a player is connected
+    // (REFORGED_SERVER_MAX_FPS, runtime patch 0020): 10 to 240, or 0 for no cap.
+    serverFps: number;
+    // Frames per second once a game server has had no player for 15 s (REFORGED_SERVER_IDLE_FPS):
+    // 1 to 240, or 0 for the same as serverFps.
+    idleFps: number;
+    // The Training Grounds start the first time someone goes there, not at boot (TRAINING_ON_DEMAND,
+    // Director patch 0021).
+    trainingOnDemand: boolean;
+    // true: the game servers keep upstream's diagnostic log levels (LogPhoenixCharacter VeryVerbose,
+    // LogOnline Verbose); false: warnings and errors only (GAMESERVER_LOG_CMDS).
+    verboseGameLogs: boolean;
+}
+
+export const DEFAULT_PERFORMANCE: PerformanceOptions = { serverFps: 30, idleFps: 10, trainingOnDemand: true, verboseGameLogs: false };
+
+// The game servers' log levels when verboseGameLogs is off: warnings and errors, and LogLoad off as upstream has it.
+export const QUIET_GAME_LOG_CMDS = "LogPhoenixCharacter Warning, LogOnline Warning, LogLoad Off";
+
+export function performanceOptions(c: Pick<HostConfig, "performance">): PerformanceOptions {
+    return { ...DEFAULT_PERFORMANCE, ...(c.performance ?? {}) };
+}
+
+export function validFps(value: unknown, min: number): boolean {
+    return typeof value === "number" && Number.isInteger(value) && (value === 0 || (value >= min && value <= 240));
 }
 
 // The gateway's port: what players' launchers connect to.
@@ -201,6 +232,13 @@ export function validateHostConfig(c: HostConfig): HostConfig {
         if (!Number.isInteger(c.publicPort) || c.publicPort < 1 || c.publicPort > 65535) throw new Error(`publicPort must be a TCP port from 1 to 65535, not ${c.publicPort}`);
         if (RESERVED_PORTS.has(c.publicPort) || (c.publicPort >= PORTS.gameFirst && c.publicPort <= PORTS.gameLast)) throw new Error(`publicPort ${c.publicPort} is one the server uses itself: pick another (4443, for example)`);
     }
+    if (c.performance !== undefined) {
+        const perf = c.performance;
+        if (!validFps(perf.serverFps, 10)) throw new Error(`performance.serverFps must be 0 (no cap) or 10 to 240 frames per second, not ${perf.serverFps}`);
+        if (!validFps(perf.idleFps, 1)) throw new Error(`performance.idleFps must be 0 (same as serverFps) or 1 to 240 frames per second, not ${perf.idleFps}`);
+        if (typeof perf.trainingOnDemand !== "boolean") throw new Error("performance.trainingOnDemand must be true or false");
+        if (typeof perf.verboseGameLogs !== "boolean") throw new Error("performance.verboseGameLogs must be true or false");
+    }
     if (c.linux !== undefined) {
         for (const [what, value] of [["wine", c.linux.wine], ["proton", c.linux.proton]] as const) {
             if (value !== null && (typeof value !== "string" || !path.posix.isAbsolute(value))) throw new Error(`linux.${what} must be the full path of the program, or null`);
@@ -290,6 +328,7 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ["LOG_LEVEL", "info"],
     ];
     const exe = c.gameDir ? path.join(c.gameDir, GAME_EXE_RELATIVE) : "";
+    const perf = performanceOptions(c);
     const director: [string, string][] = [
         ["NODE_ENV", "production"],
         ["PORT", String(PORTS.director)],
@@ -313,6 +352,13 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         // Under Wine a game server takes longer to load its first map.
         ["GAMESERVER_READY_TIMEOUT_MS", linux ? "90000" : "30000"],
         ["MAX_CONCURRENT_HUNT_SERVERS", String(c.maxHuntServers)],
+        // The Training Grounds start the first time someone goes there (Director patch 0021).
+        ["TRAINING_ON_DEMAND", perf.trainingOnDemand ? "1" : "0"],
+        // The game servers inherit these two: the runtime caps each one's frame rate (runtime patch 0020).
+        ["REFORGED_SERVER_MAX_FPS", String(perf.serverFps)],
+        ["REFORGED_SERVER_IDLE_FPS", String(perf.idleFps)],
+        // The game servers' -LogCmds (Director patch 0021); absent: upstream's diagnostic levels.
+        ...(perf.verboseGameLogs ? [] : [["GAMESERVER_LOG_CMDS", QUIET_GAME_LOG_CMDS]] as [string, string][]),
         ["SERVER_RUNTIME_AUTO_UPDATE", "false"],
         ["SERVER_RUNTIME_UPDATE_REQUIRED", "false"],
         ["GAMESERVER_LOG_DIR", p.gameserverLogs],

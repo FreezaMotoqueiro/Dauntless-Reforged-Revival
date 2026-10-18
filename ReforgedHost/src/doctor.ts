@@ -5,7 +5,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { gameDataState, BACKEND_GAME_DATA, DIRECTOR_GAME_DATA } from "./gamedata";
-import { gatewayPort, readHostConfig, readEnvFile, SECRET_FILE, type HostConfig } from "./hostconfig";
+import { gatewayPort, performanceOptions, readHostConfig, readEnvFile, SECRET_FILE, type HostConfig } from "./hostconfig";
 import { certificateFingerprint, servedFingerprint } from "./invite";
 import { ensureReplicaSet } from "./mongo";
 import { GAME_EXE_RELATIVE, GAME_VERSION_TEXT, PINNED_EXE_SHA256, PORTS, RUNTIME_FILE_NAMES, type Paths } from "./paths";
@@ -86,6 +86,42 @@ export function gameChecks(gameDir: string | null, opts: { hashExe: boolean }): 
         out.push(hash === PINNED_EXE_SHA256
             ? { area: "game", level: "ok", text: "the executable is the Dauntless 1.14.7 build (SHA-256 matches)" }
             : { area: "game", level: "fail", text: `the executable is another build (SHA-256 ${hash.slice(0, 16)}…)`, fix: "install 1.14.7 with Legendary (docs/players.md) for the server too" });
+    }
+    return out;
+}
+
+// Which of the game servers' CPU patches a built MysticParadox.dll carries, from strings only those patches put in
+// it: 0019 (upstream's CPU fixes) names LEGACY_EXPECTED_PLAYER_WALK.flag (UTF-16), 0020 (the frame cap) reads
+// REFORGED_SERVER_MAX_FPS (ASCII). Null when the file cannot be read.
+export function runtimeCpuPatches(dll: string): { cpuFixes: boolean; frameCap: boolean } | null {
+    let bytes: Buffer;
+    try {
+        bytes = fs.readFileSync(dll);
+    } catch {
+        return null;
+    }
+    return {
+        cpuFixes: bytes.includes(Buffer.from("LEGACY_EXPECTED_PLAYER_WALK.flag", "utf16le")),
+        frameCap: bytes.includes(Buffer.from("REFORGED_SERVER_MAX_FPS", "latin1")),
+    };
+}
+
+export function performanceChecks(config: HostConfig, publishedDll: string | null): Check[] {
+    const perf = performanceOptions(config);
+    const out: Check[] = [{
+        area: "performance",
+        level: "info",
+        text: `game servers at ${perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap"}${perf.idleFps > 0 ? `, ${perf.idleFps} fps after 15 s without players` : ""}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${config.maxHuntServers} hunts`,
+        fix: "npm run setup -- --server-fps 30 --idle-fps 10 --training-on-demand --quiet-game-logs (each one is optional)",
+    }];
+    const found = publishedDll ? runtimeCpuPatches(publishedDll) : null;
+    if (found) {
+        const missing = [...(found.cpuFixes ? [] : ["0019 (CPU fixes)"]), ...(found.frameCap ? [] : ["0020 (frame cap)"])];
+        out.push(missing.length === 0
+            ? { area: "performance", level: "ok", text: "the published runtime has the game servers' CPU patches (0019, 0020)" }
+            : { area: "performance", level: "warn", text: `the published runtime was built without patch ${missing.join(" and ")}: every game server uses far more CPU than it needs`, fix: process.platform === "linux"
+                ? "on the Windows PC: npm run update, build the runtime again (Host tools page) and npm run publish-runtime; then send it here (Deploy-FromWindows.ps1 ... -SkipGame, or copy .workspace\\runtime and npm run publish-runtime -- --from <folder>) and restart the server (players accept the new runtime once)"
+                : "npm run update, build the runtime again (Host tools page, or ParadoxRuntime\\_build.bat), npm run publish-runtime, restart the server (players accept the new runtime once)" });
     }
     return out;
 }
@@ -213,6 +249,8 @@ export async function runDoctor(p: Paths, opts: { hashExe?: boolean } = {}): Pro
         const same = RUNTIME_FILE_NAMES.every((n) => fs.existsSync(path.join(win64, n)) && sha256File(path.join(win64, n)) === sha256File(path.join(p.runtimePublish, n)));
         add(same ? { area: "runtime", level: "ok", text: "the game servers use the published runtime" } : { area: "runtime", level: "fail", text: "the server's game folder does not have the published runtime", fix: "npm run publish-runtime, then restart the server" });
     }
+
+    if (config) for (const c of performanceChecks(config, published ? path.join(p.runtimePublish, "MysticParadox.dll") : null)) add(c);
 
     // ---- game data
     for (const [label, dir, files] of [["backend", p.backendGameData, BACKEND_GAME_DATA], ["Director", p.directorGameData, DIRECTOR_GAME_DATA]] as const) {

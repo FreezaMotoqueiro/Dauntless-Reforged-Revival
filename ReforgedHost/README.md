@@ -34,6 +34,13 @@ Other `setup` options: `--registration INVITECODE|OPEN|NONE` (default invite cod
 gateway's port when 443 is taken, by a hosting panel for example; it goes into every invite), `--skip-install`,
 `--force-upstream`. Running `setup` again with other options changes only those.
 
+CPU and RAM (`host.json` `performance`, written into `director.env`; see `docs/hosting-linux.md#cpu-and-ram`):
+`--server-fps 0|10-240` (default 30: each game server's frame cap, `REFORGED_SERVER_MAX_FPS`, runtime patch
+0020), `--idle-fps 0|1-240` (default 10: after 15 s without players, `REFORGED_SERVER_IDLE_FPS`),
+`--training-on-demand` / `--training-at-boot` (default on demand: `TRAINING_ON_DEMAND`, Director patch 0021),
+`--quiet-game-logs` / `--verbose-game-logs` (default quiet: `GAMESERVER_LOG_CMDS`). A managed MongoDB gets a
+1 GB WiredTiger cache. `npm run doctor` says whether the published runtime has the CPU patches (0019, 0020).
+
 Linux (`docs/hosting-linux.md`): `--wine <path>`, `--proton <script>` (`--no-proton`), `--no-xvfb`
 (`--xvfb`), `--firewall-interface <eth0>` (`--no-firewall-interface`). Setup and `start` refuse to run
 as root there.
