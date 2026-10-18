@@ -34,7 +34,22 @@ export interface HostConfig {
     // Private servers only: multiply the XP and the loot the game servers grant, to reach late-game content quickly
     // when testing. Absent or 1 is off; the backend checks again that it runs as a private Tailscale server.
     multipliers?: { xp: number; rewards: number };
+    // Linux only: how the Windows game servers run (wine.ts) and what the allowlist filters.
+    linux?: LinuxOptions;
 }
+
+export interface LinuxOptions {
+    // The wine program; null: the first wine on PATH when a game server starts.
+    wine: string | null;
+    // A Proton (or GE-Proton) script to use instead of Wine.
+    proton: string | null;
+    // A virtual X display (xvfb-run) for the game servers when there is no DISPLAY.
+    xvfb: boolean;
+    // Public: the allowlist filters the game ports only on this interface (eth0). null: every interface.
+    firewallInterface: string | null;
+}
+
+export const LINUX_INTERFACE = /^[A-Za-z0-9][A-Za-z0-9_.@-]{0,14}$/;
 
 export const MAX_MULTIPLIER = 100;
 
@@ -169,6 +184,13 @@ export function validateHostConfig(c: HostConfig): HostConfig {
         }
         if (c.mode === "public" && (c.multipliers.xp !== 1 || c.multipliers.rewards !== 1)) throw new Error("XP and reward multipliers are for private (Tailscale) test servers only");
     }
+    if (c.linux !== undefined) {
+        for (const [what, value] of [["wine", c.linux.wine], ["proton", c.linux.proton]] as const) {
+            if (value !== null && (typeof value !== "string" || !path.posix.isAbsolute(value))) throw new Error(`linux.${what} must be the full path of the program, or null`);
+        }
+        if (typeof c.linux.xvfb !== "boolean") throw new Error("linux.xvfb must be true or false");
+        if (c.linux.firewallInterface !== null && !LINUX_INTERFACE.test(c.linux.firewallInterface)) throw new Error(`linux.firewallInterface must be a network interface name like eth0, not ${c.linux.firewallInterface}`);
+    }
     return { ...c, host, name };
 }
 
@@ -195,6 +217,9 @@ export interface EnvFiles {
 }
 
 export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sourceCommit?: string; platform?: NodeJS.Platform } = {}): EnvFiles {
+    const platform = extra.platform ?? process.platform;
+    const linux = platform === "linux";
+    const lx: LinuxOptions = c.linux ?? { wine: null, proton: null, xvfb: true, firewallInterface: null };
     const backend: [string, string][] = [
         ["NODE_ENV", "production"],
         ["MYSTICPARADOX_SERVICE_ROLE", "api"],
@@ -256,10 +281,20 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         // Ramsgate on the last port, the Training Grounds on the one before, hunts below.
         ["PORT_RANGE_BEGIN", String(PORTS.gameFirst)],
         ["PORT_RANGE_END", String(PORTS.gameLast)],
-        ["GAMESERVER_BINARY_PATH", exe],
+        // Linux: the launcher that runs the Windows executable through Wine (wine.ts).
+        ["GAMESERVER_BINARY_PATH", linux ? p.gameserverWrapper : exe],
+        ...(linux ? [
+            ["REFORGED_GAME_EXE", exe],
+            ...(lx.wine ? [["REFORGED_WINE", lx.wine]] : []),
+            ...(lx.proton ? [["REFORGED_PROTON", lx.proton]] : []),
+            ["REFORGED_WINEPREFIX", p.winePrefix],
+            ["REFORGED_PROTON_DATA", p.protonData],
+            ["REFORGED_XVFB", lx.xvfb ? "1" : "0"],
+        ] as [string, string][] : []),
         ["METAGAME_API_KEY", s.gameserverKey],
         ["SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP", "3"],
-        ["GAMESERVER_READY_TIMEOUT_MS", "30000"],
+        // Under Wine a game server takes longer to load its first map.
+        ["GAMESERVER_READY_TIMEOUT_MS", linux ? "90000" : "30000"],
         ["MAX_CONCURRENT_HUNT_SERVERS", String(c.maxHuntServers)],
         ["SERVER_RUNTIME_AUTO_UPDATE", "false"],
         ["SERVER_RUNTIME_UPDATE_REQUIRED", "false"],
@@ -304,8 +339,13 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ];
     const allowlist: [string, string][] | null = c.mode === "public"
         ? [
-            // Only the real server changes Windows Firewall; anywhere else it only writes what it would do.
-            ["ALLOWLIST_DRY_RUN", (extra.platform ?? process.platform) === "win32" ? "0" : "1"],
+            // Windows Firewall on Windows, nftables on Linux; anywhere else it only writes what it would do.
+            ["ALLOWLIST_DRY_RUN", platform === "win32" || linux ? "0" : "1"],
+            ["ALLOWLIST_FIREWALL", linux ? "nftables" : "windows"],
+            ...(linux ? [
+                ["ALLOWLIST_NFT_TABLE", "reforged_revival"],
+                ...(lx.firewallInterface ? [["ALLOWLIST_INTERFACE", lx.firewallInterface]] : []),
+            ] as [string, string][] : []),
             ["ALLOWLIST_BIND", "127.0.0.1"],
             ["ALLOWLIST_PORT", String(PORTS.allowlist)],
             ["ALLOWLIST_SECRET", s.allowlistSecret],

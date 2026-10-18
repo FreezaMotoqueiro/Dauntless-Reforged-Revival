@@ -130,7 +130,7 @@ describe("the service env files", () => {
         assert.equal(get(f.content, "CONTENT_RUNTIME_DIR"), p.runtimePublish);
     });
 
-    it("public mode: TLS on 443 with the certificate, the allowlist helper for real only on Windows", () => {
+    it("public mode: TLS on 443 with the certificate, the allowlist helper for real on Windows and Linux", () => {
         const f = buildEnvFiles(PUBLIC, s, p, { platform: "win32" });
         assert.equal(get(f.gateway, "GATEWAY_TLS"), "1");
         assert.equal(get(f.gateway, "GATEWAY_BIND"), "0.0.0.0");
@@ -139,7 +139,11 @@ describe("the service env files", () => {
         assert.equal(get(f.gateway, "ALLOWLIST_SECRET"), s.allowlistSecret);
         assert.equal(get(f.allowlist ?? [], "ALLOWLIST_SECRET"), s.allowlistSecret);
         assert.equal(get(f.allowlist ?? [], "ALLOWLIST_DRY_RUN"), "0");
-        assert.equal(get(buildEnvFiles(PUBLIC, s, p, { platform: "linux" }).allowlist ?? [], "ALLOWLIST_DRY_RUN"), "1");
+        assert.equal(get(f.allowlist ?? [], "ALLOWLIST_FIREWALL"), "windows");
+        const linux = buildEnvFiles(PUBLIC, s, p, { platform: "linux" }).allowlist ?? [];
+        assert.equal(get(linux, "ALLOWLIST_DRY_RUN"), "0");
+        assert.equal(get(linux, "ALLOWLIST_FIREWALL"), "nftables");
+        assert.equal(get(buildEnvFiles(PUBLIC, s, p, { platform: "darwin" }).allowlist ?? [], "ALLOWLIST_DRY_RUN"), "1");
         assert.equal(get(f.director, "MY_IP"), "203.0.113.7");
         assert.equal(get(f.backend, "REALTIME_XMPP_ALLOWED_HOSTS"), "hunts.example.net");
     });

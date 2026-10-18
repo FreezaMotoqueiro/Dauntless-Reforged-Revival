@@ -146,6 +146,21 @@ describe("gateway configuration", () => {
 describe("allowlist helper configuration", () => {
     const Base = { ALLOWLIST_SECRET: "a".repeat(40), ALLOWLIST_DRY_RUN: "1" };
 
+    it("picks the firewall: windows or nftables, with a fixed nft path, a table name and an interface", () => {
+        assert.equal(LoadAllowlistConfig({ ...Base, ALLOWLIST_FIREWALL: "windows" }).firewall, "windows");
+        const Config = LoadAllowlistConfig({ ...Base, ALLOWLIST_FIREWALL: "nftables", ALLOWLIST_NFT: "/usr/sbin/nft", ALLOWLIST_NFT_TABLE: "my_table", ALLOWLIST_INTERFACE: "eth0" });
+        assert.equal(Config.firewall, "nftables");
+        assert.deepEqual(Config.nft, { binary: "/usr/sbin/nft", table: "my_table", iface: "eth0" });
+        assert.throws(() => LoadAllowlistConfig({ ...Base, ALLOWLIST_FIREWALL: "iptables" }), /ALLOWLIST_FIREWALL/);
+        assert.throws(() => LoadAllowlistConfig({ ...Base, ALLOWLIST_NFT: "nft" }), /ALLOWLIST_NFT/);
+        for(const Bad of ["1table", "my-table", "t; flush ruleset", "a".repeat(33)]){
+            assert.throws(() => LoadAllowlistConfig({ ...Base, ALLOWLIST_NFT_TABLE: Bad }), /ALLOWLIST_NFT_TABLE/, Bad);
+        }
+        for(const Bad of ["eth0\" accept", "a b", "x".repeat(16), "../x"]){
+            assert.throws(() => LoadAllowlistConfig({ ...Base, ALLOWLIST_INTERFACE: Bad }), /ALLOWLIST_INTERFACE/, Bad);
+        }
+    });
+
     it("demands an explicit ALLOWLIST_DRY_RUN", () => {
         assert.throws(() => LoadAllowlistConfig({ ALLOWLIST_SECRET: "a".repeat(40) }), /ALLOWLIST_DRY_RUN/);
         assert.throws(() => LoadAllowlistConfig({ ...Base, ALLOWLIST_DRY_RUN: "yes" }), /ALLOWLIST_DRY_RUN/);
@@ -162,6 +177,10 @@ describe("allowlist helper configuration", () => {
         assert.equal(Config.ports, "8770-8777");
         assert.equal(Config.allowPrivate, false);
         assert.match(Config.powershell, /System32[\\/]WindowsPowerShell[\\/]v1\.0[\\/]powershell\.exe$/i);
+        assert.equal(Config.firewall, "windows");
+        assert.equal(Config.nft.table, "reforged_revival");
+        assert.equal(Config.nft.iface, undefined);
+        assert.match(Config.nft.binary, /^\/(usr\/)?sbin\/nft$/);
         for(const Bind of ["0.0.0.0", "::", "192.168.1.5", "localhost"]){
             assert.throws(() => LoadAllowlistConfig({ ...Base, ALLOWLIST_BIND: Bind }), /ALLOWLIST_BIND/);
         }

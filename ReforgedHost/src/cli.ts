@@ -2,11 +2,12 @@
 //
 //   npm run setup -- --mode private [--host <Tailscale IP>] --name "Friday Hunts" --game "D:\Games\Dauntless"
 //   npm run setup -- --mode public --host 203.0.113.7 --name "Friday Hunts" --game "D:\Games\Dauntless"
+//   npm run setup -- --mode public --host 203.0.113.7 --name "Friday Hunts" --game /srv/dauntless/Dauntless   (Linux; docs/hosting-linux.md)
 //   npm run start
 //   npm run invite -- [--uses 1] [--for "Alex"] [--unlimited] [--list] [--json]
 //   npm run doctor
 //   npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]
-//   npm run publish-runtime
+//   npm run publish-runtime [-- --from <folder with MysticParadox.dll and winmm.dll>]
 //   npm run preset [-- --create [--generate] [--name "<name>"] | --apply [--force]]
 //   npm run multipliers [-- --xp 5 --rewards 5 | --off]   (private test servers only)
 //   npm run upstream   (only downloads and patches Mystic Paradox: what importing the SDK needs)
@@ -31,7 +32,9 @@ import {
     readHostConfig,
     writeEnvFiles,
     writeHostConfig,
+    LINUX_INTERFACE,
     type HostConfig,
+    type LinuxOptions,
 } from "./hostconfig";
 import { certificateFingerprint, createInviteCode, inviteFor, listInviteCodes } from "./invite";
 import { ensureReplicaSet, findMongod, mongodArgs } from "./mongo";
@@ -41,6 +44,21 @@ import { capture, run } from "./run";
 import { Supervisor, type ServiceSpec } from "./services";
 import { applyUpdate, checkForUpdate, UpdateError, type UpdateCheck } from "./selfupdate";
 import { ensureUpstream, gitAvailable, readPin } from "./upstream";
+import {
+    canBindPort,
+    canChangeFirewall,
+    isRoot,
+    ensureWinePrefix,
+    gameRuntime,
+    linuxFirewallScript,
+    linuxOptions,
+    UNIT_ALLOWLIST,
+    UNIT_SERVER,
+    writeGameserverWrapper,
+    writeSystemdUnits,
+} from "./linux";
+import { findOnPath } from "./wine";
+import { waitForHttp } from "./services";
 
 type Args = { _: string[]; [k: string]: string | boolean | string[] };
 
@@ -80,12 +98,23 @@ function fail(message: string): never {
     process.exit(1);
 }
 
+const onLinux = process.platform === "linux";
+
+function gitHelp(): string {
+    return onLinux ? "install it with: sudo apt install git" : "install Git for Windows from https://git-scm.com";
+}
+
 function isWindowsAdmin(): boolean {
     if (process.platform !== "win32") return true;
     return spawnSync("net", ["session"], { windowsHide: true, stdio: "ignore" }).status === 0;
 }
 
 // ------------------------------------------------------------------ setup
+
+// Linux: the server runs as an ordinary user. The game servers face the internet, and Wine refuses a
+// prefix another user owns; the systemd units give the gateway and the allowlist the one privilege
+// each needs.
+const NOT_AS_ROOT = "do not run the server as root. Make a user for it (sudo adduser reforged), sign in as that user (sudo -iu reforged) and run this there; docs/hosting-linux.md shows every step";
 
 // --xp-multiplier / --reward-multiplier on setup (or --xp / --rewards on `multipliers`): a number from 1 to 100.
 function multiplierArg(args: Args, names: string[], fallback: number): number {
@@ -105,7 +134,27 @@ export function multipliersFromArgs(args: Args, mode: HostConfig["mode"], existi
     return { xp, rewards };
 }
 
-export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null }): HostConfig {
+// Linux: --wine <path or name>, --proton <script> (--no-proton), --no-xvfb (--xvfb), --firewall-interface <eth0>
+// (--no-firewall-interface). Each one keeps what host.json had when it is not given.
+export function linuxFromArgs(args: Args, existing: LinuxOptions | undefined, find: (name: string) => string | null = (n) => findOnPath([n])): LinuxOptions {
+    const program = (name: string, what: string): string => {
+        const found = path.posix.isAbsolute(name) ? name : find(name);
+        if (!found) throw new Error(`--${what} ${name}: not found (give its full path)`);
+        return found;
+    };
+    const wineArg = str(args, "wine");
+    const protonArg = str(args, "proton");
+    const iface = str(args, "firewall-interface");
+    if (iface !== undefined && !LINUX_INTERFACE.test(iface)) throw new Error(`--firewall-interface must be a network interface name like eth0 (got ${iface})`);
+    return {
+        wine: wineArg !== undefined ? program(wineArg, "wine") : existing?.wine ?? null,
+        proton: args["no-proton"] === true ? null : protonArg !== undefined ? program(protonArg, "proton") : existing?.proton ?? null,
+        xvfb: args["no-xvfb"] === true ? false : args.xvfb === true ? true : existing?.xvfb ?? true,
+        firewallInterface: args["no-firewall-interface"] === true ? null : iface ?? existing?.firewallInterface ?? null,
+    };
+}
+
+export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null; platform?: NodeJS.Platform }): HostConfig {
     const mode = (str(args, "mode") ?? existing?.mode) as HostConfig["mode"] | undefined;
     if (mode !== "private" && mode !== "public") throw new Error("say which kind of server: --mode private (friends over Tailscale) or --mode public (a server on the internet)");
     // A private server follows this PC's Tailscale address, which changes with the Tailscale account:
@@ -144,6 +193,7 @@ export function hostConfigFromArgs(args: Args, existing: HostConfig | null, dete
         mongo: { uri: mongoUri, manage, mongod: str(args, "mongod") ?? existing?.mongo.mongod ?? (manage ? detect.mongod() : null) },
         maxHuntServers: Number(str(args, "max-hunts") ?? existing?.maxHuntServers ?? 3),
         multipliers: multipliersFromArgs(args, mode, existing?.mode === mode ? existing.multipliers : undefined),
+        ...((detect.platform ?? process.platform) === "linux" ? { linux: linuxFromArgs(args, existing?.linux) } : existing?.linux ? { linux: existing.linux } : {}),
     };
 }
 
@@ -214,9 +264,10 @@ async function npmInstallAndBuild(dir: string, logFile: string, label: string): 
 }
 
 async function setup(p: Paths, args: Args): Promise<void> {
-    if (!gitAvailable()) fail("git is needed (it downloads Mystic Paradox at the pinned commit): install Git for Windows from https://git-scm.com");
+    if (!gitAvailable()) fail(`git is needed (it downloads Mystic Paradox at the pinned commit): ${gitHelp()}`);
     // A value with spaces that was not quoted arrives in pieces (--game D:\Games\My, then Dauntless).
     if (args._.length > 1) fail(`unexpected "${args._.slice(1).join(" ")}": put a value with spaces in quotes, for example --game "D:\\Games\\Dauntless 1.14.7\\Dauntless"`);
+    if (onLinux && isRoot()) fail(NOT_AS_ROOT);
     const logFile = path.join(p.logs, "setup.log");
     fs.mkdirSync(p.logs, { recursive: true });
 
@@ -270,8 +321,21 @@ async function setup(p: Paths, args: Args): Promise<void> {
     const sourceCommit = capture("git", ["rev-parse", "--short=12", "HEAD"], p.repo) ?? "";
     const written = writeEnvFiles(p, buildEnvFiles(config, secrets, p, { sourceCommit }));
     say(`- env files: ${written.map((f) => path.basename(f)).join(", ")} in ${p.config}`);
-    fs.writeFileSync(path.join(p.config, "firewall.ps1"), firewallScript(config, process.execPath));
-    say(`- firewall rules to add once (as administrator): ${path.join(p.config, "firewall.ps1")}`);
+    if (onLinux) {
+        const firewall = path.join(p.config, "firewall.sh");
+        fs.writeFileSync(firewall, linuxFirewallScript(config), { mode: 0o755 });
+        say(`- host firewall (ufw), once: sudo sh ${firewall}`);
+        say(`- game-server launcher (Wine): ${writeGameserverWrapper(p)}`);
+        try {
+            writeSystemdUnits(config, p);
+            say(`- systemd units (run the server at boot), once: sudo sh ${path.join(p.systemd, "install.sh")}`);
+        } catch (e) {
+            say(`! systemd units not written: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    } else {
+        fs.writeFileSync(path.join(p.config, "firewall.ps1"), firewallScript(config, process.execPath));
+        say(`- firewall rules to add once (as administrator): ${path.join(p.config, "firewall.ps1")}`);
+    }
 
     if (config.mode === "public") {
         if (!fs.existsSync(p.certFile)) {
@@ -283,17 +347,49 @@ async function setup(p: Paths, args: Args): Promise<void> {
         say(`- certificate fingerprint (goes into every invite): ${certificateFingerprint(p.certFile)}`);
     }
 
-    if (config.mongo.manage && !config.mongo.mongod) say("\n! MongoDB was not found. Install MongoDB Community Server (https://www.mongodb.com/try/download/community), then run setup again, or pass --mongod <path to mongod.exe>.");
+    if (onLinux) await linuxSetup(p, config, logFile);
+
+    if (config.mongo.manage && !config.mongo.mongod) say(`\n! MongoDB was not found. Install MongoDB Community Server (${onLinux ? "docs/hosting-linux.md" : "https://www.mongodb.com/try/download/community"}), then run setup again, or pass --mongod <path to ${onLinux ? "mongod" : "mongod.exe"}>.`);
     if (!config.gameDir) say("\n! No game folder yet: pass --game \"<your Dauntless 1.14.7 folder>\" (the game servers run from it).");
     else if (!fs.existsSync(path.join(config.gameDir, GAME_EXE_RELATIVE))) say(`\n! No ${GAME_EXE_RELATIVE} in ${config.gameDir}: pass --game "<the Dauntless folder that holds Archon>" (the game servers run from it).`);
 
     say("\nSetup done. Next:");
+    if (onLinux) {
+        say("  1. The game runtime and the game data come from a Windows PC with your own 1.14.7 (docs/hosting-linux.md):");
+        say("     npm run publish-runtime -- --from <the folder with MysticParadox.dll and winmm.dll>");
+        say("     npm run gamedata -- --import <the game data pack>");
+        say(`  2. Once: sudo sh ${path.join(p.config, "firewall.sh")}`);
+        say(`  3. Run it (and at every boot): sudo sh ${path.join(p.systemd, "install.sh")}   Logs: journalctl -u ${UNIT_SERVER} -f`);
+        if (config.mode === "private") say("     (a private server also runs in a terminal: npm run start)");
+        say("  4. npm run invite -- --for \"Alex\"");
+        say("  npm run doctor shows what is still missing.");
+        return;
+    }
     say("  1. The SDK, the runtime and the game data, from your own game: docs/sdk-and-game-data.md");
     say("     (the launcher's Host tools page does most of it: Settings > Advanced > Host tools)");
     say("  2. npm run publish-runtime");
     say("  3. npm run start");
     say("  4. npm run invite -- --for \"Alex\"");
     say("  npm run doctor shows what is still missing.");
+}
+
+// Linux: what runs the Windows game servers, checked and prepared once.
+async function linuxSetup(p: Paths, config: HostConfig, logFile: string): Promise<void> {
+    const lx = linuxOptions(config);
+    say("\n4. Linux: the game servers run through Wine");
+    const runtime = gameRuntime(lx);
+    if (!runtime) {
+        say("! Wine was not found: sudo apt install wine wine64 (docs/hosting-linux.md), then run setup again. Or pass --wine <path> or --proton <script>.");
+    } else {
+        say(`- ${runtime.kind === "proton" ? "Proton" : "Wine"}: ${runtime.path}`);
+        if (runtime.kind === "wine") {
+            say("- Wine prefix: preparing it (the first time takes a minute or two)...");
+            const r = await ensureWinePrefix(p, lx, logFile);
+            say(r.ok ? `- Wine prefix ${r.created ? "made" : "ready"}: ${p.winePrefix}` : `! Wine prefix: ${r.detail}`);
+        }
+    }
+    if (lx.xvfb && !findOnPath(["xvfb-run"])) say("! xvfb-run was not found (the game servers need a virtual display): sudo apt install xvfb xauth");
+    if (config.mode === "public" && !fs.existsSync("/usr/sbin/nft") && !fs.existsSync("/sbin/nft")) say("! nftables was not found (the allowlist needs it): sudo apt install nftables");
 }
 
 // ------------------------------------------------------------------ start
@@ -310,7 +406,16 @@ async function start(p: Paths): Promise<void> {
     for (const name of ["backend", "director", "content", "gateway"]) {
         if (!fs.existsSync(path.join(p.config, `${name}.env`))) fail(`${name}.env is missing: run npm run setup`);
     }
-    if (config.mode === "public" && !isWindowsAdmin()) {
+    // Linux, public: the reforged-allowlist systemd unit runs the allowlist (with CAP_NET_ADMIN), and the
+    // reforged unit gives this process CAP_NET_BIND_SERVICE for port 443.
+    const externalAllowlist = onLinux && config.mode === "public" && process.env.REFORGED_ALLOWLIST === "external";
+    if (onLinux) {
+        if (isRoot()) fail(NOT_AS_ROOT);
+        if (!fs.existsSync(p.gameserverWrapper)) fail("the game-server launcher is missing: run npm run setup");
+        const asService = `run it as a systemd service: sudo sh ${path.join(p.systemd, "install.sh")} (then journalctl -u ${UNIT_SERVER} -f shows it)`;
+        if (config.mode === "public" && !canBindPort(PORTS.publicGateway)) fail(`a public server listens on port ${PORTS.publicGateway}, which needs a privilege: ${asService}`);
+        if (config.mode === "public" && !externalAllowlist && !canChangeFirewall()) fail(`a public server's allowlist changes the firewall (nftables), which needs a privilege: ${asService}`);
+    } else if (config.mode === "public" && !isWindowsAdmin()) {
         fail("a public server changes Windows Firewall rules (the allowlist helper) and listens on port 443: run this terminal as administrator");
     }
     // The gateway and the game servers listen on the Tailscale address: one that changed (another
@@ -341,7 +446,7 @@ async function start(p: Paths): Promise<void> {
         stopping = true;
         say("\nStopping...");
         await supervisor.stopAll();
-        if (config.mode === "public") {
+        if (config.mode === "public" && !externalAllowlist) {
             // A hard stop never lets the helper close the game ports itself (Dauntless Revived's README).
             await run(node, [path.join(p.gatewayDir, "dist", "allowlist", "server.js"), "--close-ports"], { cwd: p.gatewayDir, quiet: true, env: { ...process.env, ...readEnvForProcess(p, "allowlist") } });
         }
@@ -378,12 +483,37 @@ async function start(p: Paths): Promise<void> {
     }
     if (mongo.initiated) say(`mongod   | replica set ${mongo.setName} initiated`);
 
+    // MongoDB may be running by now: stop it before giving up.
+    const abort = async (message: string): Promise<never> => {
+        await supervisor.stopAll();
+        fail(message);
+    };
+    if (onLinux) {
+        const lx = linuxOptions(config);
+        if (gameRuntime(lx)?.kind === "wine") {
+            const prefix = await ensureWinePrefix(p, lx, path.join(p.logs, "wine.log"));
+            if (prefix.created) say("wine     | Wine prefix made");
+            if (!prefix.ok) say(`wine     | ! ${prefix.detail}`);
+        } else if (!gameRuntime(lx)) say("wine     | ! Wine was not found: the game servers cannot start (sudo apt install wine wine64)");
+        if (config.mode === "public") {
+            if (externalAllowlist) {
+                // Its table must be in place (game ports closed) before the Director starts any game server.
+                if (!(await waitForHttp(PORTS.allowlist, "/status", 30000))) await abort(`the allowlist (${UNIT_ALLOWLIST}) is not answering on port ${PORTS.allowlist}: systemctl status ${UNIT_ALLOWLIST}`);
+                say("allowlist| the reforged-allowlist service is running");
+            } else {
+                // Linux has no firewall closing the game ports by default: close them before any game server starts.
+                const closed = await run(node, [path.join(p.gatewayDir, "dist", "allowlist", "server.js"), "--close-ports"], { cwd: p.gatewayDir, quiet: true, env: { ...process.env, ...readEnvForProcess(p, "allowlist") } });
+                if (closed.code !== 0) await abort(`could not close the game ports (nftables): ${closed.lastLine}`);
+            }
+        }
+    }
+
     const specs: ServiceSpec[] = [
         { name: "backend", cwd: p.backendDir, command: node, args: ["build/server.js"], envFile: path.join(p.config, "backend.env"), ready: { port: PORTS.backend, path: "/dauntless-status" } },
         { name: "director", cwd: p.directorDir, command: node, args: ["dist/server.js"], envFile: path.join(p.config, "director.env"), ready: { port: PORTS.director, path: "/api/instances" }, killTree: true },
         { name: "content", cwd: p.contentDir, command: node, args: ["dist/server.js"], envFile: path.join(p.config, "content.env"), ready: { port: PORTS.content, path: "/content/v1/news" } },
     ];
-    if (config.mode === "public") {
+    if (config.mode === "public" && !externalAllowlist) {
         specs.push({ name: "allowlist", cwd: p.gatewayDir, command: node, args: ["dist/allowlist/server.js"], envFile: path.join(p.config, "allowlist.env"), ready: { port: PORTS.allowlist, path: "/status" } });
     }
     specs.push({
@@ -449,7 +579,7 @@ function multipliers(p: Paths, args: Args): void {
 // Setup's first step alone: the pinned Mystic Paradox, patched, in .workspace. Importing the SDK (and
 // building the runtime) needs only this, so a host can do those before the server is set up.
 async function upstream(p: Paths): Promise<void> {
-    if (!gitAvailable()) fail("git is needed (it downloads Mystic Paradox at the pinned commit): install Git for Windows from https://git-scm.com");
+    if (!gitAvailable()) fail(`git is needed (it downloads Mystic Paradox at the pinned commit): ${gitHelp()}`);
     const pin = readPin(p.upstreamPin);
     try {
         const result = await ensureUpstream({ dir: p.upstream, markerFile: p.marker, pin, patchesRoot: p.patchesDir, logFile: path.join(p.logs, "upstream.log") });
@@ -480,7 +610,7 @@ async function update(p: Paths, args: Args): Promise<void> {
     const json = args.json === true;
     const logFile = path.join(p.logs, "update.log");
     try {
-        if (!gitAvailable()) throw new Error("git is needed to update: install Git for Windows from https://git-scm.com");
+        if (!gitAvailable()) throw new Error(`git is needed to update: ${gitHelp()}`);
         if (args.check === true) {
             const c = await checkForUpdate(p.repo, { logFile });
             say(describeCheck(c));
@@ -648,10 +778,16 @@ async function preset(p: Paths, args: Args): Promise<void> {
     say("npm run setup applies it; npm run preset -- --apply [--force] applies it now.");
 }
 
-function publish(p: Paths): void {
+// --from <folder>: MysticParadox.dll and winmm.dll from that folder instead of this checkout's builds
+// (a Linux server's runtime is built on a Windows PC and copied over).
+function publish(p: Paths, args: Args): void {
+    const from = args.from;
+    if (from === true) fail("--from needs the folder that holds MysticParadox.dll and winmm.dll");
+    const dir = typeof from === "string" ? path.resolve(process.env.INIT_CWD ?? process.cwd(), from) : null;
+    const sources = dir ? { "MysticParadox.dll": path.join(dir, "MysticParadox.dll"), "winmm.dll": path.join(dir, "winmm.dll") } : undefined;
     let runtime;
     try {
-        runtime = publishRuntime(p);
+        runtime = publishRuntime(p, new Date(), sources);
     } catch (e) {
         fail(e instanceof Error ? e.message : String(e));
     }
@@ -688,7 +824,7 @@ async function main(): Promise<void> {
         case "gamedata":
             return gamedata(p, args);
         case "publish-runtime":
-            return publish(p);
+            return publish(p, args);
         case "preset":
             return preset(p, args);
         case "multipliers":
@@ -702,11 +838,12 @@ async function main(): Promise<void> {
             say("  npm run setup -- --mode private|public [--host <address>] --name \"<server name>\" --game \"<Dauntless 1.14.7 folder>\"");
             say("                   [--game-address <IPv4>] [--registration INVITECODE|OPEN|NONE] [--share <Tailscale share link>]");
             say("                   [--mongo-uri <uri>] [--no-manage-mongo] [--mongod <path>] [--max-hunts 1-6] [--skip-install] [--force-upstream]");
+            say("                   Linux: [--wine <path>] [--proton <script> | --no-proton] [--no-xvfb | --xvfb] [--firewall-interface <eth0> | --no-firewall-interface]");
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list] [--json]");
             say("  npm run doctor [-- --no-hash]");
             say("  npm run gamedata [-- --examples | --example-sources | --progression | --export [file] | --import <file>]");
-            say("  npm run publish-runtime");
+            say("  npm run publish-runtime [-- --from <folder with MysticParadox.dll and winmm.dll>]");
             say("  npm run preset [-- --create [--generate] [--name \"<name>\"] | --apply [--force]]");
             say("  npm run multipliers [-- --xp 1-100 --rewards 1-100 | --off]   (private test servers; also setup's --xp-multiplier/--reward-multiplier)");
             say("  npm run upstream   (downloads and patches Mystic Paradox only)");
