@@ -33,6 +33,8 @@
     "patches/0025-backend-city-chat-for-players-sent-there.patch",
     "patches/0026-runtime-log-client-inventory-refresh.patch",
     "patches/0027-runtime-resolve-loadout-item-slots-late.patch",
-    "patches/0028-backend-keep-every-active-bounty-token.patch"
+    "patches/0028-backend-keep-every-active-bounty-token.patch",
+    "patches/0029-runtime-cell-fusion-time-30-minutes.patch",
+    "patches/0030-backend-platinum-store-free.patch"
   ]
 }
