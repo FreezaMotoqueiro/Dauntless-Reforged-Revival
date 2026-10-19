@@ -431,6 +431,29 @@ around that moment in `mysticparadox_dll_port0.log` show whether the refresh dro
 `DISABLE_CLIENT_INVENTORY_TRACE.flag` beside the game executable turns it off. It is a runtime patch: build the
 runtime again and publish it.
 
+### 0027: the arsenal looks its items up again when the inventory arrives late
+
+`ParadoxRuntime/dllmain.cpp`, the player's game only. The arsenal emptied again on 19 Oct in a hunt reached by
+searching from another hunt. The 0026 trace showed the cause: in that hunt the loadout's `Inventory` reached the
+client 1.2 s after its slots (`ArchonLoadout.OnRep_Inventory` came last instead of first). Each loadout item lives in
+a `UArchonLoadoutItemSlot`, and only the CRC of its item id replicates (`FItemInstanceIdRepl::ItemInstanceID` is
+`RepSkip`). The client turns the CRC back into the id in `UArchonLoadoutItemSlot::OnRep_ItemInstanceIdChanged`
+(`+0x1BADCE0`) by looking in the slot's own `Inventory` (`+0x28`), and returns without doing anything while that
+pointer is null. Nothing looks it up again later: the slot's `Inventory` has no OnRep, and
+`AArchonLoadout::OnRep_Inventory` (`+0x1BAD7D0`) re-resolves only the loadout's own ids (emotes, banner, title),
+not the slots'. The arsenal then shows empty slots and the HUD shows its placeholder weapon XP, while the server and
+the character still have the gear. The same thing can happen after an inventory hash-mismatch refresh (the 17 Oct
+cases).
+
+About once a second, the client now looks through the local loadout's item slots. A slot qualifies when it has a
+CRC but no item id and its inventory has finished loading. For each one, it runs the slot's own
+`OnRep_ItemInstanceIdChanged` again, then calls `OnRep_GenericLoadoutChanged` on the loadout so the menus redraw. A
+slot whose id is still unknown after three tries is left alone. Each try writes a `[LoadoutSlotRepair]` line to
+`mysticparadox_dll_port0.log`, and slots still waiting for their inventory get one line per loadout.
+`DISABLE_LOADOUT_SLOT_REPAIR.flag` beside the game executable turns it off. Correction to 0026: its
+`equippedResolved` count is the number of slot objects that exist, not the number of items they resolve to. It
+is a runtime patch: build the runtime again and publish it.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
