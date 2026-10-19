@@ -454,6 +454,17 @@ slot whose id is still unknown after three tries is left alone. Each try writes 
 `equippedResolved` count is the number of slot objects that exist, not the number of items they resolve to. It
 is a runtime patch: build the runtime again and publish it.
 
+### 0028: several bounty tokens stay active
+
+`ParadoxBackend/src/bountyState.ts`. Only one bounty token could stay active: with a second one drafted, entering a
+hunt brought back only the last one. Drafting a token makes the server save `{ bounties: [the bounty just drafted],
+draft_data }`. The backend read a save with one draft-data key as the component's whole list and deleted every
+stored bounty of that group the save did not name, so each new token deleted the ones before it. The city server
+still had them in memory, but the hunt server loads the board from the backend, so only the last one came back.
+Token bounties (the base group) are now upserted, like Dauntless Revived's metagame does with every bounty save; a
+token leaves the board only when the server claims or abandons it through `POST /bounty/delete` (0010). The daily
+bounty and the season challenges keep the replace rule. Bounties deleted before this patch do not come back.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store

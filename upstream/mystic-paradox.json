@@ -32,6 +32,7 @@
     "patches/0024-runtime-supplies-without-stack-cap.patch",
     "patches/0025-backend-city-chat-for-players-sent-there.patch",
     "patches/0026-runtime-log-client-inventory-refresh.patch",
-    "patches/0027-runtime-resolve-loadout-item-slots-late.patch"
+    "patches/0027-runtime-resolve-loadout-item-slots-late.patch",
+    "patches/0028-backend-keep-every-active-bounty-token.patch"
   ]
 }
