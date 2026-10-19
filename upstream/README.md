@@ -397,6 +397,23 @@ hooks, at most every 5 seconds); it logs `[SupplyCap]` once per change. Flares a
 items (cap 1) are not touched. `KEEP_SUPPLY_STACK_CAPS.flag` beside the game executable keeps the game's
 caps. It is a runtime patch: build the runtime again and publish it.
 
+### 0025: Ramsgate chat, quick chat and emojis reach the City room
+
+`ParadoxBackend/src/realtime/RoomService.ts`, new `realtime/cityRooms.ts`, `controllers/matchmaking.ts`,
+`routes/matchmaking.ts`. In Ramsgate (and the dojo) the client sends typed lines, quick chats and emojis to
+its city's XMPP room, `City-<gameSessionId>` (`UChatClient::SendRoomMessage` and `SendPlayerMessage`), with
+the `gameSessionId` from the `/candidate/status` answer that sent it there. Upstream lets an account into a
+City room only through the insecure development switch `REALTIME_XMPP_DEV_CITY_MUC` (any account, any City
+room), which a production backend must keep off, so the host kit sets it to `false` and every City join was
+refused: `[XMPP] MUC join denied (city muc disabled) room=City-...` (477 times in the host's backend log).
+Hunt rooms have their own switch, on by default, which is why chat worked in hunts.
+
+The backend now remembers, per account, the hub game session it last sent the account to (when
+`/candidate/status` answers with a hub's `gameSessionId`), and lets that account into exactly
+`City-<that id>`. Any other City room is still refused, now as `not sent to this city`. The development switch
+keeps its meaning. After a backend restart the hubs get new ids, so a player already in Ramsgate chats again
+after their next travel. `src/realtime/cityRooms.test.ts` covers it.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
