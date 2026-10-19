@@ -414,6 +414,23 @@ The backend now remembers, per account, the hub game session it last sent the ac
 keeps its meaning. After a backend restart the hubs get new ids, so a player already in Ramsgate chats again
 after their next travel. `src/realtime/cityRooms.test.ts` covers it.
 
+### 0026: the player's game logs what happens to its inventory and loadout
+
+`ParadoxRuntime/dllmain.cpp`, the player's game only, logging only. Twice on 17 Oct the arsenal showed an empty
+loadout ("Novo Equipamento", no armour, power 0) and the HUD its placeholder weapon XP (8,888 / 100,000) while
+the character still wore its gear. Both times the game had just repaired an inventory state hash mismatch, once in
+Ramsgate (a reward transaction landed between the server's and the client's inventory load) and once in a hunt
+after a material pickup, and the inventory was fetched again. Nothing in the logs shows what the client did then.
+
+The client now writes a `[ClientInventoryTrace #n]` line before and after every inventory or loadout RPC and
+OnRep it runs (`ArchonInventory.Client*`, `HandleItemStateUpdates`, `ServerHandleInventoryHashMismatch`,
+`ArchonInventory.OnRep*`, `ArchonLoadout.OnRep*` / `Client*`, `ArchonLoadoutSlotData.OnRep*`), at most 600
+per game run, with the local loadout's active slot, slot count and how many of the five equipped items
+(weapon, helmet, chest, arms, legs) the game's own getters resolve. When the arsenal empties again, the lines
+around that moment in `mysticparadox_dll_port0.log` show whether the refresh dropped the equipped items.
+`DISABLE_CLIENT_INVENTORY_TRACE.flag` beside the game executable turns it off. It is a runtime patch: build the
+runtime again and publish it.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
