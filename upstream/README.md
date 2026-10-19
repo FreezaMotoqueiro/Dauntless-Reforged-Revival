@@ -487,6 +487,17 @@ the Reward Cache's coins) are unchanged. The SKU data keeps its real prices, so 
 backend's environment brings them back. A one-time offer bought before this patch was recorded with its old price,
 so buying it again answers 409 (already bought) instead of replaying the old purchase.
 
+### 0031: broken Behemoth parts show as broken (server locale)
+
+`ParadoxRuntime/dllmain.cpp`, server side. Ported from Dauntless Revived (`UndauntedInternalServer/ServerLocale.h`,
+commit 9245d3f): they traced parts that stay attached on the player's screen after a rewarded break to servers
+whose Windows culture writes decimals with a comma, which then misread decimal-point values. The game server now
+serves its engine command line with `-CULTURE=en-US` (through the `FCommandLine::Get` hook, unless a `-culture=` is
+already there) and sets the "C" locale on the game's CRT (`ucrtbase.dll`) and on the runtime's own before the engine
+starts. The server log shows `[ServerLocale] windows_user_locale=... decimal_before='...' decimal_after='.'` and
+`[CommandLine] appended -CULTURE=en-US`. `DISABLE_SERVER_LOCALE_FIX.flag` beside the game executable turns it off.
+Only the game servers need the new runtime; the players' games are unchanged.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
