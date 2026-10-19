@@ -30,6 +30,7 @@
     "patches/0022-director-hunt-memory-guard.patch",
     "patches/0023-backend-session-supplies-refill.patch",
     "patches/0024-runtime-supplies-without-stack-cap.patch",
-    "patches/0025-backend-city-chat-for-players-sent-there.patch"
+    "patches/0025-backend-city-chat-for-players-sent-there.patch",
+    "patches/0026-runtime-log-client-inventory-refresh.patch"
   ]
 }
