@@ -465,6 +465,28 @@ Token bounties (the base group) are now upserted, like Dauntless Revived's metag
 token leaves the board only when the server claims or abandons it through `POST /bounty/delete` (0010). The daily
 bounty and the season challenges keep the replace rule. Bounties deleted before this patch do not come back.
 
+### 0029: cell fusion at the Middleman takes 30 minutes
+
+`ParadoxRuntime/dllmain.cpp`, the game servers and the player's game. Each fusion recipe's `TimeRequired` comes
+from the game's cell exchange data table (row struct `CellExchangeTableData`, held by
+`UArchonGameInstance::CellExchangeTable`): the server builds a started fusion's end time from it
+(`UArchonInventory::ExchangeCells`) and the Middleman's screen shows it. `MpSetCellFusionTime` sets every recipe to
+30 minutes in memory, from both ProcessEvent hooks, every 2 seconds until the table is found and then every 30
+seconds, and logs `[CellFusion]` with the old times. This is how Dauntless Revived does it (its `CellFusionTime.h`,
+1 hour). `CELL_FUSION_MINUTES` (0 to 10080) sets another time; `CELL_FUSION_MINUTES=0` or
+`KEEP_CELL_FUSION_TIME.flag` beside the game executable keeps the game's own times. The server decides the real
+time; the player's game needs the new runtime only for the Middleman to show 30 minutes. Fusions started before the
+update keep the end time they were given.
+
+### 0030: Platinum offers are free
+
+`ParadoxBackend/src/platinumStoreFree.ts`, `controllers/store.ts`, `routes/store.ts`. Every price in Platinum
+(webstore, dyes, Hunt Pass rank skips and tracks, the Middleman's fusion slots 2 and 3) is listed as 0 by
+`GET /product/skus/public` and nothing is debited for it at purchase. Prices in other currencies (Lady Luck's marks,
+the Reward Cache's coins) are unchanged. The SKU data keeps its real prices, so `PLATINUM_STORE_FREE=0` in the
+backend's environment brings them back. A one-time offer bought before this patch was recorded with its old price,
+so buying it again answers 409 (already bought) instead of replaying the old purchase.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
