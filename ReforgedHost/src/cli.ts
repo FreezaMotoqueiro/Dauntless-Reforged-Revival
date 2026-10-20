@@ -38,6 +38,7 @@ import {
     performanceOptions,
     validFps,
     validMegabytes,
+    validMinutes,
     type HostConfig,
     type LinuxOptions,
     type PerformanceOptions,
@@ -175,7 +176,7 @@ export function publicPortFromArgs(args: Args, mode: HostConfig["mode"], existin
 
 // --server-fps <0|10-240>, --idle-fps <0|1-240>, --training-on-demand (--training-at-boot),
 // --verbose-game-logs (--quiet-game-logs), --memory-guard (--no-memory-guard), --min-free-ram <MB>,
-// --hunt-ram <MB>. Each one keeps what host.json had when it is not given.
+// --hunt-ram <MB>, --training-idle-minutes <0-1440>. Each one keeps what host.json had when it is not given.
 export function performanceFromArgs(args: Args, existing: HostConfig["performance"]): PerformanceOptions {
     const current = performanceOptions({ performance: existing });
     const fps = (name: string, min: number, fallback: number, meaning: string): number => {
@@ -183,6 +184,13 @@ export function performanceFromArgs(args: Args, existing: HostConfig["performanc
         if (raw === undefined) return fallback;
         const value = Number(raw);
         if (!validFps(value, min)) throw new Error(`--${name} must be 0 (${meaning}) or ${min} to 240 frames per second (got ${raw})`);
+        return value;
+    };
+    const minutes = (name: string, fallback: number): number => {
+        const raw = str(args, name);
+        if (raw === undefined) return fallback;
+        const value = Number(raw);
+        if (!validMinutes(value)) throw new Error(`--${name} must be 0 (keep them running) or 1 to 1440 minutes (got ${raw})`);
         return value;
     };
     const megabytes = (name: string, min: number, fallback: number): number => {
@@ -196,6 +204,7 @@ export function performanceFromArgs(args: Args, existing: HostConfig["performanc
         serverFps: fps("server-fps", 10, current.serverFps, "no cap"),
         idleFps: fps("idle-fps", 1, current.idleFps, "the same as --server-fps"),
         trainingOnDemand: args["training-at-boot"] === true ? false : args["training-on-demand"] === true ? true : current.trainingOnDemand,
+        trainingIdleMinutes: minutes("training-idle-minutes", current.trainingIdleMinutes),
         verboseGameLogs: args["quiet-game-logs"] === true ? false : args["verbose-game-logs"] === true ? true : current.verboseGameLogs,
         memoryGuard: args["no-memory-guard"] === true ? false : args["memory-guard"] === true ? true : current.memoryGuard,
         minFreeMemoryMb: megabytes("min-free-ram", 0, current.minFreeMemoryMb),
@@ -203,12 +212,17 @@ export function performanceFromArgs(args: Args, existing: HostConfig["performanc
     };
 }
 
+export function trainingText(perf: Pick<PerformanceOptions, "trainingOnDemand" | "trainingIdleMinutes">): string {
+    if (!perf.trainingOnDemand) return "at boot";
+    return perf.trainingIdleMinutes > 0 ? `on demand, stopped after ${perf.trainingIdleMinutes} min without players` : "on demand";
+}
+
 export function performanceSummary(c: HostConfig): string {
     const perf = performanceOptions(c);
     const fps = perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap";
     const idle = perf.idleFps > 0 ? `${perf.idleFps} fps after 15 s without players` : "no idle cap";
     const memory = perf.memoryGuard ? `a new hunt only with ${perf.huntMemoryMb + perf.minFreeMemoryMb} MB free` : "no memory guard";
-    return `Game servers: ${fps}, ${idle}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${c.maxHuntServers} hunt${c.maxHuntServers === 1 ? "" : "s"} at once (UDP ${gamePortsText(c)}), ${memory}`;
+    return `Game servers: ${fps}, ${idle}; Training Grounds ${trainingText(perf)}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${c.maxHuntServers} hunt${c.maxHuntServers === 1 ? "" : "s"} at once (UDP ${gamePortsText(c)}), ${memory}`;
 }
 
 export function hostConfigFromArgs(args: Args, existing: HostConfig | null, detect: { tailscale: () => string | null; mongod: () => string | null; platform?: NodeJS.Platform }): HostConfig {
@@ -908,7 +922,7 @@ async function main(): Promise<void> {
             say("                   public: [--public-port <port>] (when 443 is taken, by a hosting panel for example)");
             say("                   Linux: [--wine <path>] [--proton <script> | --no-proton] [--no-xvfb | --xvfb] [--firewall-interface <eth0> | --no-firewall-interface]");
             say("                   CPU/RAM: [--server-fps 0|10-240] [--idle-fps 0|1-240] [--training-on-demand | --training-at-boot] [--quiet-game-logs | --verbose-game-logs]");
-            say("                            [--memory-guard | --no-memory-guard] [--min-free-ram <MB>] [--hunt-ram <MB>]");
+            say("                            [--memory-guard | --no-memory-guard] [--min-free-ram <MB>] [--hunt-ram <MB>] [--training-idle-minutes 0-1440]");
             say("  npm run start");
             say("  npm run invite -- [--uses N] [--unlimited] [--for \"<who>\"] [--list] [--json]");
             say("  npm run doctor [-- --no-hash]");

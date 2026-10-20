@@ -174,8 +174,9 @@ button for it.
 - **A new certificate** (public) changes the fingerprint: send new invites. Players keep their
   accounts; the launcher asks them to confirm the new certificate first.
 - **CPU and RAM**: each game server is capped at 30 frames per second, and at 10 once nobody has been
-  on it for 15 s; the Training Grounds start the first time someone goes there; the game servers log
-  warnings and errors only. Change it with `npm run setup -- --server-fps 30 --idle-fps 10`,
+  on it for 15 s; the Training Grounds start the first time someone goes there and stop again after
+  5 min without players; the game servers log warnings and errors only. Change it with
+  `npm run setup -- --server-fps 30 --idle-fps 10`, `--training-idle-minutes 5` (0 keeps them running),
   `--training-at-boot` and `--verbose-game-logs` (then restart). The frame cap and the runtime's CPU
   fixes are in the runtime (patches 0019 and 0020 in [upstream/README.md](../upstream/README.md)): after
   `npm run update`, build it again and `npm run publish-runtime`. `npm run doctor` says whether the

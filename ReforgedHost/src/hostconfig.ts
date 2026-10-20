@@ -59,18 +59,25 @@ export interface PerformanceOptions {
     // The Training Grounds start the first time someone goes there, not at boot (TRAINING_ON_DEMAND,
     // Director patch 0021).
     trainingOnDemand: boolean;
+    // On demand: they stop again after this many minutes without a player (TRAINING_IDLE_STOP_MINUTES,
+    // Director patch 0033); 0 keeps them running once started.
+    trainingIdleMinutes: number;
     // true: the game servers keep upstream's diagnostic log levels (LogPhoenixCharacter VeryVerbose,
     // LogOnline Verbose); false: warnings and errors only (GAMESERVER_LOG_CMDS).
     verboseGameLogs: boolean;
 }
 
-export const DEFAULT_PERFORMANCE: PerformanceOptions = { serverFps: 30, idleFps: 10, trainingOnDemand: true, verboseGameLogs: false, memoryGuard: true, minFreeMemoryMb: 1024, huntMemoryMb: 1536 };
+export const DEFAULT_PERFORMANCE: PerformanceOptions = { serverFps: 30, idleFps: 10, trainingOnDemand: true, trainingIdleMinutes: 5, verboseGameLogs: false, memoryGuard: true, minFreeMemoryMb: 1024, huntMemoryMb: 1536 };
 
 // The game servers' log levels when verboseGameLogs is off: warnings and errors, and LogLoad off as upstream has it.
 export const QUIET_GAME_LOG_CMDS = "LogPhoenixCharacter Warning, LogOnline Warning, LogLoad Off";
 
 export function performanceOptions(c: Pick<HostConfig, "performance">): PerformanceOptions {
     return { ...DEFAULT_PERFORMANCE, ...(c.performance ?? {}) };
+}
+
+export function validMinutes(value: unknown): boolean {
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1440;
 }
 
 export function validMegabytes(value: unknown, min: number): boolean {
@@ -257,6 +264,7 @@ export function validateHostConfig(c: HostConfig): HostConfig {
         if (!validFps(perf.serverFps, 10)) throw new Error(`performance.serverFps must be 0 (no cap) or 10 to 240 frames per second, not ${perf.serverFps}`);
         if (!validFps(perf.idleFps, 1)) throw new Error(`performance.idleFps must be 0 (same as serverFps) or 1 to 240 frames per second, not ${perf.idleFps}`);
         if (typeof perf.trainingOnDemand !== "boolean") throw new Error("performance.trainingOnDemand must be true or false");
+        if (!validMinutes(perf.trainingIdleMinutes)) throw new Error(`performance.trainingIdleMinutes must be 0 (keep them running) or 1 to 1440 minutes, not ${perf.trainingIdleMinutes}`);
         if (typeof perf.verboseGameLogs !== "boolean") throw new Error("performance.verboseGameLogs must be true or false");
         if (typeof perf.memoryGuard !== "boolean") throw new Error("performance.memoryGuard must be true or false");
         if (!validMegabytes(perf.minFreeMemoryMb, 0)) throw new Error(`performance.minFreeMemoryMb must be a whole number of MB, not ${perf.minFreeMemoryMb}`);
@@ -379,6 +387,10 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ["MAX_CONCURRENT_HUNT_SERVERS", String(c.maxHuntServers)],
         // The Training Grounds start the first time someone goes there (Director patch 0021).
         ["TRAINING_ON_DEMAND", perf.trainingOnDemand ? "1" : "0"],
+        // ... and stop again once empty for this long (Director patch 0033), told by the runtime's log beside the
+        // game executable.
+        ["TRAINING_IDLE_STOP_MINUTES", String(perf.trainingOnDemand ? perf.trainingIdleMinutes : 0)],
+        ...(exe ? [["GAMESERVER_RUNTIME_LOG_DIR", path.dirname(exe)]] as [string, string][] : []),
         // A new hunt only when the memory for it is free (Director patch 0022).
         ["GAMESERVER_MEMORY_GUARD", perf.memoryGuard ? "1" : "0"],
         ["GAMESERVER_MIN_FREE_MB", String(perf.minFreeMemoryMb)],
