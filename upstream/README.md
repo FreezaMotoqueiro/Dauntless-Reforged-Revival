@@ -498,6 +498,17 @@ starts. The server log shows `[ServerLocale] windows_user_locale=... decimal_bef
 `[CommandLine] appended -CULTURE=en-US`. `DISABLE_SERVER_LOCALE_FIX.flag` beside the game executable turns it off.
 Only the game servers need the new runtime; the players' games are unchanged.
 
+### 0032: weapon reforge resets the weapon and raises its reforge level
+
+`ParadoxBackend`. A reforge on the game server (`UPlayerExperienceComponent::ServerPrestigeExperience`) takes 100
+Aethersparks and then sends `DELETE /progression/<user>/ExperienceTrack_Weapon_<weapon>`. That route did not exist
+(404), so the sparks were spent but the weapon was never reset and its reforge level never rose. The route now
+exists, for game servers only: the weapon's experience track loses the XP of its full curve (XP above it stays)
+and its confirmed ranks go back to 0, and the weapon's prestige track (`PrestigeTrack_Weapon_<weapon>`) moves up
+one rank on its served curve, progress and confirmed rank together. A weapon that is not at its last rank is
+refused with 409, so a repeated request does not count a second reforge. The backend log shows
+`[Reforge] user=... track=... reset ... PrestigeTrack_Weapon_... rank=N`.
+
 ## Store captures
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
