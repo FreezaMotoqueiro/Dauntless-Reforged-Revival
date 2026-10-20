@@ -42,6 +42,8 @@ describe("performance: director.env", () => {
             assert.equal(get(f.director, "TRAINING_ON_DEMAND"), "1");
             assert.equal(get(f.director, "GAMESERVER_LOG_CMDS"), QUIET_GAME_LOG_CMDS);
             assert.equal(get(f.director, "GAMESERVER_MEMORY_GUARD"), "1");
+            assert.equal(get(f.director, "TRAINING_IDLE_STOP_MINUTES"), "5", "on demand, and stopped again after 5 min empty");
+            assert.equal(get(f.director, "GAMESERVER_RUNTIME_LOG_DIR"), path.dirname(path.join(PUBLIC.gameDir!, "Archon", "Binaries", "Win64", "Dauntless-Win64-Shipping.exe")));
             assert.equal(get(f.director, "GAMESERVER_MIN_FREE_MB"), "1024");
             assert.equal(get(f.director, "GAMESERVER_HUNT_MEMORY_MB"), "1536");
         }
@@ -70,6 +72,8 @@ describe("performance: director.env", () => {
         assert.equal(get(f.director, "TRAINING_ON_DEMAND"), "0");
         assert.equal(get(f.director, "GAMESERVER_LOG_CMDS"), undefined, "the Director keeps its own default");
         assert.equal(get(f.director, "GAMESERVER_MEMORY_GUARD"), "0");
+        assert.equal(get(f.director, "TRAINING_IDLE_STOP_MINUTES"), "0", "at boot: never stopped");
+        assert.equal(get(buildEnvFiles({ ...PUBLIC, gameDir: null }, s, p, { platform: "linux" }).director, "GAMESERVER_RUNTIME_LOG_DIR"), undefined, "no game folder yet");
     });
 
     it("writes only values the runtime and the Director accept", () => {
@@ -81,6 +85,8 @@ describe("performance: director.env", () => {
         const director = fs.readFileSync(path.join(repo, "upstream", "patches", "0021-director-training-on-demand-and-log-levels.patch"), "utf8");
         assert.ok(director.includes("process.env.TRAINING_ON_DEMAND"));
         assert.ok(director.includes("process.env.GAMESERVER_LOG_CMDS"));
+        const idle = fs.readFileSync(path.join(repo, "upstream", "patches", "0033-director-training-stops-when-idle.patch"), "utf8");
+        for (const name of ["process.env.TRAINING_IDLE_STOP_MINUTES", "process.env.GAMESERVER_RUNTIME_LOG_DIR", "mysticparadox_dll_port${TRAINING_DOJO_PORT}.log"]) assert.ok(idle.includes(name), name);
         const memory = fs.readFileSync(path.join(repo, "upstream", "patches", "0022-director-hunt-memory-guard.patch"), "utf8");
         for (const name of ["env.GAMESERVER_MEMORY_GUARD", '"GAMESERVER_MIN_FREE_MB"', '"GAMESERVER_HUNT_MEMORY_MB"']) assert.ok(memory.includes(name), name);
     });
@@ -99,6 +105,7 @@ describe("performance: director.env", () => {
         assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, trainingOnDemand: "yes" as unknown as boolean } }), /trainingOnDemand/);
         assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, huntMemoryMb: 100 } }), /huntMemoryMb/);
         assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, minFreeMemoryMb: -1 } }), /minFreeMemoryMb/);
+        assert.throws(() => validateHostConfig({ ...PUBLIC, performance: { ...DEFAULT_PERFORMANCE, trainingIdleMinutes: 1441 } }), /trainingIdleMinutes/);
         // A host.json written before the memory guard existed: the defaults fill the new fields.
         const older = { ...PUBLIC, performance: { serverFps: 30, idleFps: 10, trainingOnDemand: true, verboseGameLogs: false } as unknown as HostConfig["performance"] };
         assert.equal(get(buildEnvFiles(validateHostConfig(older), s, p, { platform: "linux" }).director, "GAMESERVER_MEMORY_GUARD"), "1");
@@ -109,13 +116,15 @@ describe("performance: director.env", () => {
 describe("performance: setup options", () => {
     it("defaults, keeps what host.json had, and takes each option", () => {
         assert.deepEqual(performanceFromArgs(parseArgs([]), undefined), DEFAULT_PERFORMANCE);
-        const set = performanceFromArgs(parseArgs(["--server-fps", "60", "--idle-fps", "0", "--training-at-boot", "--verbose-game-logs", "--no-memory-guard", "--min-free-ram", "512", "--hunt-ram", "2048"]), undefined);
-        assert.deepEqual(set, { serverFps: 60, idleFps: 0, trainingOnDemand: false, verboseGameLogs: true, memoryGuard: false, minFreeMemoryMb: 512, huntMemoryMb: 2048 });
+        const set = performanceFromArgs(parseArgs(["--server-fps", "60", "--idle-fps", "0", "--training-at-boot", "--verbose-game-logs", "--no-memory-guard", "--min-free-ram", "512", "--hunt-ram", "2048", "--training-idle-minutes", "15"]), undefined);
+        assert.deepEqual(set, { serverFps: 60, idleFps: 0, trainingOnDemand: false, trainingIdleMinutes: 15, verboseGameLogs: true, memoryGuard: false, minFreeMemoryMb: 512, huntMemoryMb: 2048 });
         assert.deepEqual(performanceFromArgs(parseArgs([]), set), set, "kept on the next setup");
         assert.deepEqual(performanceFromArgs(parseArgs(["--training-on-demand", "--quiet-game-logs"]), set), { ...set, trainingOnDemand: true, verboseGameLogs: false });
         assert.throws(() => performanceFromArgs(parseArgs(["--server-fps", "5"]), undefined), /--server-fps/);
         assert.throws(() => performanceFromArgs(parseArgs(["--idle-fps", "fast"]), undefined), /--idle-fps/);
         assert.throws(() => performanceFromArgs(parseArgs(["--hunt-ram", "100"]), undefined), /--hunt-ram/);
+        assert.throws(() => performanceFromArgs(parseArgs(["--training-idle-minutes", "soon"]), undefined), /--training-idle-minutes/);
+        assert.equal(performanceFromArgs(parseArgs(["--training-idle-minutes", "0"]), undefined).trainingIdleMinutes, 0);
         assert.equal(performanceFromArgs(parseArgs(["--memory-guard"]), set).memoryGuard, true);
     });
 
@@ -126,7 +135,7 @@ describe("performance: setup options", () => {
         const again = hostConfigFromArgs(parseArgs([]), c, detect);
         assert.equal(again.performance?.serverFps, 45);
         assert.deepEqual(hostConfigFromArgs(parseArgs([]), PUBLIC, detect).performance, DEFAULT_PERFORMANCE);
-        assert.match(performanceSummary(PUBLIC), /30 fps, 10 fps after 15 s without players; Training Grounds on demand; quiet game logs; at most 3 hunts at once \(UDP 8770-8777\), a new hunt only with 2560 MB free/);
+        assert.match(performanceSummary(PUBLIC), /30 fps, 10 fps after 15 s without players; Training Grounds on demand, stopped after 5 min without players; quiet game logs; at most 3 hunts at once \(UDP 8770-8777\), a new hunt only with 2560 MB free/);
         assert.equal(hostConfigFromArgs(parseArgs(["--max-hunts", "8"]), PUBLIC, detect).maxHuntServers, 8);
     });
 });

@@ -247,7 +247,7 @@ What the server does now (each part can be changed):
 |---|---|---|
 | Frames per second of a game server with players (runtime patch 0020) | 30 (the network rate) | `--server-fps 10-240`, `0` for no cap |
 | Frames per second after 15 s without players | 10 | `--idle-fps 1-240`, `0` for the same as above |
-| Training Grounds (Director patch 0021) | started the first time someone goes there | `--training-at-boot` (`--training-on-demand` goes back) |
+| Training Grounds (Director patches 0021 and 0033) | started the first time someone goes there, stopped again after 5 min without players | `--training-idle-minutes 0-1440` (0 keeps them running), `--training-at-boot` (`--training-on-demand` goes back) |
 | Game-server logs | warnings and errors | `--verbose-game-logs` (`--quiet-game-logs` goes back) |
 | Hunts at once | 3 (UDP 8770-8777; above 6, one more port below 8770 per hunt) | `--max-hunts 1-10` |
 | A new hunt only when its memory is free (Director patch 0022) | on: 1536 MB for the hunt plus 1024 MB left free | `--no-memory-guard` (`--memory-guard`), `--hunt-ram <MB>`, `--min-free-ram <MB>` |
@@ -357,7 +357,8 @@ Grounds e um por caçada), cada um um processo inteiro do Dauntless no Wine. Ago
 
 - cada servidor de jogo roda a no máximo 30 FPS, e a 10 FPS depois de 15 s sem jogadores
   (`--server-fps`, `--idle-fps`; `0` desliga);
-- o Training Grounds só sobe quando alguém vai para lá (`--training-at-boot` volta ao antigo);
+- o Training Grounds só sobe quando alguém vai para lá e desliga de novo depois de 5 min vazio
+  (`--training-idle-minutes`, `0` deixa ligado; `--training-at-boot` volta ao antigo);
 - os servidores de jogo registram só avisos e erros (`--verbose-game-logs` volta ao antigo);
 - o MongoDB usa no máximo 1 GB de cache (antes podia usar metade da RAM);
 - uma caçada nova só abre quando há RAM livre para ela: 1536 MB para a caçada mais 1024 MB de folga

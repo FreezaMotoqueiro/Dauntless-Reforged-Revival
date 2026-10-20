@@ -120,7 +120,7 @@ export function performanceChecks(config: HostConfig, publishedDll: string | nul
     const out: Check[] = [{
         area: "performance",
         level: "info",
-        text: `game servers at ${perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap"}${perf.idleFps > 0 ? `, ${perf.idleFps} fps after 15 s without players` : ""}; Training Grounds ${perf.trainingOnDemand ? "on demand" : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${config.maxHuntServers} hunts (UDP ${gamePortsText(config)}); ${perf.memoryGuard ? `a new hunt only with ${perf.huntMemoryMb + perf.minFreeMemoryMb} MB free` : "no memory guard"}`,
+        text: `game servers at ${perf.serverFps > 0 ? `${perf.serverFps} fps` : "no frame cap"}${perf.idleFps > 0 ? `, ${perf.idleFps} fps after 15 s without players` : ""}; Training Grounds ${perf.trainingOnDemand ? (perf.trainingIdleMinutes > 0 ? `on demand, stopped after ${perf.trainingIdleMinutes} min without players` : "on demand") : "at boot"}; ${perf.verboseGameLogs ? "verbose" : "quiet"} game logs; at most ${config.maxHuntServers} hunts (UDP ${gamePortsText(config)}); ${perf.memoryGuard ? `a new hunt only with ${perf.huntMemoryMb + perf.minFreeMemoryMb} MB free` : "no memory guard"}`,
         fix: "npm run setup -- --server-fps 30 --idle-fps 10 --training-on-demand --quiet-game-logs (each one is optional)",
     }];
     const fit = huntsThatFit(totalMemoryMb, perf);

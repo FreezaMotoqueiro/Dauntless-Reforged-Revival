@@ -39,6 +39,8 @@ CPU and RAM (`host.json` `performance`, written into `director.env`; see `docs/h
 `--server-fps 0|10-240` (default 30: each game server's frame cap, `REFORGED_SERVER_MAX_FPS`, runtime patch
 0020), `--idle-fps 0|1-240` (default 10: after 15 s without players, `REFORGED_SERVER_IDLE_FPS`),
 `--training-on-demand` / `--training-at-boot` (default on demand: `TRAINING_ON_DEMAND`, Director patch 0021),
+`--training-idle-minutes 0-1440` (default 5: on demand, they stop again after that long without players,
+`TRAINING_IDLE_STOP_MINUTES`, Director patch 0033; 0 keeps them running),
 `--quiet-game-logs` / `--verbose-game-logs` (default quiet: `GAMESERVER_LOG_CMDS`), `--memory-guard` /
 `--no-memory-guard` with `--hunt-ram <MB>` (default 1536) and `--min-free-ram <MB>` (default 1024): a new hunt
 starts only while that much memory is free (`GAMESERVER_MEMORY_GUARD`, Director patch 0022). A managed MongoDB gets a

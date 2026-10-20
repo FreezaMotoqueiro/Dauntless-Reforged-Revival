@@ -509,7 +509,23 @@ one rank on its served curve, progress and confirmed rank together. A weapon tha
 refused with 409, so a repeated request does not count a second reforge. The backend log shows
 `[Reforge] user=... track=... reset ... PrestigeTrack_Weapon_... rank=N`.
 
-## Store captures
+### 0033: the on-demand Training Grounds stop again once empty
+
+`ParadoxDirector/src/controllers/hubOccupancy.ts` (new, with `hubOccupancy.test.ts`), `hubSupervisor.ts`
+(`release`) and `gameservers.ts`. With `TRAINING_ON_DEMAND=1` (patch 0021) the Training Grounds started on the
+first request and then ran for good, empty or not. `TRAINING_IDLE_STOP_MINUTES` (1-1440; unset or 0 keeps the
+old behaviour) stops them once no player has been in them for that long, and the next request starts them again.
+
+The Director does not see the game servers' connections, so it reads them from the runtime's own log: every
+change of the remote-client count is a `[NetConnEdge] ... connCount <before> -> <after>` line in
+`mysticparadox_dll_port8776.log` beside the game executable (`GAMESERVER_RUNTIME_LOG_DIR`). It reads only what
+the current process wrote (from where the file ended when the hub started; under Wine the pid in the log is not
+the Director's), and a count it has not read yet never stops anything. The idle time counts from the latest of
+"the count went to 0", "the hub became ready" and "someone asked for the Training Grounds" (a player on the way
+in has no connection yet). The watchdog checks once a minute and sends the process the SIGTERM a readiness
+timeout sends; its exit releases the hub without a restart or a backoff (`[TrainingOnDemand] the Training
+Grounds stopped`). A request during the stop waits for it, then starts a fresh one. Any other exit (a crash)
+still restarts them as before.
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
