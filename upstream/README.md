@@ -536,6 +536,14 @@ writes the files to `.workspace/Mystic-Paradox/DauntlessEndpointDocumentation/`,
 `scripts/enrich_ladyluck_store.ts` and `scripts/generate_platinum_store.ts` look for them. A file whose
 bytes do not match its pinned hash is refused.
 
+### 0034: persist individual cooldown updates
+
+`ParadoxBackend/src/routes/system.ts`. Adds the dedicated-server-only
+`PUT /cooldown/:userId/:cooldownId` route deployed on 21 October 2026. Valid cooldown IDs are
+saved with the backend's current timestamp through the existing cooldown persistence service.
+The batch route remains registered first, so `/cooldown/batch/:userId` is not intercepted by
+the individual route. The existing persistence-off switch and no-player sentinel remain no-ops.
+
 ## Updating the pin
 
 1. Pick the new upstream commit and read its changes (the 1.14.7 runtime, the backend routes the

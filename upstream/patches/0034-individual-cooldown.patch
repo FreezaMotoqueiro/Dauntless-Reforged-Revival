@@ -1,0 +1,55 @@
+diff --git a/ParadoxBackend/src/routes/system.ts b/ParadoxBackend/src/routes/system.ts
+--- a/ParadoxBackend/src/routes/system.ts
++++ b/ParadoxBackend/src/routes/system.ts
+@@ -577,6 +577,8 @@
+ 	res.status(200).json({ code: null, message: "OK", payload });
+ });
+ 
++
++
+ systemRouter.put("/cooldown/batch/:userId", HasParadoxBackendAuth, async (req: any, res) => {
+ 	const UserId = String(req.params.userId);
+ 	if (!IsAuthorizedCooldownWriter(req.AuthData)) {
+@@ -603,6 +605,42 @@
+ 		throw Err;
+ 	}
+ });
++
++// Individual cooldown updates sent by the dedicated gameserver.
++systemRouter.put("/cooldown/:userId/:cooldownId", HasParadoxBackendAuth, async (req: any, res) => {
++    const UserId = String(req.params.userId);
++    const CooldownId = String(req.params.cooldownId);
++
++    if (!IsAuthorizedCooldownWriter(req.AuthData)) {
++        res.status(403).json({ code: null, message: "Forbidden", payload: {} });
++        return;
++    }
++
++    if (!CooldownId || CooldownId.length > 200 ||
++        !/^[A-Za-z0-9_.:-]+$/.test(CooldownId)) {
++        res.status(400).json({ code: null, message: "Bad Request", payload: {} });
++        return;
++    }
++
++    if (!COOLDOWN_PERSISTENCE || UserId === COOLDOWN_NO_PLAYER) {
++        res.status(200).json({ code: null, message: "OK", payload: {} });
++        return;
++    }
++
++    const Body = {
++        cooldowns: [{
++            cooldown_id: CooldownId,
++            cooldown_started_date: new Date().toISOString()
++        }]
++    };
++
++    const { payload, record } = await SaveCooldowns(UserId, Body);
++
++    logger.info(`[CooldownIndividual] user=${UserId} id=${CooldownId} stored=${record.entries.length} version=${record.updateVersion}`);
++
++    res.status(200).json({ code: null, message: "OK", payload });
++});
++
+ 
+ systemRouter.get("/bounty/game-data", HasParadoxBackendAuth, (req: any, res) => {
+ 	logger.info("Bounty game data (stubbed)");
