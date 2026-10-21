@@ -536,6 +536,29 @@ writes the files to `.workspace/Mystic-Paradox/DauntlessEndpointDocumentation/`,
 `scripts/enrich_ladyluck_store.ts` and `scripts/generate_platinum_store.ts` look for them. A file whose
 bytes do not match its pinned hash is refused.
 
+### 0034: optional per-account trainer from the deployed server
+
+`ParadoxBackend` and `ParadoxRuntime`. Preserves the integration deployed on 20 October 2026:
+authenticated `/trainer/v1/me` endpoints grant 15-second per-account leases for weapon XP and
+reward multipliers (1–1000), damage (1–10), and optional damage splitting across Behemoth parts.
+It is disabled unless `REFORGED_TRAINER_DIR` is configured. The backend directory contains
+`access.json` mapping account IDs to SHA-256 hashes of independent 64-hex-character bearer tokens;
+credentials, runtime snapshots and transaction decisions must stay outside source control.
+The game server uses the corresponding directory through its Windows/Wine path. XP and reward
+decisions persist per transaction so retries keep the original amount. Ordinary XP grants retain
+their existing cap. Runtime hooks verify the executable timestamp, image size and instruction
+signatures before installation; other game builds disable the hooks. Rebuild the runtime to use
+the damage integration. `trainer_service.test.ts` covers limits, account isolation, expiry,
+revocation, replay behavior and trusted XP grants; the XP test needs generated progression data.
+
+### 0035: persist individual cooldown updates
+
+`ParadoxBackend/src/routes/system.ts`. Adds the dedicated-server-only
+`PUT /cooldown/:userId/:cooldownId` route deployed on 21 October 2026. Valid cooldown IDs are
+saved with the backend's current timestamp through the existing cooldown persistence service.
+The batch route remains registered first, so `/cooldown/batch/:userId` is not intercepted by
+the individual route. The existing persistence-off switch and no-player sentinel remain no-ops.
+
 ## Updating the pin
 
 1. Pick the new upstream commit and read its changes (the 1.14.7 runtime, the backend routes the

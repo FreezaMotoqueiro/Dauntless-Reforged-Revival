@@ -1,0 +1,610 @@
+diff --git a/ParadoxBackend/src/app.ts b/ParadoxBackend/src/app.ts
+--- a/ParadoxBackend/src/app.ts
++++ b/ParadoxBackend/src/app.ts
+@@ -11,6 +11,7 @@
+  */
+ 
+ import express from "express";
++import { trainerRouter } from "./trainer_service";
+ import { rateLimit } from "express-rate-limit";
+ import { loginRouter } from "./routes/login.js";
+ import { logger } from "./logger.js";
+@@ -211,6 +212,7 @@
+ app.use(rateLimit(RequestRateLimitOptions()));
+ 
+ app.use("/", metricsRouter);
++app.use("/", trainerRouter);
+ 
+ app.use("/", loginRouter);
+ app.use("/", eosRouter);
+diff --git a/ParadoxBackend/src/controllers/progression.ts b/ParadoxBackend/src/controllers/progression.ts
+--- a/ParadoxBackend/src/controllers/progression.ts
++++ b/ParadoxBackend/src/controllers/progression.ts
+@@ -146,12 +146,13 @@
+     progressionId: string,
+     amount: number,
+     grantId: string,
+-    unitOfWork: Pick<UnitOfWork, "withTransaction"> = GetUnitOfWork()
++    unitOfWork: Pick<UnitOfWork, "withTransaction"> = GetUnitOfWork(),
++    trustedGrantLimit: number = 100000
+ ): Promise<ProgressionGrantResult> {
+     if(!IsApprovedXpProgressionTrack(progressionId)) {
+         throw new Error(`Unsupported progression track '${progressionId}'.`);
+     }
+-    if(!Number.isInteger(amount) || amount <= 0 || amount > 100000 || !IsValidProgressionGrantId(grantId)) {
++    if(!Number.isInteger(amount) || amount <= 0 || amount > Math.min(100000000, trustedGrantLimit) || !IsValidProgressionGrantId(grantId)) {
+         throw new Error("Invalid authoritative progression grant.");
+     }
+     const requestHash = BuildProgressionGrantRequestHash(userId, progressionId, amount);
+diff --git a/ParadoxBackend/src/routes/inventory.ts b/ParadoxBackend/src/routes/inventory.ts
+--- a/ParadoxBackend/src/routes/inventory.ts
++++ b/ParadoxBackend/src/routes/inventory.ts
+@@ -1,3 +1,5 @@
++import { trainerRewardFactor } from "../trainer_service";
++import { GetTestMultipliers } from "../testMultipliers";
+ /*
+  * Original work Copyright (C) 2026 gwog :3 (SyST3MDeV/Undaunted)
+  * Modified work Copyright (C) 2026 MysticFox / Pranav Karande (pranav158/Mystic-Paradox)
+@@ -282,7 +284,8 @@
+     // retried transaction id still matches its ledger entry.
+     const EffectiveStackedItemsToAdd = IsDedicatedServer
+         ? MultiplyRewardItems(req.body.source, StackedItemsToAdd,
+-            (CatalogId, Quantity) => IsPrestigeGatedReward(CatalogId) || IsChallengeRewardGrant(CatalogId, Quantity)) as any[]
++            (CatalogId, Quantity) => IsPrestigeGatedReward(CatalogId) || IsChallengeRewardGrant(CatalogId, Quantity),
++            { xp: 1, rewards: trainerRewardFactor(UserId, TransactionId, req.body, GetTestMultipliers().rewards) }) as any[]
+         : StackedItemsToAdd;
+     if (EffectiveStackedItemsToAdd !== StackedItemsToAdd) {
+         logger.info(`[TestMultiplier] transactionId ${TransactionId} source="${String(req.body.source).slice(0, 80)}" rewards multiplied for userId ${UserId}`);
+diff --git a/ParadoxBackend/src/routes/progression.ts b/ParadoxBackend/src/routes/progression.ts
+--- a/ParadoxBackend/src/routes/progression.ts
++++ b/ParadoxBackend/src/routes/progression.ts
+@@ -1,3 +1,4 @@
++import { trainerXp } from "../trainer_service";
+ /*
+  * Original work Copyright (C) 2026 gwog :3 (SyST3MDeV/Undaunted)
+  * Modified work Copyright (C) 2026 MysticFox / Pranav Karande (pranav158/Mystic-Paradox)
+@@ -459,14 +460,14 @@
+     }
+ 
+     // [Dauntless Reforged Revival] A private test server's XP multiplier (testMultipliers.ts), capped at the route's maximum.
+-    const GrantedAmount = MultiplyXpGrant(Amount, MAX_XP_GRANT_AMOUNT);
++    const GrantedAmount = trainerXp(RequestedUserId, GrantId, ProgressionId, Amount, MultiplyXpGrant(Amount, MAX_XP_GRANT_AMOUNT));
+     if(GrantedAmount !== Amount){
+         logger.info(`[TestMultiplier] XP grant ${Amount} -> ${GrantedAmount} (user=${RequestedUserId}, track=${ProgressionId})`);
+     }
+ 
+     let GrantResult;
+     try{
+-        GrantResult = await GrantProgressionXp(RequestedUserId, ProgressionId, GrantedAmount, GrantId);
++        GrantResult = await GrantProgressionXp(RequestedUserId, ProgressionId, GrantedAmount, GrantId, undefined, GrantedAmount > MAX_XP_GRANT_AMOUNT ? 100000000 : MAX_XP_GRANT_AMOUNT);
+     }
+     catch(ErrorValue){
+         if(ErrorValue instanceof ProgressionGrantConflictError){
+diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
+--- a/ParadoxRuntime/dllmain.cpp
++++ b/ParadoxRuntime/dllmain.cpp
+@@ -21783,6 +21783,9 @@
+     StartServerWindowHider();
+ }
+ 
++// Per-account trainer integration; disabled without REFORGED_TRAINER_DIR.
++#include "TrainerRuntime.inl"
++
+ void InitServerHooks() {
+     InitLog("[InitServerHooks] Entry - MH_Initialize");
+     MH_Initialize();
+@@ -21797,6 +21800,7 @@
+     InstallServerHeadlessSetup();
+     // The optional player-hosted mode's server hooks (P2PHooks.h; nothing without the module).
+     P2PHooks::InstallServerHooks();
++    AccountTrainer::install();
+ 
+     InstallApiHook(L"kernel32.dll", "ExitProcess", ExitProcessHook, reinterpret_cast<LPVOID*>(&OrigExitProcess), "kernel32!ExitProcess");
+     InstallApiHook(L"ntdll.dll", "RtlExitUserProcess", RtlExitUserProcessHook, reinterpret_cast<LPVOID*>(&OrigRtlExitUserProcess), "ntdll!RtlExitUserProcess");
+diff --git a/ParadoxBackend/src/trainer_service.ts b/ParadoxBackend/src/trainer_service.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/trainer_service.ts
+@@ -0,0 +1,129 @@
++// TypeScript; trainer_service.ts; Node.js 20+; Mystic Paradox backend.
++import fs from 'node:fs';
++import path from 'node:path';
++import crypto from 'node:crypto';
++import { Router } from 'express';
++import { rateLimit } from 'express-rate-limit';
++
++export type Settings = { xp: number; rewards: number; damage: number; split: boolean };
++type Lease = Settings & { expires: number };
++const NORMAL: Settings = { xp: 1, rewards: 1, damage: 1, split: false };
++const VALID_ID = /^[A-Za-z0-9_-]{1,128}$/;
++const TTL = 15000;
++export function validate(value: unknown): Settings {
++    const v = value as Settings;
++    if (!v || typeof v !== 'object' || Object.keys(v).sort().join(',') !== 'damage,rewards,split,xp') throw new Error('Configuração inválida');
++    for (const [key, max] of [['xp', 1000], ['rewards', 1000], ['damage', 10]] as const) {
++        if (typeof v[key] !== 'number' || !Number.isFinite(v[key]) || v[key] < 1 || v[key] > max) throw new Error(`Limite inválido: ${key}`);
++    }
++    if (typeof v.split !== 'boolean') throw new Error('Divisão inválida');
++    return { xp: v.xp, rewards: v.rewards, damage: v.damage, split: v.split };
++}
++const digest = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
++function canonical(value: any): string {
++    if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
++    if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + canonical(value[k])).join(',') + '}';
++    return JSON.stringify(value) ?? 'null';
++}
++
++export class TrainerService {
++    private leases = new Map<string, Lease>();
++    constructor(readonly root: string, private now: () => number = Date.now) {}
++    private policy(): Record<string, string> {
++        if (!this.root) return {};
++        const p = JSON.parse(fs.readFileSync(path.join(this.root, 'access.json'), 'utf8'));
++        if (!p || Array.isArray(p) || typeof p !== 'object' || Object.keys(p).length > 128) throw new Error('access.json inválido');
++        for (const [id, hash] of Object.entries(p)) if (!VALID_ID.test(id) || !/^[a-f0-9]{64}$/.test(String(hash))) throw new Error('Conta/hash inválido');
++        return p;
++    }
++    authenticate(token: string): string | undefined {
++        if (!/^[a-f0-9]{64}$/.test(token)) return;
++        const actual = Buffer.from(digest(token), 'hex');
++        return Object.entries(this.policy()).find(([, h]) => crypto.timingSafeEqual(actual, Buffer.from(h, 'hex')))?.[0];
++    }
++    get(id: string): Settings {
++        const lease = this.leases.get(id);
++        if (!lease || lease.expires <= this.now() || !this.policy()[id]) return { ...NORMAL };
++        return { xp: lease.xp, rewards: lease.rewards, damage: lease.damage, split: lease.split };
++    }
++    active(id: string): boolean {
++        const lease = this.leases.get(id);
++        return !!lease && lease.expires > this.now() && !!this.policy()[id];
++    }
++    set(id: string, raw: unknown) {
++        if (!this.policy()[id]) throw new Error('Conta não autorizada');
++        const value = validate(raw);
++        const lease = { ...value, expires: this.now() + TTL };
++        this.leases.set(id, lease);
++        try { this.snapshot(); } catch (e) { this.leases.delete(id); throw e; }
++        return { account: id, ...lease };
++    }
++    stop(id: string) { this.leases.delete(id); this.snapshot(); }
++    snapshot() {
++        if (!this.root) return;
++        const policy = this.policy();
++        const lines = ['REFORGED_TRAINER_V1'];
++        for (const [id, lease] of this.leases) {
++            if (lease.expires > this.now() && policy[id]) lines.push(`${id} ${lease.expires} ${lease.damage} ${lease.split ? 1 : 0}`);
++            else this.leases.delete(id);
++        }
++        const target = path.join(this.root, 'runtime.txt');
++        const temp = target + '.' + process.pid + '.tmp';
++        fs.writeFileSync(temp, lines.join('\n') + '\n', { mode: 0o600 });
++        fs.renameSync(temp, target);
++    }
++    // Freeze the factor, including 1x, before a persistent grant. Retries retain the
++    // first factor even after the trainer closes, restarts or changes its settings.
++    factor(kind: string, id: string, operation: string, input: unknown, factor: number): number {
++        if (!this.root) return factor;
++        if (!VALID_ID.test(id) || typeof operation !== 'string' || !operation || operation.length > 512) throw new Error('Identidade de transação inválida');
++        const dir = path.join(this.root, 'decisions');
++        fs.mkdirSync(dir, { recursive: true });
++        const file = path.join(dir, digest(JSON.stringify([kind, id, operation])) + '.json');
++        const fingerprint = digest(canonical(input));
++        try {
++            fs.writeFileSync(file, JSON.stringify({ fingerprint, factor }), { flag: 'wx', mode: 0o600, flush: true });
++            return factor;
++        } catch (error: any) {
++            if (error.code !== 'EEXIST') throw error;
++            const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
++            if (saved.fingerprint !== fingerprint) throw Object.assign(new Error('Transação reutilizada com conteúdo diferente'), { status: 409 });
++            if (!Number.isFinite(saved.factor) || saved.factor < 1 || saved.factor > (kind === 'weapon_amount' ? 100000000 : 1000)) throw new Error('Decisão persistida inválida');
++            return saved.factor;
++        }
++    }
++}
++
++export const trainer = new TrainerService(process.env.REFORGED_TRAINER_DIR?.trim() ?? '');
++export const trainerRouter = Router();
++trainerRouter.use('/trainer/v1', rateLimit({ windowMs: 60000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false }));
++trainerRouter.use('/trainer/v1', (req, res, next) => {
++    if (!trainer.root) { res.sendStatus(404); return; }
++    try {
++        const account = trainer.authenticate((req.headers.authorization ?? '').replace(/^Bearer /, ''));
++        if (!account) { res.sendStatus(403); return; }
++        res.locals.trainerAccount = account;
++        res.setHeader('Cache-Control', 'no-store');
++        next();
++    } catch { res.status(503).json({ error: 'Configuração do trainer indisponível' }); }
++});
++trainerRouter.get('/trainer/v1/me', (_req, res) => res.json({ account: res.locals.trainerAccount, ...trainer.get(res.locals.trainerAccount) }));
++trainerRouter.put('/trainer/v1/me', (req, res) => {
++    try { validate(req.body); } catch { res.status(400).json({ error: 'XP/recompensas: 1–1000; dano: 1–10; split: booleano' }); return; }
++    try { res.json(trainer.set(res.locals.trainerAccount, req.body)); }
++    catch { res.status(503).json({ error: 'Não foi possível aplicar a sessão' }); }
++});
++trainerRouter.delete('/trainer/v1/me', (_req, res) => { trainer.stop(res.locals.trainerAccount); res.sendStatus(204); });
++
++export function trainerXp(user: string, grant: string, track: string, amount: number, baseline: number): number {
++    if (!trainer.root || !/^ExperienceTrack_Weapon_(Axe|ChainBlades|Hammer|Repeaters|Sword|Spear|Strikers)$/.test(track)) return baseline;
++    const factor = trainer.get(user).xp;
++    // Freeze the final integer as well as the identity, including normal grants.
++    const selected = !trainer.active(user) ? baseline : Math.min(100000000, Math.floor(amount * factor));
++    return trainer.factor('weapon_amount', user, grant, [track, amount], selected);
++}
++export function trainerRewardFactor(user: string, transaction: string, input: unknown, baseline: number): number {
++    if (!trainer.root) return baseline;
++    const selected = trainer.get(user).rewards;
++    return trainer.factor('rewards', user, transaction, input, trainer.active(user) ? selected : baseline);
++}
+diff --git a/ParadoxBackend/src/trainer_service.test.ts b/ParadoxBackend/src/trainer_service.test.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/trainer_service.test.ts
+@@ -0,0 +1,109 @@
++// TypeScript; trainer_service.test.ts; Node.js test runner; isolated temporary data.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import crypto from 'node:crypto';
++import express from 'express';
++import { TrainerService, validate } from './trainer_service';
++import { GrantProgressionXp } from './controllers/progression';
++
++const tokenA = 'a'.repeat(64), tokenB = 'b'.repeat(64);
++const hash = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
++function fixture() {
++    const root = fs.mkdtempSync(path.join(process.cwd(), 'reforged-trainer-test-'));
++    fs.writeFileSync(path.join(root, 'access.json'), JSON.stringify({ alice: hash(tokenA), bob: hash(tokenB) }));
++    let now = 10000;
++    return { root, service: new TrainerService(root, () => now), advance: (n: number) => now += n,
++        cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
++}
++test('limits reject NaN, infinity, wrong types, extra identity and out-of-range multipliers', () => {
++    const valid = { xp: 1000, rewards: 1000, damage: 10, split: true };
++    assert.deepEqual(validate(valid), valid);
++    for (const patch of [{ xp: NaN }, { damage: Infinity }, { xp: 1001 }, { rewards: 0 }, { damage: 10.01 }, { split: 1 }, { account: 'bob' }, { xp: '2' }]) {
++        assert.throws(() => validate({ ...valid, ...patch }));
++    }
++});
++test('account isolation, expiry and revocation', () => {
++    const f = fixture();
++    try {
++        assert.equal(f.service.authenticate(tokenA), 'alice');
++        assert.equal(f.service.authenticate('c'.repeat(64)), undefined);
++        f.service.set('alice', { xp: 1000, rewards: 700, damage: 10, split: true });
++        assert.equal(f.service.get('alice').xp, 1000);
++        assert.equal(f.service.get('bob').xp, 1);
++        assert.throws(() => f.service.set('mallory', { xp: 2, rewards: 2, damage: 2, split: false }));
++        assert.match(fs.readFileSync(path.join(f.root, 'runtime.txt'), 'utf8'), /alice 25000 10 1/);
++        f.advance(15000);
++        assert.equal(f.service.get('alice').damage, 1);
++        f.service.set('alice', { xp: 2, rewards: 2, damage: 2, split: false });
++        fs.writeFileSync(path.join(f.root, 'access.json'), '{}');
++        assert.equal(f.service.get('alice').xp, 1);
++        f.service.snapshot();
++        assert.equal(fs.readFileSync(path.join(f.root, 'runtime.txt'), 'utf8'), 'REFORGED_TRAINER_V1\n');
++    } finally { f.cleanup(); }
++});
++test('grant factor survives expiry, settings changes and backend restart; conflicting replay rejected', () => {
++    const f = fixture();
++    try {
++        assert.equal(f.service.factor('xp', 'alice', 'grant1', ['weapon', 50], 1000), 1000);
++        assert.equal(f.service.factor('xp', 'alice', 'grant1', ['weapon', 50], 1), 1000);
++        const restarted = new TrainerService(f.root);
++        assert.equal(restarted.factor('xp', 'alice', 'grant1', ['weapon', 50], 2), 1000);
++        assert.throws(() => restarted.factor('xp', 'alice', 'grant1', ['weapon', 51], 2));
++        assert.equal(restarted.factor('xp', 'bob', 'grant1', ['weapon', 50], 1), 1);
++        assert.equal(restarted.factor('rewards', 'alice', 'r1', { a: 1, b: 2 }, 10), 10);
++        assert.equal(restarted.factor('rewards', 'alice', 'r1', { b: 2, a: 1 }, 1), 10);
++    } finally { f.cleanup(); }
++});
++test('1000x weapon XP crosses the old grant cap only through the trusted server path', async () => {
++    let total = 0;
++    const ledger = new Map<string, any>();
++    const repositories: any = {
++        progressionGrants: {
++            findByGrantId: async (id: string) => ledger.get(id),
++            insertApplied: async (record: any) => ledger.set(record.grantId, record),
++        },
++        progressionTracks: {
++            get: async () => ({ progress: total }),
++            increment: async (_user: string, _track: string, amount: number) => ({ progress: total += amount }),
++        },
++    };
++    const unit: any = { withTransaction: async (action: any) => action(repositories, {}) };
++    await assert.rejects(GrantProgressionXp('alice', 'ExperienceTrack_Weapon_Sword', 200000, 'large', unit));
++    const first = await GrantProgressionXp('alice', 'ExperienceTrack_Weapon_Sword', 200000, 'large', unit, 100000000);
++    const repeat = await GrantProgressionXp('alice', 'ExperienceTrack_Weapon_Sword', 200000, 'large', unit, 100000000);
++    assert.equal(first.record.progress, 200000);
++    assert.equal(repeat.replayed, true); assert.equal(total, 200000);
++});
++test('HTTP identity comes from credential, cannot select a second account; stop expires effects', async () => {
++    const f = fixture();
++    // The exported singleton has a disabled root unless explicitly configured.
++    const mod = await import('./trainer_service');
++    Object.defineProperty(mod.trainer, 'root', { value: f.root });
++    const app = express(); app.use(express.json()); app.use(mod.trainerRouter);
++    const server = app.listen(0, '127.0.0.1');
++    await new Promise<void>(resolve => server.once('listening', resolve));
++    const address = server.address() as { port: number };
++    const url = `http://127.0.0.1:${address.port}/trainer/v1/me`;
++    try {
++        assert.equal((await fetch(url)).status, 403);
++        const headers = { Authorization: `Bearer ${tokenA}`, 'Content-Type': 'application/json' };
++        assert.equal((await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ xp: 2, rewards: 3, damage: 4, split: true, account: 'bob' }) })).status, 400);
++        const response = await fetch(url, { method: 'PUT', headers, body: JSON.stringify({ xp: 2, rewards: 3, damage: 4, split: true }) });
++        assert.equal(response.status, 200); assert.equal((await response.json()).account, 'alice');
++        const bob = await fetch(url, { headers: { Authorization: `Bearer ${tokenB}` } });
++        assert.equal((await bob.json()).damage, 1);
++        assert.equal((await fetch(url, { method: 'DELETE', headers })).status, 204);
++        assert.equal((await (await fetch(url, { headers })).json()).damage, 1);
++        assert.equal(mod.trainerXp('alice', 'weapon1000', 'ExperienceTrack_Weapon_Sword', 200, 200), 200);
++        mod.trainer.set('alice', { xp: 1000, rewards: 1000, damage: 10, split: true });
++        assert.equal(mod.trainerXp('alice', 'weapon1001', 'ExperienceTrack_Weapon_Sword', 200, 200), 200000);
++        assert.equal(mod.trainerXp('bob', 'weapon1002', 'ExperienceTrack_Weapon_Sword', 200, 200), 200);
++        assert.equal(mod.trainerXp('alice', 'slayer1001', 'ExperienceTrack_Slayer', 200, 200), 200);
++        assert.equal(mod.trainerXp('alice', 'weapon1000', 'ExperienceTrack_Weapon_Sword', 200, 200), 200);
++    } finally {
++        await new Promise<void>(resolve => server.close(() => resolve())); f.cleanup();
++    }
++});
+diff --git a/ParadoxRuntime/TrainerBuild.generated.h b/ParadoxRuntime/TrainerBuild.generated.h
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/TrainerBuild.generated.h
+@@ -0,0 +1,11 @@
++#pragma once
++namespace TrainerBuild {
++constexpr unsigned timestamp = 1712009700u;
++constexpr unsigned image_size = 125149184u;
++constexpr unsigned apply_rva = 0x184B2D0;
++constexpr unsigned char apply_bytes[] = {0x4c,0x8b,0xdc,0x55,0x56,0x41,0x54,0x41,0x55,0x41,0x56,0x48,0x8d,0x6c,0x24,0x80,0x48,0x81,0xec,0x80,0x1,0x0,0x0,0x48,0x8b,0x41,0x8,0x4d,0x8b,0xe9,0x4d,0x8b};
++constexpr unsigned normal_rva = 0x185A870;
++constexpr unsigned char normal_bytes[] = {0x48,0x89,0x5c,0x24,0x10,0x48,0x89,0x6c,0x24,0x18,0x56,0x48,0x83,0xec,0x40,0x48,0x8b,0x71,0x8,0x48,0x8b,0xea,0xf,0x29,0x74,0x24,0x30,0xf,0x28,0xf2,0x48,0x8b};
++constexpr unsigned free_rva = 0x2553F30;
++constexpr unsigned char free_bytes[] = {0x48,0x85,0xc9,0x74,0x2e,0x53,0x48,0x83,0xec,0x20,0x48,0x8b,0xd9,0x48,0x8b,0xd,0x14,0xac,0x8c,0x4,0x48,0x85,0xc9,0x75,0xc,0xe8,0xf2,0x0,0x0,0x0,0x48,0x8b};
++}
+diff --git a/ParadoxRuntime/TrainerRuntime.inl b/ParadoxRuntime/TrainerRuntime.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/TrainerRuntime.inl
+@@ -0,0 +1,238 @@
++// C++20; TrainerRuntime.inl; Windows x64/MSVC; Dauntless 1.14.7 dedicated runtime.
++// Included by dllmain.cpp before InitServerHooks, after the existing SDK/helpers.
++#include <fstream>
++#include <sstream>
++#include <unordered_map>
++#include <chrono>
++#include <cmath>
++#include "TrainerBuild.generated.h"
++
++namespace AccountTrainer {
++using namespace SDK;
++using ApplyFn = void(*)(const FArchonDamageCalculation&, const FArchonDamageResult&,
++    const FArchonAbilityDamageEvent&, const FDamageExecutionTelemetryData&);
++using NormalFn = void(*)(const FArchonDamageCalculation&, const FArchonAbilityDamageEvent&, float);
++static ApplyFn original_apply = nullptr;
++static NormalFn original_normal = nullptr;
++struct Lease { uint64_t expires{}; float damage = 1; bool split = false; };
++static std::unordered_map<std::string, Lease> leases;
++static uint64_t next_read = 0;
++static std::string state_dir;
++static std::mutex state_mutex;
++static uint64_t now_ms() {
++    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
++        std::chrono::system_clock::now().time_since_epoch()).count());
++}
++static Lease settings(const std::string& id) {
++    std::lock_guard<std::mutex> lock(state_mutex);
++    const auto now = now_ms();
++    if (now >= next_read) {
++        next_read = now + 250;
++        leases.clear();
++        std::ifstream file(state_dir + "\\runtime.txt");
++        std::string line;
++        if (std::getline(file, line) && line == "REFORGED_TRAINER_V1") {
++            for (int n = 0; n < 128 && std::getline(file, line); ++n) {
++                if (line.size() > 256) break;
++                std::istringstream row(line); std::string user, extra; Lease value; int split;
++                if (!(row >> user >> value.expires >> value.damage >> split) || row >> extra) continue;
++                if (user.size() > 128 || user.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos) continue;
++                if (value.expires <= now || value.expires > now + 16000 || !std::isfinite(value.damage)
++                    || value.damage < 1 || value.damage > 10 || (split != 0 && split != 1)) continue;
++                value.split = split == 1; leases.emplace(user, value);
++            }
++        }
++    }
++    auto it = leases.find(id);
++    return it != leases.end() && it->second.expires > now ? it->second : Lease{};
++}
++static void engine_free(void* ptr) {
++    if (ptr) reinterpret_cast<void(*)(void*)>(Globals::BaseAddress + TrainerBuild::free_rva)(ptr);
++}
++template<class T> struct OwnedArray {
++    TArray<T> value;
++    ~OwnedArray() { engine_free(const_cast<T*>(value.GetDataPtr())); }
++};
++static bool live(UObject* object) {
++    return object && IsReadablePointer(object, sizeof(UObject)) && IsRegisteredLiveObject(object);
++}
++// Identity is obtained from the server's player state, never a submitted player name.
++static std::string account(AActor* source) {
++    if (!live(source)) return {};
++    AController* controller = source->GetInstigatorController();
++    if (!controller && source->IsA(APawn::StaticClass())) controller = static_cast<APawn*>(source)->Controller;
++    if (!live(controller) || !controller->IsA(APlayerController::StaticClass())) return {};
++    auto* pc = static_cast<APlayerController*>(controller);
++    if (!live(pc->PlayerState) || !pc->NetConnection) return {}; // excludes the synthetic hub player
++    auto* slot = reinterpret_cast<uint8_t*>(&pc->PlayerState->UniqueId);
++    if (!IsReadablePointer(slot, 24)) return {};
++    void* net_id = *reinterpret_cast<void**>(slot + 8);
++    if (!IsReadablePointer(net_id, sizeof(void*))) return {};
++    auto** table = *reinterpret_cast<void***>(net_id);
++    if (!IsReadablePointer(table, 0x38)) return {};
++    if (!reinterpret_cast<bool(*)(void*)>(table[5])(net_id)) return {};
++    FString value{};
++    reinterpret_cast<void*(*)(void*, FString*)>(table[6])(net_id, &value);
++    const auto id = CoreCapFString(&value);
++    engine_free(value.CStr());
++    if (id.empty() || id.size() > 128 || id == "INVALID") return {};
++    return id;
++}
++static bool weak_component(UPrimitiveComponent* object, TWeakObjectPtr<UPrimitiveComponent>& weak) {
++    if (!live(object)) return false;
++    const auto index = object->Index;
++    auto* array = UObject::GObjects.operator->();
++    if (index < 0 || index >= array->Num()) return false;
++    auto* item = &array->GetDecrytedObjPtr()[index / 65536][index % 65536];
++    if (!IsReadablePointer(item, 24) || item->Object != object) return false;
++    // FUObjectItem serial offset verified by the native weak resolver in this build.
++    const auto serial = *reinterpret_cast<const int32_t*>(reinterpret_cast<const uint8_t*>(item) + 16);
++    if (serial <= 0 || ResolveWeakObj(index, serial) != object) return false;
++    weak.ObjectIndex = index; weak.ObjectSerialNumber = serial;
++    return true;
++}
++struct Part { UMonsterPartComponent* part; TWeakObjectPtr<UPrimitiveComponent> collision; FName bone; };
++static std::vector<Part> parts(AArchonBehemoth* target) {
++    std::vector<Part> out;
++    OwnedArray<UActorComponent*> all_parts{target->K2_GetComponentsByClass(UMonsterPartComponent::StaticClass())};
++    OwnedArray<UActorComponent*> shapes{target->K2_GetComponentsByClass(UShapeComponent::StaticClass())};
++    if (all_parts.value.Num() > 64 || shapes.value.Num() > 2048) return out;
++    for (auto* object : all_parts.value) {
++        if (!live(object)) continue;
++        auto* part = static_cast<UMonsterPartComponent*>(object);
++        if (!part->CanBeBroken() || part->IsBroken() || part->GetCurrentHealth() <= 0) continue;
++        bool found = false;
++        for (auto* shape : shapes.value) {
++            if (!live(shape)) continue;
++            auto* primitive = static_cast<UShapeComponent*>(shape);
++            if (!part->ContainsComponent(primitive)) continue;
++            Part candidate{part, {}, part->PhATBones.Num() > 0 ? part->PhATBones[0] : FName{}};
++            if (weak_component(primitive, candidate.collision)) { out.push_back(candidate); found = true; break; }
++        }
++        // Skeletal collision uses PhAT bones rather than separate shape components.
++        if (!found && live(target->Mesh) && part->PhATBones.Num() <= 128) {
++            for (const auto& bone : part->PhATBones) {
++                OwnedArray<UMonsterPartComponent*> mapped{target->GetPartsForBone(bone, false)};
++                if (mapped.value.Num() != 1 || mapped.value[0] != part) continue;
++                Part candidate{part, {}, bone};
++                if (weak_component(target->Mesh, candidate.collision)) {
++                    out.push_back(candidate); found = true; break;
++                }
++            }
++        }
++        // Never silently spread across only a subset of eligible parts.
++        if (!found) return {};
++    }
++    return out;
++}
++static void scale_info(FArchonAbilityDamageInfo& d, float factor) {
++    d.BaseDamage *= factor; d.RawDamage *= factor;
++    d.TotalElementalDamage *= factor; d.TotalPhysicalDamage *= factor; d.TotalDamageApplied *= factor;
++    d.Payload.EventMagnitude *= factor;
++    d.MitigatedDamage.PhysicalDamage *= factor; d.MitigatedDamage.FlameDamage *= factor;
++    d.MitigatedDamage.FrostDamage *= factor; d.MitigatedDamage.ShockDamage *= factor;
++    d.MitigatedDamage.RadiantDamage *= factor; d.MitigatedDamage.UmbralDamage *= factor;
++    d.MitigatedDamage.TerraDamage *= factor; d.MitigatedDamage.RawElementalDamage *= factor;
++}
++struct Context { const FArchonDamageCalculation* calculation; std::vector<Part> parts; Context* previous; };
++static thread_local Context* context = nullptr;
++static void normal_hook(const FArchonDamageCalculation& c, const FArchonAbilityDamageEvent& event, float amount) {
++    auto* active = context;
++    if (!active || active->calculation != &c || active->parts.empty() || !std::isfinite(amount) || amount <= 0) {
++        original_normal(c, event, amount); return;
++    }
++    const auto& handle = event.DamageInfo.Payload.ContextHandle;
++    if (!UAbilitySystemBlueprintLibrary::EffectContextHasHitResult(handle)) {
++        original_normal(c, event, amount); return;
++    }
++    const auto saved_hit = UAbilitySystemBlueprintLibrary::EffectContextGetHitResult(handle);
++    // The native setter mutates the shared context; restore after synchronous dispatch.
++    struct RestoreHit {
++        const FGameplayEffectContextHandle& handle; FHitResult hit;
++        ~RestoreHit() { UAbilitySystemBlueprintLibrary::EffectContextAddHitResult(handle, hit, true); }
++    } restore_hit{handle, saved_hit};
++    // Remove this context during dispatch: secondary attacks are independent hits.
++    context = active->previous;
++    struct Restore { Context* value; ~Restore() { context = value; } } restore{active};
++    const float count = static_cast<float>(active->parts.size());
++    float remaining = amount;
++    for (size_t i = 0; i < active->parts.size(); ++i) {
++        const auto& part = active->parts[i];
++        const float share = i + 1 == active->parts.size() ? remaining : amount / count;
++        remaining -= share;
++        auto copy = c; auto damage = event;
++        copy.Request.bHasHitInfo = true;
++        copy.Request.HitInfo.Component = part.collision;
++        copy.Request.HitInfo.BoneName = part.bone;
++        damage.Component = part.collision;
++        scale_info(damage.DamageInfo, share / amount);
++        auto hit = saved_hit;
++        hit.Component = part.collision; hit.BoneName = part.bone;
++        copy.Request.HitInfo = hit;
++        UAbilitySystemBlueprintLibrary::EffectContextAddHitResult(handle, hit, true);
++        original_normal(copy, damage, share);
++    }
++}
++static void apply_hook(const FArchonDamageCalculation& c, const FArchonDamageResult& r,
++    const FArchonAbilityDamageEvent& event, const FDamageExecutionTelemetryData& telemetry) {
++    if (!Globals::AmServer || !live(c.Request.TargetActor) || !c.Request.TargetActor->IsA(AArchonBehemoth::StaticClass())) {
++        original_apply(c, r, event, telemetry); return;
++    }
++    const auto id = account(c.Request.SourceActor);
++    const auto selected = id.empty() ? Lease{} : settings(id);
++    if (selected.damage == 1 && !selected.split) { original_apply(c, r, event, telemetry); return; }
++    if (!std::isfinite(r.ActualDamageApplied) || r.ActualDamageApplied < 0 || r.ActualDamageApplied > 1e20f) {
++        original_apply(c, r, event, telemetry); return;
++    }
++    auto result = r; auto damage = event;
++    const float factor = selected.damage;
++    // Copy array storage before scaling: SDK TArrays are non-owning shallow wrappers.
++    std::vector<float> pre, post;
++    if (r.PreMitigationDamages.Values.Num() < 0 || r.PreMitigationDamages.Values.Num() > 32
++        || r.PostMitigationDamages.Values.Num() < 0 || r.PostMitigationDamages.Values.Num() > 32) {
++        original_apply(c, r, event, telemetry); return;
++    }
++    for (float v : r.PreMitigationDamages.Values) pre.push_back(v * factor);
++    for (float v : r.PostMitigationDamages.Values) post.push_back(v * factor);
++    result.PreMitigationDamages.Values = TArray<float>(pre.data(), static_cast<int>(pre.size()), static_cast<int>(pre.size()));
++    result.PostMitigationDamages.Values = TArray<float>(post.data(), static_cast<int>(post.size()), static_cast<int>(post.size()));
++    result.RawBaseDamage *= factor; result.BaseDamageWithMultipliersApplied *= factor;
++    result.FinalStaggerDamage *= factor; result.FinalExposeDamage *= factor;
++    result.UncappedDamage *= factor; result.UncappedPhysicalDamage *= factor; result.UncappedElementalDamage *= factor;
++    result.ActualDamageApplied *= factor; result.VsBehemoth_CoreDamageFromBP *= factor;
++    result.DamageGameplayEventData.EventMagnitude *= factor;
++    scale_info(damage.DamageInfo, factor);
++    Context local{&c, selected.split ? parts(static_cast<AArchonBehemoth*>(c.Request.TargetActor)) : std::vector<Part>{}, context};
++    context = &local;
++    struct Restore { Context* value; ~Restore() { context = value; } } restore{local.previous};
++    static unsigned reported = 0;
++    if (reported++ < 64) MpLog("[AccountTrainer] account=" + id + " damage=" + std::to_string(factor)
++        + " parts=" + std::to_string(local.parts.size()) + " input=" + std::to_string(r.ActualDamageApplied)
++        + " output=" + std::to_string(result.ActualDamageApplied));
++    original_apply(c, result, damage, telemetry);
++}
++static void install() {
++    if (!Globals::AmServer || !MpReadEnvironment("REFORGED_TRAINER_DIR", state_dir, 1024) || state_dir.empty()) return;
++    auto* base = reinterpret_cast<uint8_t*>(Globals::BaseAddress);
++    auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
++    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
++    if (nt->FileHeader.TimeDateStamp != TrainerBuild::timestamp || nt->OptionalHeader.SizeOfImage != TrainerBuild::image_size
++        || memcmp(base + TrainerBuild::apply_rva, TrainerBuild::apply_bytes, sizeof(TrainerBuild::apply_bytes))
++        || memcmp(base + TrainerBuild::normal_rva, TrainerBuild::normal_bytes, sizeof(TrainerBuild::normal_bytes))
++        || memcmp(base + TrainerBuild::free_rva, TrainerBuild::free_bytes, sizeof(TrainerBuild::free_bytes))) {
++        MpLog("[AccountTrainer] DISABLED: executable signature mismatch"); return;
++    }
++    if (MH_CreateHook(base + TrainerBuild::apply_rva, &apply_hook, reinterpret_cast<void**>(&original_apply)) != MH_OK) {
++        MpLog("[AccountTrainer] DISABLED: apply hook failed"); return;
++    }
++    if (MH_CreateHook(base + TrainerBuild::normal_rva, &normal_hook, reinterpret_cast<void**>(&original_normal)) != MH_OK) {
++        MH_RemoveHook(base + TrainerBuild::apply_rva);
++        MpLog("[AccountTrainer] DISABLED: split hook failed"); return;
++    }
++    if (MH_EnableHook(base + TrainerBuild::normal_rva) != MH_OK || MH_EnableHook(base + TrainerBuild::apply_rva) != MH_OK) {
++        MH_DisableHook(base + TrainerBuild::apply_rva); MH_DisableHook(base + TrainerBuild::normal_rva);
++        MpLog("[AccountTrainer] DISABLED: hook activation failed"); return;
++    }
++    MpLog("[AccountTrainer] per-account damage integration installed");
++}
++}

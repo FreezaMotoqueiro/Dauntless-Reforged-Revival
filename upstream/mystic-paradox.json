@@ -38,6 +38,8 @@
     "patches/0030-backend-platinum-store-free.patch",
     "patches/0031-runtime-server-locale-for-part-breaks.patch",
     "patches/0032-backend-weapon-reforge-resets-the-weapon.patch",
-    "patches/0033-director-training-stops-when-idle.patch"
+    "patches/0033-director-training-stops-when-idle.patch",
+    "patches/0034-account-trainer.patch",
+    "patches/0035-individual-cooldown.patch"
   ]
 }
