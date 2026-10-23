@@ -50,7 +50,7 @@ describe("the pinned upstream", () => {
         write(file, JSON.stringify({ repository: "https://github.com/x/y", commit: "0".repeat(40), patches: ["../../etc"] }));
         assert.throws(() => readPin(file), /patches/);
         const real = readPin(path.resolve(__dirname, "..", "..", "..", "..", "upstream", "mystic-paradox.json"));
-        assert.equal(real.patches.length, 36);
+        assert.equal(real.patches.length, 38);
     });
 
     it("is fetched at the pinned commit and patched; an update keeps the host's ignored files", async () => {
@@ -84,7 +84,7 @@ describe("the pinned upstream", () => {
     it("the committed patches have LF line endings only, so reading them back to LF is exact", () => {
         const dir = path.resolve(__dirname, "..", "..", "..", "..", "upstream", "patches");
         const names = fs.readdirSync(dir).filter((n) => n.endsWith(".patch"));
-        assert.equal(names.length, 36);
+        assert.equal(names.length, 38);
         for (const name of names) assert.ok(!fs.readFileSync(path.join(dir, name)).includes(0x0d), `${name} has a CR byte`);
     });
 

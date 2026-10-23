@@ -41,6 +41,8 @@
     "patches/0033-director-training-stops-when-idle.patch",
     "patches/0034-backend-save-single-cooldown.patch",
     "patches/0035-runtime-pc-channel-guard-ab-flag.patch",
-    "patches/0036-backend-weapons-served-at-base-level.patch"
+    "patches/0036-backend-weapons-served-at-base-level.patch",
+    "patches/0037-runtime-loadout-slot-repair-reapplies-cells.patch",
+    "patches/0038-runtime-server-viewport-size-for-aiming.patch"
   ]
 }
