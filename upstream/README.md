@@ -578,6 +578,21 @@ without hitting them. On the server the function's native entry is wrapped once 
 of 0 becomes 1920x1080. Only the aspect ratio is used there, and the aim is the centre of the screen at any size.
 `DISABLE_SERVER_VIEWPORT_SIZE.flag` beside the game executable turns it off.
 
+### 0039: two-player Escalation gets past the amp
+
+`ParadoxRuntime/dllmain.cpp`, server only. With two or more players, choosing the first amp never finished: each
+player's `ServerSelectRelicOption` entered and never returned, so the geyser to the next arena never appeared
+although the round counter moved on (VPS logs, 21-22 Oct 2026). The amp sends a multicast RPC on the chooser's
+PlayerController. The replication graph's multicast branch (`UReplicationGraph::ProcessRemoteFunction`, +0xF278B8 in
+the 1.14.7 executable) opens a channel for that controller on the other player's connection and binds it with
+`SetChannelActor` (caller +0xF27D45). The PlayerController channel guard refuses that bind on purpose (the other
+client would adopt the controller), which leaves the channel without an actor, and the graph still calls
+`UNetDriver::ProcessRemoteFunctionForChannel` (+0x3FA09B0) on it. That function reads the channel's actor before the
+first bunch, faults (access violation at +0x3F90A77), and the fault unwinds the whole amp RPC. The hook now drops an
+RPC on a quarantined channel or on a server channel with no actor (`[RpcChannelGuard] DROP fn=...`). Stock UE never
+sends a controller's multicast to another connection either; the owner still gets it. `DISABLE_RPC_UNBOUND_CHANNEL_GUARD.flag`
+beside the game executable turns it off.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)

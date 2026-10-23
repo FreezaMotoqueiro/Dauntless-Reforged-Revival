@@ -1,0 +1,104 @@
+diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
+index ed879aa..4514fd9 100644
+--- a/ParadoxRuntime/dllmain.cpp
++++ b/ParadoxRuntime/dllmain.cpp
+@@ -8881,6 +8881,78 @@ void __fastcall ReplicateActorFreqHook(UActorChannel* channel) {
+     reinterpret_cast<void(__fastcall*)(UActorChannel*)>(OrigReplicateActorFreq)(channel);
+ }
+ 
++// [Dauntless Reforged Revival, 0039] An RPC must not be sent on a channel whose bind was refused.
++//
++// Two-player Escalation never got past the first amp (VPS logs, 21-22 Oct 2026, ports 8770-8775): each
++// player's ServerSelectRelicOption entered and never returned, and the geyser to the next arena was never
++// spawned. Each time the log shows [PCChannelBind] BLOCK ... callerRva=0xF27D45 followed by an access
++// violation at +0x3F90A77 reading null+0x10. The disassembly of the 1.14.7 executable gives the chain:
++//   +0x00F278B8..  UReplicationGraph::ProcessRemoteFunction, NetMulticast branch. For every connection it
++//                  looks up FConnectionReplicationActorInfo for the RPC's actor; with no channel and
++//                  RPC_Multicast_OpenChannelForClass true it calls CreateChannelByName (+0x3F62E90), stores
++//                  the new channel in ConnectionActorInfo.Channel, calls SetChannelActor (+0x3D8FB20) at
++//                  +0xF27D40, and then always calls ProcessRemoteFunctionForChannel at +0xF27DDF.
++//   +0x03FA09B0    UNetDriver::ProcessRemoteFunctionForChannel, a wrapper of the private version, which
++//                  (+0x3FA0CE2) calls Ch->Actor (+0x70) ->CallPreReplication before the channel's first
++//                  bunch, then ReplicateActor.
++// The amp fires a multicast on the chooser's PlayerController (or a component it owns), so the graph opens
++// a channel for that controller on the other player's connection. The guard above refuses that bind on
++// purpose (a remote controller channel makes the other client adopt it), which leaves the new channel with
++// Actor == null; the private function then dereferences it, the fault unwinds the whole server RPC, and
++// the rest of the amp choice (PlayerEscalationRelicsChanged and the round change that spawns the geyser)
++// never runs. A second multicast in the same frame finds the same channel already cached in the ActorInfo
++// and crashes without a new BLOCK line (the pid 2220 session).
++//
++// A PlayerController is only relevant to its owner, so stock UE never delivers its multicasts to another
++// connection. The RPC is dropped for exactly that case: a quarantined channel, or a server channel with no
++// actor bound. The owner's copy still goes out on its own channel, the deferred quarantine cleanup still
++// closes the empty channel and clears the cached ActorInfo slot, and the server RPC returns normally.
++// DISABLE_RPC_UNBOUND_CHANNEL_GUARD.flag beside the game executable turns this off.
++static bool MpRpcUnboundChannelGuardEnabled() {
++    static int s_enabled = -1;
++    if (s_enabled < 0) {
++        s_enabled = MpExeRelativeFlagPresent(L"DISABLE_RPC_UNBOUND_CHANNEL_GUARD.flag") ? 0 : 1;
++        MpLog(std::string("[RpcChannelGuard] DISABLE_RPC_UNBOUND_CHANNEL_GUARD.flag ")
++            + (s_enabled ? "absent -> guard active" : "PRESENT -> guard off"));
++    }
++    return s_enabled == 1;
++}
++
++// 1.14.7: this + 12 arguments (UE 4.26 order). The caller at +0xF27DDF passes IsServer as a byte at
++// [rsp+0x50], SendPolicy as a dword at [rsp+0x58] and &RemoteFunctionFlags at [rsp+0x60].
++void* OrigProcessRemoteFunctionForChannel = nullptr;
++using ProcessRemoteFunctionForChannelFn = void(__fastcall*)(
++    void* NetDriver, void* Channel, const void* ClassCache, const void* FieldCache,
++    void* TargetObj, void* Connection, void* Function, void* Parms, void* OutParms,
++    void* Stack, uint8_t IsServer, int32_t SendPolicy, void* RemoteFunctionFlags);
++
++void __fastcall ProcessRemoteFunctionForChannelGuardHook(
++    void* NetDriver, void* Channel, const void* ClassCache, const void* FieldCache,
++    void* TargetObj, void* Connection, void* Function, void* Parms, void* OutParms,
++    void* Stack, uint8_t IsServer, int32_t SendPolicy, void* RemoteFunctionFlags) {
++    if (Channel && IsServer && MpRpcUnboundChannelGuardEnabled()) {
++        const bool Quarantined = IsPlayerControllerChannelQuarantined(Channel);
++        const uintptr_t BoundActor = Quarantined
++            ? 0 : SafeReadPtr(reinterpret_cast<uintptr_t>(Channel), 0x70);
++        if (Quarantined || BoundActor == 0) {
++            static std::atomic<int> s_logged{ 0 };
++            const int N = s_logged.fetch_add(1, std::memory_order_relaxed);
++            if (N < 64 || (N % 256) == 0) {
++                MpLog("[RpcChannelGuard] DROP fn=" + SafeObjectNameForDiagnostic(Function)
++                    + " target=" + SafeObjectNameForDiagnostic(TargetObj)
++                    + " channel=" + MpPtr(Channel)
++                    + " connection=" + MpPtr(Connection)
++                    + " reason=" + (Quarantined ? "quarantined-channel" : "channel-without-actor")
++                    + " count=" + std::to_string(N + 1));
++            }
++            return;
++        }
++    }
++    reinterpret_cast<ProcessRemoteFunctionForChannelFn>(OrigProcessRemoteFunctionForChannel)(
++        NetDriver, Channel, ClassCache, FieldCache, TargetObj, Connection, Function, Parms,
++        OutParms, Stack, IsServer, SendPolicy, RemoteFunctionFlags);
++}
++
+ // [2026-07-19 SRA_RATE_CAP.flag] Bring the ~60Hz SRA into sync with NetServerMaxTickRate (30). VERIFIED in
+ // Ghidra: the game's TickFlush (0x03D91DC0) calls the SRA vtable slot +0x2A8 (this hook) UNCONDITIONALLY
+ // every invocation — there is NO internal MaxTickRate gate, so SRA runs at the engine frame rate regardless
+@@ -22139,6 +22211,20 @@ void InitServerHooks() {
+         + " target=+" + MpHex(0x03D8A2D0)
+         + (RepGraphDiag() ? " (RepFreq diag also enabled)" : ""));
+ 
++    // [Dauntless Reforged Revival, 0039] UNetDriver::ProcessRemoteFunctionForChannel: drop an RPC on a
++    // channel whose PlayerController bind was refused, see ProcessRemoteFunctionForChannelGuardHook.
++    {
++        MH_STATUS RpcChCreate = MH_CreateHook(
++            (void*)(Globals::BaseAddress + 0x03FA09B0),
++            ProcessRemoteFunctionForChannelGuardHook, &OrigProcessRemoteFunctionForChannel);
++        MH_STATUS RpcChEnable = MH_EnableHook((void*)(Globals::BaseAddress + 0x03FA09B0));
++        MpLog(std::string("[InitServerHooks] RPC unbound-channel guard create=")
++            + MH_StatusToString(RpcChCreate)
++            + " enable=" + MH_StatusToString(RpcChEnable)
++            + " target=+" + MpHex(0x03FA09B0));
++        MpRpcUnboundChannelGuardEnabled();
++    }
++
+     // Artificer-specific native Blueprint-policy dispatcher.
+     // [1.14.7]: 0x0230B750 is execCanActivateAbilityBP with 3-arg exec ABI (UObject*, FFrame&, RESULT_DECL),
+     // NOT bool(this). Diagnostic-only hook is skipped pending resolution of the native caller.
