@@ -545,6 +545,19 @@ First made by hand on the VPS on 2026-10-22.
 Without the flag nothing changes. Diagnostic only: without the guards a remote controller may be adopted.
 First made by hand on the VPS on 2026-10-22.
 
+### 0036: weapons are served at item level 0
+
+`ParadoxBackend/src/weaponBaseLevel.ts`, used by `ParadoxBackend/src/routes/inventory.ts`. A weapon's `itemData`
+carries `CurrentLevel`, and the game takes the weapon's power table for that level. The 1.14.7 paks only carry the
+base `weapon_power_table` (plus `weapon_power_table_level_01` and an obprog one), so a weapon above level 0 gets
+no table: the game server logs `Weapon: invalid weapon power table reference on (<weapon>_bp_C)` and every value
+of the table reads as 0. That includes the Chain Blades and War Pike meter gain (`CBlade_MeterGainScale`,
+`MSpear_MeterGainScale`, `MSpear_MeterGainPerX/YAttack`) and the War Pike damage multipliers, so the special meter
+never fills and the War Pike stops wounding (seen on the VPS on 2026-10-23 with two weapons at level 5; level-0
+weapons never log the warning). Every inventory response (`GET /inventory/...`, `POST /inventory` and
+`POST /inventory/instanceditem`) now serves weapons with `CurrentLevel` 0. The stored level is not changed, and
+`KEEP_WEAPON_ITEM_LEVELS=true` in the backend's environment serves it again.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
