@@ -527,6 +527,24 @@ timeout sends; its exit releases the hub without a restart or a backoff (`[Train
 Grounds stopped`). A request during the stop waits for it, then starts a fresh one. Any other exit (a crash)
 still restarts them as before.
 
+### 0034: the game server's single cooldown saves are stored
+
+`ParadoxBackend/src/routes/system.ts`. Besides `PUT /cooldown/batch/<user>`, the game server saves one cooldown at a
+time with `PUT /cooldown/<user>/<cooldownId>`. That route did not exist, so those saves were lost and the cooldown
+fired again on the next arrival. The new route takes the same game-server authority check, accepts ids of letters,
+digits and `_.:-` (up to 200), and stores the cooldown as started now, like a batch save of one
+(`[CooldownIndividual]` in backend.log). It is declared after the batch route so `batch` is never read as a user id.
+`MYSTICPARADOX_COOLDOWN_PERSISTENCE=off` and the no-player sentinel answer OK without storing, as for the batch.
+First made by hand on the VPS on 2026-10-22.
+
+### 0035: DISABLE_PC_CHANNEL_GUARD.flag (A/B diagnostic)
+
+`ParadoxRuntime/dllmain.cpp`. A `DISABLE_PC_CHANNEL_GUARD.flag` beside the game executable (read once, logged as
+`[PCChannelGuard]`) bypasses the two PlayerController channel guards (`RepGraphReplicateSingleActorGuardHook` and
+`PlayerControllerSetChannelActorGuardHook`), so a 2-player Escalation can be compared with and without them.
+Without the flag nothing changes. Diagnostic only: without the guards a remote controller may be adopted.
+First made by hand on the VPS on 2026-10-22.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
