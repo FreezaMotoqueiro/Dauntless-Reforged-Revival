@@ -558,6 +558,26 @@ weapons never log the warning). Every inventory response (`GET /inventory/...`, 
 `POST /inventory/instanceditem`) now serves weapons with `CurrentLevel` 0. The stored level is not changed, and
 `KEEP_WEAPON_ITEM_LEVELS=true` in the backend's environment serves it again.
 
+### 0037: the loadout slot repair also re-applies cells, parts, dye and transmog
+
+`ParadoxRuntime/dllmain.cpp`, in the client's `RepairClientLoadoutItemSlots` (0027). Back in Ramsgate after a hunt the
+loadout's item slots reach the client before its inventory, so 0027 resolves their items again (`[LoadoutSlotRepair]
+... resolved`). Each slot's other replicated fields (`EquippedCells`, weapon parts, dye, transmog) arrived in the same
+window, and their RepNotify ran against no item, so the cells disappeared from the weapons and armour in the UI
+although the backend kept them (checked in the Mongo oplog on 2026-10-23: no save ever dropped them). Once a slot's
+item resolves, the repair now also runs `OnRep_CellsChanged`, `OnRep_ItemPartsChanged`, `OnRep_DyeChanged` and
+`OnRep_TransmogChanged` on it. `DISABLE_LOADOUT_SLOT_REPAIR.flag` still turns the whole repair off.
+
+### 0038: game servers answer a 1920x1080 viewport size
+
+`ParadoxRuntime/dllmain.cpp`. A headless game server has no viewport, so `UWidgetLayoutLibrary::GetViewportSize`
+answers (0,0). The War Pike's projectile special (`mspear_special_projectile_bpc` -> `player_aiming_bpc.StartAiming`
+-> `camera_helper_function_library.ConvertFovHorzToVert`) divides by it on the server (`Divide by zero detected:
+0.000000 / 0` in the hunt log, VPS 2026-10-23), so the server's shot has a broken aim and passes through Behemoths
+without hitting them. On the server the function's native entry is wrapped once (`[ServerViewportSize]`): a size
+of 0 becomes 1920x1080. Only the aspect ratio is used there, and the aim is the centre of the screen at any size.
+`DISABLE_SERVER_VIEWPORT_SIZE.flag` beside the game executable turns it off.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
