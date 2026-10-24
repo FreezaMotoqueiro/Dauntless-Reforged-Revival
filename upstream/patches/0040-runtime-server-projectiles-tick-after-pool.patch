@@ -1,0 +1,47 @@
+diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
+index e3c6fd3..87627e1 100644
+--- a/ParadoxRuntime/dllmain.cpp
++++ b/ParadoxRuntime/dllmain.cpp
+@@ -15416,7 +15416,42 @@ static uint64_t MpPeComputeCategoryMask(const std::string& N) {
+     return Mask;
+ }
+ 
++// [Reforged 0040] Server projectiles tick again when they come back from the pool.
++// AArchonProjectileBase runs its hit sweep (AuthSweepHit -> AuthProcessHits) from its tick. Projectiles are pooled
++// (UPhxPoolableComponent), and on the game server a projectile taken from the pool begins play with its actor tick
++// still disabled (VPS 2026-10-24: 7 of 8 War Pike "concussive" shots began play with tick=0, only the freshly
++// spawned one with tick=1). Such a shot flies and explodes on expiry without ever sweeping, so it passes through
++// Behemoths; only the first shot of a hunt, the one not taken from the pool, could hit. At ReceiveBeginPlay on the
++// server, every projectile now gets its tick enabled at full rate and its instigator-driven significance
++// (UInstigatorDrivenSigComp::Disabled, +0xB0 on the component at +0x3D8) off, which made all shots hit.
++// DISABLE_PROJECTILE_TICK_FIX.flag beside the game executable turns it off.
++static void MpEnableServerProjectileTick(UObject* Object, UFunction* Function) {
++    if (!Globals::AmServer || !Object || !Function) return;
++    static const bool s_disabled = MpExeRelativeFlagPresent(L"DISABLE_PROJECTILE_TICK_FIX.flag");
++    if (s_disabled) return;
++    // Per UFunction: is it a ReceiveBeginPlay? (cached; the name is read once per function)
++    static std::unordered_map<const void*, bool> s_isBeginPlay;
++    auto It = s_isBeginPlay.find(Function);
++    if (It == s_isBeginPlay.end()) It = s_isBeginPlay.emplace(Function, Function->GetName() == "ReceiveBeginPlay").first;
++    if (!It->second) return;
++    if (!IsRegisteredLiveObject(Object) || !Object->IsA(SDK::AArchonProjectileBase::StaticClass())) return;
++    auto* Actor = static_cast<SDK::AActor*>(Object);
++    const uintptr_t Sig = SafeReadPtr(reinterpret_cast<uintptr_t>(Object), 0x3D8);
++    if (Sig && IsRegisteredLiveObject(reinterpret_cast<UObject*>(Sig))
++        && reinterpret_cast<UObject*>(Sig)->IsA(SDK::UInstigatorDrivenSigComp::StaticClass())) {
++        *reinterpret_cast<uint8_t*>(Sig + 0xB0) = 1;
++    }
++    const bool WasTicking = Actor->IsActorTickEnabled();
++    Actor->SetActorTickInterval(0.0f);
++    Actor->SetActorTickEnabled(true);
++    static std::atomic<int> s_logged{ 0 };
++    if (!WasTicking && s_logged.fetch_add(1, std::memory_order_relaxed) < 5) {
++        MpLog("[ProjectileTick] " + Object->GetName() + " began play with its tick disabled; enabled");
++    }
++}
++
+ void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
++    MpEnableServerProjectileTick(Object, Function);   // [Reforged 0040]
+     // [1.12.0 REENTRANCY GUARD 2026-07-10] Safety-net against runaway ProcessEvent
+     // recursion. Root cause of the FTUE crash was
+     // AArchonCharacter::SetClientAuthoritativeCustomMovement_Implementation
