@@ -40,6 +40,7 @@ $Repo = 'Filoppi/Luma-Framework'
 $AssetPattern = '^Luma-Unreal_Engine\.zip$'
 $ManifestName = 'reforged-upscaler.json'
 $ExeName = 'Dauntless-Win64-Shipping.exe'
+$Sep = [string][IO.Path]::DirectorySeparatorChar
 
 function Resolve-Win64([string]$dir) {
     $full = [IO.Path]::GetFullPath($dir)
@@ -62,7 +63,7 @@ if ($Uninstall) {
     $dirs = New-Object System.Collections.Generic.List[string]
     foreach ($rel in $manifest.files) {
         $target = [IO.Path]::GetFullPath((Join-Path $win64 $rel))
-        if (-not $target.StartsWith($win64 + '\', [StringComparison]::OrdinalIgnoreCase)) { continue }
+        if (-not $target.StartsWith($win64 + $Sep, [StringComparison]::OrdinalIgnoreCase)) { continue }
         if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
         $dirs.Add((Split-Path $target -Parent))
     }
@@ -97,37 +98,58 @@ try {
         Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile $ZipPath -UseBasicParsing
         $source = "$Repo $($release.tag_name)"
     }
-    $extract = Join-Path $work 'x'
+    # Paths come from the zip's own entry names, never from folder paths: %TEMP% can be a short 8.3 path
+    # (C:\Users\ADMINI~1\...) while a folder listing returns long names, which once cut every relative path wrong.
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $extract)
+    $zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $plan = @()
+        foreach ($entry in $zip.Entries) {
+            if ([string]::IsNullOrEmpty($entry.Name)) { continue }   # a folder entry
+            $rel = $entry.FullName.Replace('/', $Sep)
+            if ([IO.Path]::IsPathRooted($rel) -or ($rel.Split($Sep) | Where-Object { $_ -eq '..' })) { throw "Unsafe path in the package: $($entry.FullName)" }
+            if ($rel -ieq 'dxgi.dll') { $rel = 'ReShade64.dll' }   # never a proxy: the runtime loads it on the client only
+            $plan += [pscustomobject]@{ Entry = $entry; Rel = $rel }
+        }
+        if (-not ($plan | Where-Object { $_.Rel -ieq 'ReShade64.dll' })) { throw 'The package has no dxgi.dll (ReShade) at its root: not a Luma package.' }
+        if (-not ($plan | Where-Object { $_.Rel -match '^Luma-[^\\/]*\.addon(64)?$' })) { throw 'The package has no Luma add-on at its root.' }
 
-    if (-not (Test-Path -LiteralPath (Join-Path $extract 'dxgi.dll'))) { throw 'The package has no dxgi.dll (ReShade): not a Luma package.' }
-    if (-not (Get-ChildItem -LiteralPath $extract -Filter 'Luma-*.addon*' -File)) { throw 'The package has no Luma add-on.' }
+        $previous = @()
+        if (Test-Path -LiteralPath $manifestPath) { $previous = @((Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).files) }
 
-    $previous = @()
-    if (Test-Path -LiteralPath $manifestPath) { $previous = @((Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).files) }
+        foreach ($item in $plan) {
+            $target = Join-Path $win64 $item.Rel
+            if ((Test-Path -LiteralPath $target) -and -not ($previous -contains $item.Rel)) {
+                throw "'$($item.Rel)' already exists in $win64 and was not installed by this script. Remove it first (or move it aside)."
+            }
+        }
+        if (Test-Path -LiteralPath (Join-Path $win64 'dxgi.dll')) {
+            Write-Warning 'There is a dxgi.dll in the game folder (another ReShade or mod). Remove it, or ReShade loads twice.'
+        }
 
-    # The package's files and where they go: dxgi.dll becomes ReShade64.dll, the rest keep their paths.
-    $plan = @()
-    foreach ($f in Get-ChildItem -LiteralPath $extract -Recurse -File) {
-        $rel = $f.FullName.Substring($extract.Length + 1)
-        if ($rel -ieq 'dxgi.dll') { $rel = 'ReShade64.dll' }
-        $plan += [pscustomobject]@{ From = $f.FullName; Rel = $rel }
-    }
-    foreach ($item in $plan) {
-        $target = Join-Path $win64 $item.Rel
-        if ((Test-Path -LiteralPath $target) -and -not ($previous -contains $item.Rel)) {
-            throw "'$($item.Rel)' already exists in $win64 and was not installed by this script. Remove it first (or move it aside)."
+        # Files of an earlier install that this package no longer has (or that an earlier version of this
+        # script put in the wrong place) are removed, with the folders they leave empty.
+        $newRels = @($plan | ForEach-Object { $_.Rel })
+        foreach ($old in $previous) {
+            if ($newRels -contains $old) { continue }
+            $target = [IO.Path]::GetFullPath((Join-Path $win64 $old))
+            if (-not $target.StartsWith($win64 + $Sep, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force }
+            $d = Split-Path $target -Parent
+            while ($d.Length -gt $win64.Length -and (Test-Path -LiteralPath $d) -and -not (Get-ChildItem -LiteralPath $d -Force)) {
+                Remove-Item -LiteralPath $d -Force
+                $d = Split-Path $d -Parent
+            }
+        }
+
+        foreach ($item in $plan) {
+            $target = Join-Path $win64 $item.Rel
+            New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($item.Entry, $target, $true)
         }
     }
-    if (Test-Path -LiteralPath (Join-Path $win64 'dxgi.dll')) {
-        Write-Warning 'There is a dxgi.dll in the game folder (another ReShade or mod). Remove it, or ReShade loads twice.'
-    }
-
-    foreach ($item in $plan) {
-        $target = Join-Path $win64 $item.Rel
-        New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
-        Copy-Item -LiteralPath $item.From -Destination $target -Force
+    finally {
+        $zip.Dispose()
     }
     $manifest = [ordered]@{ source = $source; installed = (Get-Date).ToString('s'); files = @($plan | ForEach-Object { $_.Rel }) }
     $manifest | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding UTF8

@@ -620,6 +620,13 @@ or conflict with the runtime's own proxy (`winmm.dll`). Without `ReShade64.dll` 
 `DISABLE_UPSCALER.flag` beside the game executable turns it off without uninstalling. Installation and settings:
 [docs/upscaling.md](../docs/upscaling.md).
 
+### 0042: the upscaler's load is written to the runtime log
+
+`ParadoxRuntime/dllmain.cpp`, client only. 0041 reported through `InitLog`, which the runtime compiles out, so the
+log never said whether the upscaler loaded. It now uses `MpLog`: `mysticparadox_dll_port0.log` says
+`[Upscaler] not installed`, `[Upscaler] ReShade64.dll loaded`, `failed error=<code>` or that
+`DISABLE_UPSCALER.flag` is set.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
