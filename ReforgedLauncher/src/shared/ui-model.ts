@@ -2,7 +2,7 @@
 // tested without a DOM.
 
 import type { StringKey } from "./i18n";
-import type { GraphicsPreset, Language, Phase, Snapshot, TaskProgress } from "./types";
+import type { GraphicsPreset, Language, UpscalerMode, Phase, Snapshot, TaskProgress } from "./types";
 import type { InstanceKind, PlayerWhere } from "./status";
 import { formatBytes, formatDuration, formatPercent, formatSpeed } from "./format";
 
@@ -118,6 +118,10 @@ export function kindKey(k: InstanceKind): StringKey {
 
 export function graphicsKey(g: GraphicsPreset): StringKey {
   return g < 0 ? "gfx_menu" : (`gfx_${g}` as StringKey);
+}
+
+export function upscalerKey(m: UpscalerMode): StringKey {
+  return `ups_${m}` as StringKey;
 }
 
 // A short display form of a SHA-256: the first 16 hex digits in groups of four.

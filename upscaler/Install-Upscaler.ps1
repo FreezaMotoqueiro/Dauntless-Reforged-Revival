@@ -192,7 +192,7 @@ try {
     Write-Host '- It needs the Reforged runtime with patch 0041 (it loads ReShade64.dll on the client).'
     Write-Host '- Start the game from the launcher (1.5.2 or later turns temporal upsampling on).'
     Write-Host '- In game press Home: ReShade and Luma menus. Pick DLSS or FSR under Super Resolution.'
-    Write-Host '- Lower the in-game resolution scale (or sg.ResolutionQuality) for more FPS: 67 = Quality, 58 = Balanced, 50 = Performance.'
+    Write-Host '- Pick the mode (Quality, Balanced, Performance...) in the launcher 1.5.3: Settings > Graphics > DLSS / FSR mode.'
     Write-Host '- DISABLE_UPSCALER.flag in this folder turns it off; -Uninstall removes it.'
 }
 finally {

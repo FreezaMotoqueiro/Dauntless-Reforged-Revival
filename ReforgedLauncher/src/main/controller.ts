@@ -27,6 +27,7 @@ import type {
   GameLanguage,
   GameProblem,
   GraphicsPreset,
+  UpscalerMode,
   HostAction,
   HostFolder,
   HostJob,
@@ -50,7 +51,7 @@ import type {
   Snapshot,
   TaskProgress,
 } from "../shared/types";
-import { GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES, RUNTIME_PROFILES } from "../shared/types";
+import { GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES, RUNTIME_PROFILES, UPSCALER_MODES } from "../shared/types";
 import type { Endpoint } from "./http";
 import {
   fetchBrandingImage,
@@ -339,6 +340,7 @@ export class Controller {
     const s = this.s;
     return {
       graphics: s.graphics,
+      upscalerMode: s.upscalerMode,
       windowed: s.windowed,
       language: s.language,
       gameLanguage: s.gameLanguage,
@@ -1651,7 +1653,7 @@ export class Controller {
         try {
           const upscaler = await upscalerInstalled(dir);
           if (upscaler) log.info("upscaler installed (ReShade64.dll + Luma add-on): temporal upsampling on, resolution scale left to the game");
-          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true, upscaler });
+          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true, upscaler: upscaler ? this.s.upscalerMode : null });
           displayRepaired = config.displayRepaired;
           if (config.phoenixEndpointsRemoved > 0) {
             log.info(`removed ${config.phoenixEndpointsRemoved} endpoint overrides ([OnlineSubsystemPhoenix], written by Dauntless Revived's launcher) from Game.ini: they send Dauntless 1.14.7 to 127.0.0.1 (copy kept as Game.ini.before-reforged)`);
@@ -1725,6 +1727,7 @@ export class Controller {
       const p = patch as Record<string, unknown>;
       await this.settings.update((s) => {
         if (GRAPHICS_PRESETS.includes(p.graphics as GraphicsPreset)) s.graphics = p.graphics as GraphicsPreset;
+        if (UPSCALER_MODES.includes(p.upscalerMode as UpscalerMode)) s.upscalerMode = p.upscalerMode as UpscalerMode;
         if (typeof p.windowed === "boolean") s.windowed = p.windowed;
         if (typeof p.streamerMode === "boolean") s.streamerMode = p.streamerMode;
         if (typeof p.hostTools === "boolean") {

@@ -18,7 +18,7 @@ function snap(over: Partial<Snapshot> = {}): Snapshot {
     runtime: { state: "unavailable", version: null, files: [], localDir: null },
     task: null,
     running: { game: false, relayPort: null },
-    settings: { graphics: -1, windowed: false, language: "en", gameLanguage: "auto", runtimeProfile: "production", streamerMode: false, hostTools: false },
+    settings: { graphics: -1, upscalerMode: 67, windowed: false, language: "en", gameLanguage: "auto", runtimeProfile: "production", streamerMode: false, hostTools: false },
     app: { version: "0.1.0", packaged: false, updateReady: false, platform: "win32" },
     status: null,
     statusUnsupported: false,

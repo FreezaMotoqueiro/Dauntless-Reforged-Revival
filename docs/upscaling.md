@@ -55,9 +55,12 @@ launcher 1.5.2 or later (it updates itself).
    which is the pass DLSS/FSR replaces) and keeps TAA as the anti-aliasing method. It no longer pins the
    resolution scale at 100 when a graphics level is forced.
 4. In game, press **Home**: the ReShade and Luma menus open. Choose **DLSS** or **FSR** under Super Resolution.
-5. Lower the resolution scale for more FPS (in game, or `sg.ResolutionQuality` in
-   `%LOCALAPPDATA%\Archon\Saved\Config\WindowsClient\GameUserSettings.ini`):
-   100 = DLAA / native AA, 67 = Quality, 58 = Balanced, 50 = Performance.
+5. Pick the mode in the launcher, **Settings > Graphics > DLSS / FSR mode** (launcher 1.5.3 or later). Luma has
+   no mode menu of its own: the mode is the game's render resolution, which the launcher writes as
+   `r.ScreenPercentage`: Native (DLAA) = 100, Ultra Quality = 77, Quality = 67 (default), Balanced = 58,
+   Performance = 50, Ultra Performance = 33. "Game's resolution scale" leaves it to the in-game setting
+   (or `sg.ResolutionQuality` in `%LOCALAPPDATA%\Archon\Saved\Config\WindowsClient\GameUserSettings.ini`).
+   Keep dynamic resolution off.
 
 The runtime log (`mysticparadox_dll_port0.log` in the same folder) says `[Upscaler] ReShade64.dll loaded`.
 
@@ -95,7 +98,8 @@ O Dauntless 1.14.7 não tem DLSS nem FSR. O mod *Unreal Engine* do Luma Framewor
 - **Instalar:** feche o jogo e rode
   `powershell -ExecutionPolicy Bypass -File Install-Upscaler.ps1 -GameDir C:\Dauntless`.
   Precisa do runtime com o patch 0041 e do launcher 1.5.2.
-- **Usar:** no jogo aperte **Home**, escolha DLSS ou FSR. Para ganhar FPS, baixe a escala de resolução
-  (67 = Qualidade, 58 = Equilibrado, 50 = Desempenho). Em 100 vira DLAA.
+- **Usar:** no jogo aperte **Home**, escolha DLSS ou FSR. O modo (Nativo/DLAA, Ultra Qualidade, Qualidade,
+  Equilibrado, Desempenho, Ultra Desempenho) fica no launcher 1.5.3, em **Configurações > Gráficos > Modo do DLSS / FSR**.
+  O Luma não tem menu de modo: o modo é a resolução interna do jogo (`r.ScreenPercentage`).
 - **Desligar:** crie `DISABLE_UPSCALER.flag` na pasta `Win64`. **Remover:** o mesmo script com `-Uninstall`.
 - **XeSS 2 e FSR 4:** só existem no DirectX 12. O próximo passo é o OptiScaler por cima do Luma (ainda não feito).

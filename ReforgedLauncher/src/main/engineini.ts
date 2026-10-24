@@ -17,7 +17,7 @@ import { repairDisplaySettings } from "./display-repair";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { isValidHost } from "../shared/invite";
-import type { GraphicsPreset } from "../shared/types";
+import type { GraphicsPreset, UpscalerMode } from "../shared/types";
 
 export const SCALABILITY_GROUPS = ["ViewDistance", "AntiAliasing", "Shadow", "PostProcess", "Texture", "Effects", "Foliage", "Shading"];
 
@@ -53,18 +53,23 @@ export function splitLines(text: string): string[] {
 // with DLSS or FSR. That pass only upscales when Unreal's temporal upsampling is on; otherwise a lower
 // resolution scale is stretched by a later spatial pass and DLSS/FSR only anti-alias. With it installed, TAA
 // stays the anti-aliasing method and the resolution scale is left to the player (in game, or
-// sg.ResolutionQuality in GameUserSettings.ini), so a forced graphics level no longer pins it at 100.
+// sg.ResolutionQuality in GameUserSettings.ini) unless the launcher's upscaler mode sets r.ScreenPercentage, and a
+// forced graphics level no longer pins it at 100. upscaler: null = not installed, 0 = scale left to the game,
+// otherwise the render resolution in percent (the mode: 67 = Quality, 50 = Performance, ...).
 export const UPSCALER_LINES = ["r.DefaultFeature.AntiAliasing=2", "r.PostProcessAAQuality=4", "r.TemporalAA.Upsampling=1", "r.TemporalAA.Upscaler=1"];
 
-export function systemSettingsLines(graphics: GraphicsPreset, memory = false, upscaler = false): string[] {
-  if (graphics < 0 && !memory && !upscaler) return [];
+export function systemSettingsLines(graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null): string[] {
+  if (graphics < 0 && !memory && upscaler === null) return [];
   const sys = ["[SystemSettings]"];
   if (memory) sys.push("r.Streaming.PoolSize=3000", "r.Streaming.LimitPoolSizeToVRAM=1", "gc.TimeBetweenPurgingPendingKillObjects=10", "s.ForceGCAfterLevelStreamedOut=1");
   if (graphics >= 0) {
     for (const g of SCALABILITY_GROUPS) sys.push(`sg.${g}Quality=${graphics}`);
-    if (!upscaler) sys.push("sg.ResolutionQuality=100", "r.ScreenPercentage=100");
+    if (upscaler === null) sys.push("sg.ResolutionQuality=100", "r.ScreenPercentage=100");
   }
-  if (upscaler) sys.push(...UPSCALER_LINES);
+  if (upscaler !== null) {
+    sys.push(...UPSCALER_LINES);
+    if (upscaler > 0) sys.push(`r.ScreenPercentage=${upscaler}`);
+  }
   return sys;
 }
 
@@ -76,7 +81,7 @@ export function xmppLines(host: string, port: number): string[] {
 
 const OWNED_SECTIONS = /^\[(SystemSettings|OnlineSubsystemMcp\.XMPP)\]/i;
 
-export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset, memory = false, upscaler = false): string[] {
+export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null): string[] {
   const keep: string[] = [];
   let skip = false;
   for (const l of existing) {
@@ -152,8 +157,8 @@ export interface ApplyConfigOptions {
   safeWindow?: boolean;
   // Dauntless 1.14.7: remove Dauntless Revived's [OnlineSubsystemPhoenix] endpoints from Game.ini.
   clearPhoenixEndpoints?: boolean;
-  // The optional upscaler is installed beside the game executable (see upscalerInstalled).
-  upscaler?: boolean;
+  // The optional upscaler's mode when it is installed beside the game executable (see upscalerInstalled), else null.
+  upscaler?: UpscalerMode | null;
 }
 
 // The upscaler files are in the game's Win64 folder: ReShade renamed to ReShade64.dll (the runtime loads it
@@ -187,7 +192,7 @@ export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engin
   }
   const engine = path.join(dir, "Engine.ini");
   const existing = (await readLines(engine)) ?? [];
-  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true, opts.upscaler === true)));
+  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true, opts.upscaler ?? null)));
   const gus = path.join(dir, "GameUserSettings.ini");
   const lines = await readLines(gus);
   let displayRepaired = false;

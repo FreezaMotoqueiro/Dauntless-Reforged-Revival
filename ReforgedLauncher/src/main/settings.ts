@@ -6,6 +6,9 @@ import { isPrivateModeHost, isValidFingerprint, isValidHost, isValidInviteCode, 
 import { isValidUsername } from "../shared/username";
 import {
   DEFAULT_GRAPHICS,
+  DEFAULT_UPSCALER_MODE,
+  UPSCALER_MODES,
+  type UpscalerMode,
   GAME_LANGUAGES,
   GRAPHICS_PRESETS,
   LANGUAGES,
@@ -35,6 +38,7 @@ export interface StoredSettings {
   revivedRoot: string | null; // Dauntless 1.4.4, for Dauntless Revived servers: the folder that holds Archon\
   revivedVerified: string | null; // the 1.4.4 folder whose every file was last checked against the manifest
   graphics: GraphicsPreset;
+  upscalerMode: UpscalerMode;
   windowed: boolean;
   streamerMode: boolean; // hide addresses, fingerprints, paths and player names on screen
   language: Language;
@@ -58,6 +62,7 @@ export function defaultSettings(language: Language): StoredSettings {
     revivedRoot: null,
     revivedVerified: null,
     graphics: DEFAULT_GRAPHICS,
+    upscalerMode: DEFAULT_UPSCALER_MODE,
     windowed: false,
     streamerMode: false,
     language,
@@ -140,6 +145,7 @@ export function sanitizeSettings(raw: unknown, language: Language, platform: Nod
   s.revivedRoot = validDir(raw.revivedRoot, platform);
   s.revivedVerified = validDir(raw.revivedVerified, platform);
   if (GRAPHICS_PRESETS.includes(raw.graphics as GraphicsPreset)) s.graphics = raw.graphics as GraphicsPreset;
+  if (UPSCALER_MODES.includes(raw.upscalerMode as UpscalerMode)) s.upscalerMode = raw.upscalerMode as UpscalerMode;
   s.windowed = raw.windowed === true;
   s.streamerMode = raw.streamerMode === true;
   s.hostTools = raw.hostTools === true;
