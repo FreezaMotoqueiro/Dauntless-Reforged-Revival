@@ -31,6 +31,9 @@ what Dauntless is.
 - `DISABLE_UPSCALER.flag` beside the game executable turns it off without uninstalling.
 - ReShade loaded under a non-proxy name only starts when `ReShade.ini` exists beside the game executable (otherwise
   its `DllMain` refuses to load). The installer creates a minimal one; deleting it also turns the upscaler off.
+- The game ships the VC++ 14.24 runtime beside its executable; Luma needs a current one ("custom version of
+  msvcp140.dll" warning). The installer moves those 8 DLLs to `reforged-vcrt-backup\` so the system's VC++ 2015-2022
+  redistributable is used (the launcher already requires it); `-Uninstall` puts them back.
 
 ## Install
 

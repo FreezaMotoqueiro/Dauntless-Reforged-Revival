@@ -41,6 +41,11 @@ $AssetPattern = '^Luma-Unreal_Engine\.zip$'
 $ManifestName = 'reforged-upscaler.json'
 $ExeName = 'Dauntless-Win64-Shipping.exe'
 $Sep = [string][IO.Path]::DirectorySeparatorChar
+# The game ships the VC++ 14.24 runtime beside its executable. Luma needs a current one (it warns "custom version of
+# msvcp140.dll" and may crash), so these are moved aside together and the game uses the system's (the launcher already
+# requires the VC++ 2015-2022 redistributable). A newer msvcp140 must never pick up the old vcruntime140, hence all of them.
+$VcrtFiles = @('msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_codecvt_ids.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'concrt140.dll', 'vccorlib140.dll')
+$VcrtBackup = 'reforged-vcrt-backup'
 
 function Resolve-Win64([string]$dir) {
     $full = [IO.Path]::GetFullPath($dir)
@@ -77,6 +82,14 @@ if ($Uninstall) {
     foreach ($extra in @('ReShade.ini', 'ReShade.log', 'ReShade64.log')) {
         $p = Join-Path $win64 $extra
         if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
+    }
+    $backup = Join-Path $win64 $VcrtBackup
+    if (Test-Path -LiteralPath $backup) {
+        foreach ($f in Get-ChildItem -LiteralPath $backup -File) {
+            $dest = Join-Path $win64 $f.Name
+            if (-not (Test-Path -LiteralPath $dest)) { Move-Item -LiteralPath $f.FullName -Destination $dest }
+        }
+        if (-not (Get-ChildItem -LiteralPath $backup -Force)) { Remove-Item -LiteralPath $backup -Force }
     }
     Remove-Item -LiteralPath $manifestPath -Force
     Write-Host "Upscaler removed from $win64."
@@ -157,6 +170,18 @@ try {
     $ini = Join-Path $win64 'ReShade.ini'
     if (-not (Test-Path -LiteralPath $ini)) {
         Set-Content -LiteralPath $ini -Encoding ASCII -Value @('[INSTALL]', 'Logging=1')
+    }
+
+    if ($env:SystemRoot -and -not (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\msvcp140.dll'))) {
+        Write-Warning 'The VC++ 2015-2022 x64 redistributable is not installed: install https://aka.ms/vs/17/release/vc_redist.x64.exe, the game needs it once its old copies are moved aside.'
+    }
+    $backup = Join-Path $win64 $VcrtBackup
+    foreach ($name in $VcrtFiles) {
+        $f = Join-Path $win64 $name
+        if (Test-Path -LiteralPath $f) {
+            New-Item -ItemType Directory -Path $backup -Force | Out-Null
+            Move-Item -LiteralPath $f -Destination (Join-Path $backup $name) -Force
+        }
     }
 
     $manifest = [ordered]@{ source = $source; installed = (Get-Date).ToString('s'); files = @($plan | ForEach-Object { $_.Rel }) }
