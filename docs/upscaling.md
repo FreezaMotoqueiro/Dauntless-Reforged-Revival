@@ -29,6 +29,8 @@ what Dauntless is.
   `ReShade64.dll`, which Windows never loads by itself, and the runtime loads it only in the client role
   (no `-server`, no `-nullrhi`), before the engine creates its D3D11 device.
 - `DISABLE_UPSCALER.flag` beside the game executable turns it off without uninstalling.
+- ReShade loaded under a non-proxy name only starts when `ReShade.ini` exists beside the game executable (otherwise
+  its `DllMain` refuses to load). The installer creates a minimal one; deleting it also turns the upscaler off.
 
 ## Install
 

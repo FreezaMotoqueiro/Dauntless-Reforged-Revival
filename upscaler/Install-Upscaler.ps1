@@ -151,6 +151,14 @@ try {
     finally {
         $zip.Dispose()
     }
+    # ReShade loaded under any name other than a proxy (dxgi.dll, d3d11.dll, ...) refuses to start (its DllMain
+    # returns FALSE) unless ReShade.ini already exists beside the game executable. Create it once; ReShade and
+    # Luma add their own settings to it later.
+    $ini = Join-Path $win64 'ReShade.ini'
+    if (-not (Test-Path -LiteralPath $ini)) {
+        Set-Content -LiteralPath $ini -Encoding ASCII -Value @('[INSTALL]', 'Logging=1')
+    }
+
     $manifest = [ordered]@{ source = $source; installed = (Get-Date).ToString('s'); files = @($plan | ForEach-Object { $_.Rel }) }
     $manifest | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
