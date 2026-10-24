@@ -55,9 +55,12 @@ export function splitLines(text: string): string[] {
 // stays the anti-aliasing method and the resolution scale is left to the player (in game, or
 // sg.ResolutionQuality in GameUserSettings.ini) unless the launcher's upscaler mode sets r.ScreenPercentage, and a
 // forced graphics level no longer pins it at 100. upscaler: null = not installed, 0 = scale left to the game,
-// otherwise the render resolution in percent (the mode: 67 = Quality, 50 = Performance, ...).
+// 100 = native, the only scale Luma upscales (see below).
 export const UPSCALER_LINES = ["r.DefaultFeature.AntiAliasing=2", "r.PostProcessAAQuality=4", "r.TemporalAA.Upsampling=1", "r.TemporalAA.Upscaler=1"];
 
+// Luma's Unreal Engine mod replaces TAA only at native resolution (DLAA): it looks for TAA textures at least as
+// large as the swapchain, and its own code calls the mode "DLAA only". Any scale below 100% (in game or here)
+// turns DLSS / FSR off, so the launcher's default mode pins r.ScreenPercentage at 100.
 export function systemSettingsLines(graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null): string[] {
   if (graphics < 0 && !memory && upscaler === null) return [];
   const sys = ["[SystemSettings]"];
@@ -190,11 +193,11 @@ export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engin
       }
     }
   }
+  const gus = path.join(dir, "GameUserSettings.ini");
+  const lines = await readLines(gus);
   const engine = path.join(dir, "Engine.ini");
   const existing = (await readLines(engine)) ?? [];
   await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true, opts.upscaler ?? null)));
-  const gus = path.join(dir, "GameUserSettings.ini");
-  const lines = await readLines(gus);
   let displayRepaired = false;
   if (lines !== null || opts.safeWindow) {
     const display = repairDisplaySettings(lines ?? [], opts.safeWindow);

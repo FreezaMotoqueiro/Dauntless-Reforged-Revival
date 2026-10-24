@@ -58,17 +58,20 @@ the upscaler still works, as Luma alone) and the VC++ 2015-2022 x64 redistributa
      gains nothing and makes OptiScaler's menu look washed out. A choice made in Luma's menu is kept;
    - a file it did not install is never overwritten; `reforged-upscaler.json` lists what it installed.
    A failed download never stops the launch: the game starts as it is and the launcher tries again next time.
-2. The launcher writes `r.TemporalAA.Upsampling=1` and the mode's resolution scale (see below).
+2. The launcher writes `r.TemporalAA.Upsampling=1` and `r.ScreenPercentage=100` (see below).
 3. In game:
    - **Insert** opens OptiScaler: pick the upscaler (FSR 4 / FSR 3.1 = `FSR 3.X w/Dx12`, XeSS, DLSS), sharpening (RCAS),
      DLSS presets. OptiScaler shows `FSR 4` in its overlay when FSR 4 is active.
    - **Home** opens ReShade and Luma: keep **Super Resolution** on **DLSS** or **Auto**. That is the input OptiScaler
      replaces; Luma's own FSR 3 bypasses OptiScaler.
-4. Pick the mode in the launcher, **Settings > Graphics > DLSS / FSR mode**. Luma has no mode menu of its own: the
-   mode is the game's render resolution, which the launcher writes as `r.ScreenPercentage`: Native (DLAA) = 100,
-   Ultra Quality = 77, Quality = 67 (default), Balanced = 58, Performance = 50, Ultra Performance = 33.
-   "Game's resolution scale" leaves it to the in-game setting (or `sg.ResolutionQuality` in
-   `%LOCALAPPDATA%\Archon\Saved\Config\WindowsClient\GameUserSettings.ini`). Keep dynamic resolution off.
+4. **Native resolution only.** Luma's Unreal Engine mod replaces TAA only at native resolution (DLAA): it looks
+   for TAA textures at least as large as the screen, and its source calls the mode "DLAA only". Any resolution
+   scale below 100% turns DLSS / FSR off (OptiScaler then shows "Please select DLSS or XeSS"). Launcher 1.5.3
+   offered Quality / Performance modes (default Quality, 67%) and that broke the upscaler; 1.5.4 writes
+   `r.ScreenPercentage=100` (**Settings > Graphics > DLSS / FSR mode** = Native). "Game's resolution scale" leaves it
+   to the in-game setting (`sg.ResolutionQuality` in
+   `%LOCALAPPDATA%\Archon\Saved\Config\WindowsClient\GameUserSettings.ini`), which must then be 100. Keep dynamic
+   resolution off. Upscaling from a lower resolution would need a different hook than Luma's (not done).
 
 The runtime log (`mysticparadox_dll_port0.log`) says `[Upscaler] OptiScaler.dll loaded`; OptiScaler writes
 `OptiScaler.log` and ReShade `ReShade.log` in the same folder. The launcher's log says what it installed.
@@ -115,8 +118,7 @@ jogo, só no **cliente**. Vem ligado e pode ser desligado em **Configurações >
   fixo no launcher. Se falhar, o jogo abre mesmo assim e o launcher tenta de novo na próxima vez.
 - **No jogo:** **Insert** abre o OptiScaler (escolha FSR 4 / FSR 3.1 = `FSR 3.X w/Dx12`, XeSS ou DLSS). **Home** abre o Luma:
   deixe **Super Resolution** em **DLSS** ou **Auto** (é a entrada que o OptiScaler troca).
-- **Modo:** Configurações > Gráficos > Modo do DLSS / FSR (Nativo/DLAA, Ultra Qualidade, Qualidade, Equilibrado, Desempenho,
-  Ultra Desempenho). O modo é a resolução interna do jogo (`r.ScreenPercentage`).
+- **Só resolução nativa:** o mod de Unreal do Luma só troca o TAA na resolução nativa (DLAA). Qualquer escala abaixo de 100% desliga o DLSS / FSR. Por isso o launcher grava `r.ScreenPercentage=100` (Configurações > Gráficos > Modo do DLSS / FSR = Nativo). Os modos Qualidade / Desempenho do launcher 1.5.3 quebravam o upscaler e foram removidos.
 - **HDR do Luma:** o launcher deixa desligado se o HDR do Windows estiver desligado (com ele ligado, o menu do OptiScaler fica desbotado). A escolha feita no menu do Luma é mantida.
 - **Desligar:** a chave em Configurações > Gráficos (cria `DISABLE_UPSCALER.flag`). `DISABLE_OPTISCALER.flag` deixa só o Luma.
 - **Precisa:** runtime com o patch 0043 e o VC++ 2015-2022 x64.

@@ -72,13 +72,12 @@ test("Engine.ini: chat goes to the relay, the owned sections are replaced and ev
   assert.deepEqual(rewriteGameUserSettingsText(["sg.TextureQuality=0", "Other=1"], 3), ["sg.TextureQuality=3", "Other=1"]);
 });
 
-test("Engine.ini: the upscaler turns temporal upsampling on and sets the mode's resolution scale", () => {
-  const plain = rewriteEngineIniText([], "127.0.0.1", 61100, -1, false, 67);
+test("Engine.ini: the upscaler turns temporal upsampling on and pins native resolution", () => {
+  const plain = rewriteEngineIniText([], "127.0.0.1", 61100, -1, false, 100);
   assert.equal(plain[0], "[SystemSettings]");
   for (const l of UPSCALER_LINES) assert.ok(plain.includes(l), l);
   assert.ok(plain.includes("r.TemporalAA.Upsampling=1"));
-  assert.ok(plain.includes("r.ScreenPercentage=67"));
-  assert.ok(rewriteEngineIniText([], "127.0.0.1", 61100, -1, false, 100).includes("r.ScreenPercentage=100"));
+  assert.ok(plain.includes("r.ScreenPercentage=100"), plain.join("|"));
   const forced = rewriteEngineIniText([], "127.0.0.1", 61100, 3, false, 0);
   assert.ok(forced.includes("sg.ShadowQuality=3"));
   assert.ok(!forced.some((l) => /^(r\.ScreenPercentage|sg\.ResolutionQuality)=/.test(l)), "resolution scale not pinned");
