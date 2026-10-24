@@ -435,6 +435,15 @@ function makePlatform(): Platform {
     emitHostServer: (v) => send(IPC.hostServer, v),
     findTailscale: () => findTailscale(process.env, existsSync, process.platform),
     findRunningClients: () => findRunningClients(process.platform),
+    // Chromium reports an HDR colour space (scRGB / PQ / HLG) for a display with Windows HDR on.
+    hdrDisplay: () => {
+      const d = screen.getPrimaryDisplay() as { colorSpace?: string; colorDepth?: number };
+      return /scrgb|pq|hlg|smpte2084|hdr/i.test(d.colorSpace ?? "") || (d.colorDepth ?? 24) > 24;
+    },
+    gpuVendorIds: async () => {
+      const info = (await app.getGPUInfo("basic")) as { gpuDevice?: { vendorId?: number }[] };
+      return (info.gpuDevice ?? []).map((d) => d.vendorId).filter((v): v is number => typeof v === "number");
+    },
     inject: (opts) => injectDll(opts),
     installUpdate: () => {
       if (app.isPackaged && process.platform === "win32") {

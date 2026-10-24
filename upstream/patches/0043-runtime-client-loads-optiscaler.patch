@@ -1,0 +1,58 @@
+diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
+index 62d104b..82d1f89 100644
+--- a/ParadoxRuntime/dllmain.cpp
++++ b/ParadoxRuntime/dllmain.cpp
+@@ -22677,24 +22677,42 @@ void InitServerHooks() {
+ // runtime loads it here, on the client only, before the engine creates its D3D11 device. ReShade then finds
+ // the add-on and its shaders beside itself. The server role (-server) and -nullrhi never load it.
+ // DISABLE_UPSCALER.flag beside the game executable turns it off without uninstalling.
++// [Reforged 0043] OptiScaler (github.com/optiscaler/OptiScaler) over Luma: Luma hands its DLSS calls to
++// OptiScaler, which runs FSR 4 / FSR 3.1 or XeSS through a background D3D12 device, or DLSS itself, as the
++// player picks in its overlay. OptiScaler.dll is its non-proxy name (nothing loads it on its own); with
++// LoadReshade=true in OptiScaler.ini it loads ReShade64.dll itself, after the D3D12 device it creates for Luma,
++// so the runtime loads OptiScaler.dll instead of ReShade64.dll when both are installed. Same rules as 0041:
++// client only, never with -nullrhi, DISABLE_UPSCALER.flag turns both off. DISABLE_OPTISCALER.flag keeps Luma
++// alone (DLSS on NVIDIA, FSR 3.1 elsewhere).
++static bool MpLoadExeRelativeModule(const wchar_t* Name, size_t NameLen, const char* LogName) {
++    wchar_t Path[MAX_PATH];
++    const size_t DirLen = MpExeDirFromModuleW(Path);
++    if (DirLen == 0 || DirLen + NameLen + 1 > MAX_PATH) return false;
++    for (size_t i = 0; i <= NameLen; ++i) Path[DirLen + i] = Name[i];
++    HMODULE Module = LoadLibraryW(Path);
++    const DWORD LoadError = Module ? 0 : GetLastError();
++    // InitLog is compiled out; MpLog reaches mysticparadox_dll_port0.log.
++    MpLog(std::string("[Upscaler] ") + LogName + (Module ? " loaded" : (" failed error=" + std::to_string(LoadError))));
++    return Module != nullptr;
++}
++
+ static void MpLoadClientUpscaler() {
+     if (Globals::AmServer) return;
+     if (MpOsCommandLineHas(L"-nullrhi")) return;
+-    if (!MpExeRelativeFlagPresent(L"ReShade64.dll")) { MpLog("[Upscaler] not installed (no ReShade64.dll beside the game executable)"); return; }
++    const bool HaveReShade = MpExeRelativeFlagPresent(L"ReShade64.dll");
++    const bool HaveOptiScaler = MpExeRelativeFlagPresent(L"OptiScaler.dll");
++    if (!HaveReShade) { MpLog("[Upscaler] not installed (no ReShade64.dll beside the game executable)"); return; }
+     if (MpExeRelativeFlagPresent(L"DISABLE_UPSCALER.flag")) {
+         MpLog("[Upscaler] ReShade64.dll present, DISABLE_UPSCALER.flag set: not loaded");
+         return;
+     }
+-    wchar_t Path[MAX_PATH];
+-    const size_t DirLen = MpExeDirFromModuleW(Path);
+-    static const wchar_t kName[] = L"ReShade64.dll";
+-    const size_t NameLen = (sizeof(kName) / sizeof(kName[0])) - 1;
+-    if (DirLen == 0 || DirLen + NameLen + 1 > MAX_PATH) return;
+-    for (size_t i = 0; i <= NameLen; ++i) Path[DirLen + i] = kName[i];
+-    HMODULE Module = LoadLibraryW(Path);
+-    const DWORD LoadError = Module ? 0 : GetLastError();
+-    // InitLog is compiled out; MpLog reaches mysticparadox_dll_port0.log.
+-    MpLog(std::string("[Upscaler] ReShade64.dll ") + (Module ? "loaded" : ("failed error=" + std::to_string(LoadError))));
++    static const wchar_t kOpti[] = L"OptiScaler.dll";
++    static const wchar_t kReShade[] = L"ReShade64.dll";
++    if (HaveOptiScaler && !MpExeRelativeFlagPresent(L"DISABLE_OPTISCALER.flag")) {
++        // OptiScaler loads ReShade64.dll (and with it Luma) itself.
++        if (MpLoadExeRelativeModule(kOpti, (sizeof(kOpti) / sizeof(kOpti[0])) - 1, "OptiScaler.dll")) return;
++    }
++    MpLoadExeRelativeModule(kReShade, (sizeof(kReShade) / sizeof(kReShade[0])) - 1, "ReShade64.dll");
+ }
+ 
+ void Init() {

@@ -1,0 +1,486 @@
+{
+  "id": "1",
+  "sources": [
+    {
+      "name": "luma",
+      "version": "Luma Framework build 761, Unreal Engine mod (DLSS 310.9.16, FSR 3.1)",
+      "url": "https://github.com/Filoppi/Luma-Framework/releases/download/latest-761/Luma-Unreal_Engine.zip",
+      "sha256": "af926706992abc94b3194a9fb4a3e574397d65c3e600b4762860eac845b1a155",
+      "format": "zip",
+      "license": "https://github.com/Filoppi/Luma-Framework/blob/main/LICENSE.md"
+    },
+    {
+      "name": "optiscaler",
+      "version": "OptiScaler 0.9.4 (FidelityFX SDK 2.3: FSR 4.1.1; XeSS 3.0.1)",
+      "url": "https://github.com/optiscaler/OptiScaler/releases/download/v0.9.4/Optiscaler_0.9.4-final.20260718._MM.7z",
+      "sha256": "575cb4df866116093df75af607e37fd70e10f5163e0f23fd5c804142e80ef0ad",
+      "format": "7z",
+      "license": "https://github.com/optiscaler/OptiScaler/blob/master/LICENSE"
+    }
+  ],
+  "files": [
+    {
+      "path": "Luma-Unreal Engine.addon",
+      "source": "luma",
+      "entry": "Luma-Unreal Engine.addon",
+      "sha256": "f13dd1d56943acb899704952f7d32fce7e35867459ca36eeb85d98151b5c6835",
+      "size": 9427456
+    },
+    {
+      "path": "Luma/Global/Luma_Copy_PS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_Copy_PS.hlsl",
+      "sha256": "46cd471b81828f3fc09ade2db89706f114ad166588282f4f9da4c8f0e5cbddb4",
+      "size": 833
+    },
+    {
+      "path": "Luma/Global/Luma_Copy_VS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_Copy_VS.hlsl",
+      "sha256": "52b81a0a42513f87e5e4cb3a4737c4ad8b1b7f078c7338676ab369775bf9bbc2",
+      "size": 193
+    },
+    {
+      "path": "Luma/Global/Luma_DisplayComposition.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_DisplayComposition.hlsl",
+      "sha256": "cc9c9d35e038e34be78176bc226e63d42edd9e484fd24b738c73557aabc8d5cb",
+      "size": 30025
+    },
+    {
+      "path": "Luma/Global/Luma_DrawColor_CS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_DrawColor_CS.hlsl",
+      "sha256": "b247aaaf5aa57e52d4ba1154b936bbf5c37e628ae13aeb6d4fdfc7ab1bc83504",
+      "size": 757
+    },
+    {
+      "path": "Luma/Global/Luma_DrawColor_PS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_DrawColor_PS.hlsl",
+      "sha256": "35c77e5bbd076d8ccf653cfbb05169a8028c8d77422f75a5fea54d9b8f2d1661",
+      "size": 145
+    },
+    {
+      "path": "Luma/Global/Luma_GenerateSanitizedMip_CS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_GenerateSanitizedMip_CS.hlsl",
+      "sha256": "e886cf365235b2fb1c2c92d86626198ce2df3b9a79f04bb748ff025ce2a308a6",
+      "size": 2328
+    },
+    {
+      "path": "Luma/Global/Luma_GenerateSanitizedMip_PS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_GenerateSanitizedMip_PS.hlsl",
+      "sha256": "bed6e555ad73226e8fdb37a4ded8ec289315b681cd374184df1be74e94f76363",
+      "size": 1464
+    },
+    {
+      "path": "Luma/Global/Luma_KarisAverage.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_KarisAverage.hlsl",
+      "sha256": "f7ce73913cb9efa74187876f94568477305e77466e32470b088514b906dcfcd3",
+      "size": 1071
+    },
+    {
+      "path": "Luma/Global/Luma_NormalizeLUT3D.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_NormalizeLUT3D.hlsl",
+      "sha256": "b0753cd70f9b7025badb1324894ed88e6e9278e90952257d59fbdad291bbd5f5",
+      "size": 1617
+    },
+    {
+      "path": "Luma/Global/Luma_RCAS_PS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_RCAS_PS.hlsl",
+      "sha256": "934adc5a27e4aed20ccb1b4575a6cc7a74bb61fc6306defd7b7909d27da0a69b",
+      "size": 768
+    },
+    {
+      "path": "Luma/Global/Luma_SanitizeAlpha.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_SanitizeAlpha.hlsl",
+      "sha256": "749c9951057e17bdc850c9f1e0fabea2297043203402db65f3e693fd8529c077",
+      "size": 456
+    },
+    {
+      "path": "Luma/Global/Luma_SanitizeRGBA.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_SanitizeRGBA.hlsl",
+      "sha256": "c8b5dab24afe4999fb7dd995047b04a7225503002289cd25ca3a6f5ffea2750c",
+      "size": 1078
+    },
+    {
+      "path": "Luma/Global/Luma_SanitizeRGBAMipped.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_SanitizeRGBAMipped.hlsl",
+      "sha256": "c9fdb333e0affb10f0975f8880100b6913a3196130ed6014e96d493d70085182",
+      "size": 2611
+    },
+    {
+      "path": "Luma/Global/Luma_Scale_PS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_Scale_PS.hlsl",
+      "sha256": "5b824e61e81387f6dcc817596f6c55bbd30f6cd460b69beaf7d7378f14245a73",
+      "size": 421
+    },
+    {
+      "path": "Luma/Global/Luma_Scale_VS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Global/Luma_Scale_VS.hlsl",
+      "sha256": "79185aa7ef065f6d6377a37b65d01074aef6c5b21279088b38934576c16d09fc",
+      "size": 467
+    },
+    {
+      "path": "Luma/Includes/ACES.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/ACES.hlsl",
+      "sha256": "60c7e4ee1acda47184d6598030fa55a0829caf17c42fcf169aeb7d3f23896576",
+      "size": 29497
+    },
+    {
+      "path": "Luma/Includes/Bloom.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Bloom.hlsl",
+      "sha256": "199795b2964b13124722da7f455018494dd60ddc42ce628c15a808da42cf5816",
+      "size": 5390
+    },
+    {
+      "path": "Luma/Includes/CInfinityRolloff.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/CInfinityRolloff.hlsl",
+      "sha256": "10a5f119756f268da3859643f2820e2995f29c8fd37054f6d9c78566654c699a",
+      "size": 2247
+    },
+    {
+      "path": "Luma/Includes/Color.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Color.hlsl",
+      "sha256": "86dbcfc2d4c036c300a0c1e27eb76026a1dff8c12285451e34b5f0f7901d5b10",
+      "size": 42214
+    },
+    {
+      "path": "Luma/Includes/ColorGradingLUT.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/ColorGradingLUT.hlsl",
+      "sha256": "6df837eba15670404c0cbcc424cb2e48cf73b6290481058fb121d07224d6fb0b",
+      "size": 125717
+    },
+    {
+      "path": "Luma/Includes/Common.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Common.hlsl",
+      "sha256": "9b41169bd95878acc29de7509ca4c362abd4785494f57d0c58b64a65e5f360ee",
+      "size": 21585
+    },
+    {
+      "path": "Luma/Includes/DICE.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/DICE.hlsl",
+      "sha256": "ab9a41cabe744ae2f46852a985ffdd9e42cf0e6f925fbe53798bc2c737225f3f",
+      "size": 20093
+    },
+    {
+      "path": "Luma/Includes/DarktableUCS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/DarktableUCS.hlsl",
+      "sha256": "06f414fc4f65c48bc9cee0e7e8c2d0036c8119460885eff5d84b8493e6822df0",
+      "size": 9283
+    },
+    {
+      "path": "Luma/Includes/DgVoodoo.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/DgVoodoo.hlsl",
+      "sha256": "1911fe3309659656094db9bb4932ede43b7739f7c3294be809caa27e78d85c4b",
+      "size": 1086
+    },
+    {
+      "path": "Luma/Includes/FXAA.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/FXAA.hlsl",
+      "sha256": "aeb8628d04cf8fdbc4dc816b25dd130a064e6f1de865e66c7db86795e17fb2d3",
+      "size": 88347
+    },
+    {
+      "path": "Luma/Includes/HardwareBlendsEmulation.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/HardwareBlendsEmulation.hlsl",
+      "sha256": "befd7ecbae95a31925fa3839375a2047b1a97bcc9eec5198d5c9b199b73528f5",
+      "size": 14029
+    },
+    {
+      "path": "Luma/Includes/JzAzBz.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/JzAzBz.hlsl",
+      "sha256": "a8426e4ef0e8f614d04f27fdfcc01b10bfb7fb55764097479b77215dcaf7f668",
+      "size": 3185
+    },
+    {
+      "path": "Luma/Includes/LensDistortion.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/LensDistortion.hlsl",
+      "sha256": "51f267277c84790e32b5b3e5ab0abab002b111a9245f6f83787c7bba07bffb56",
+      "size": 14047
+    },
+    {
+      "path": "Luma/Includes/MacLeodBoynton.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/MacLeodBoynton.hlsl",
+      "sha256": "72ec12977307cf0eb114867eb2fbce394aa3298b10596f57144fde02c6588058",
+      "size": 20934
+    },
+    {
+      "path": "Luma/Includes/Math.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Math.hlsl",
+      "sha256": "d7fae21a252fab48916854ac21e3483550557b8280ffd3fcf104efbaee1a7ceb",
+      "size": 12888
+    },
+    {
+      "path": "Luma/Includes/Oklab.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Oklab.hlsl",
+      "sha256": "05d24af6d3e20d4823a7f73a47d508c57259d19a822a2dcc5248241818fbeeac",
+      "size": 4816
+    },
+    {
+      "path": "Luma/Includes/RCAS.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/RCAS.hlsl",
+      "sha256": "18eed2f9437a4ba57bcbe33d0cdef1706404fe7676621a23d3b85b497cb08a7f",
+      "size": 9639
+    },
+    {
+      "path": "Luma/Includes/Reinhard.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Reinhard.hlsl",
+      "sha256": "41ded5cb4038244ac2a30b343d1208a5600fce305dcf5491fb077b8ab5e3330b",
+      "size": 9807
+    },
+    {
+      "path": "Luma/Includes/SMAA.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/SMAA.hlsl",
+      "sha256": "a3158936cb22c84025eea1db70b5492140c2ef0c05924ccda880246951cc21e1",
+      "size": 55817
+    },
+    {
+      "path": "Luma/Includes/SMAA_Passes.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/SMAA_Passes.hlsl",
+      "sha256": "26bfa1c3b01b4b80e0990b982de65a511beca2f2ead35022e5c9fe6ca90cfa06",
+      "size": 3902
+    },
+    {
+      "path": "Luma/Includes/Settings.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Settings.hlsl",
+      "sha256": "16732684256065c5a24f83adc02fd7161bca82b23167ac20a63e85e24ca4b178",
+      "size": 14913
+    },
+    {
+      "path": "Luma/Includes/Tonemap.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/Tonemap.hlsl",
+      "sha256": "292eaaeef54cee0d47c6fd6f41540a7b7a02e56547756a8980d1f503bad6f92a",
+      "size": 17189
+    },
+    {
+      "path": "Luma/Includes/UI.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/UI.hlsl",
+      "sha256": "3f3bdeb89c7ffa65cf4ae117b151164d33fac9c5c3e0134b20bbed3f03a830a8",
+      "size": 13647
+    },
+    {
+      "path": "Luma/Includes/XeGTAO.hlsl",
+      "source": "luma",
+      "entry": "Luma/Includes/XeGTAO.hlsl",
+      "sha256": "4b9e24b6fa550a02bb4c2f36317a0e5707018ea2273fba72cb1c43f0cc2c5ea5",
+      "size": 35610
+    },
+    {
+      "path": "Luma/Unreal Engine/Luma_MotionVec_UE4_Decode.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/Luma_MotionVec_UE4_Decode.hlsl",
+      "sha256": "6978a0b00a6d4d005c080967e4106cd7a5a3302c27c11bcbfb9ae8d57e85a755",
+      "size": 4983
+    },
+    {
+      "path": "Luma/Unreal Engine/Luma_UpgradeTonemapLUT.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/Luma_UpgradeTonemapLUT.hlsl",
+      "sha256": "b9efb663286e4d9a338104884bdeab43d58cb589dd74d990a70e9acaaa7732b7",
+      "size": 14803
+    },
+    {
+      "path": "Luma/Unreal Engine/TalesOfArise_output_0x8D5C5C52.ps_5_0.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/TalesOfArise_output_0x8D5C5C52.ps_5_0.hlsl",
+      "sha256": "0b566bda0820e2ec53a62c19b348401cf42e72d491930cca1b82bdc3c9d6fa0d",
+      "size": 5204
+    },
+    {
+      "path": "Luma/Unreal Engine/TalesOfArise_output_0xC89B89AF.ps_5_0.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/TalesOfArise_output_0xC89B89AF.ps_5_0.hlsl",
+      "sha256": "aa3a9d07fca4dca25a24c572ff5fb58a7f66e54f5c15b8d51274fcee7938f187",
+      "size": 5043
+    },
+    {
+      "path": "Luma/Unreal Engine/TalesOfArise_output_0xDCFDF14D.ps_5_0.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/TalesOfArise_output_0xDCFDF14D.ps_5_0.hlsl",
+      "sha256": "cf604e813cc78fe0ac204d0f955b3832463409fb9d8968087e583c0f0bf04182",
+      "size": 4281
+    },
+    {
+      "path": "Luma/Unreal Engine/TalesOfArise_output_cutscene_0x7C1D6772.ps_5_0.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/TalesOfArise_output_cutscene_0x7C1D6772.ps_5_0.hlsl",
+      "sha256": "83f483540ce22afaea59bb51d2fe2a0981fe902e2111a184561dd579eaec3281",
+      "size": 6043
+    },
+    {
+      "path": "Luma/Unreal Engine/TheAscent_HUD_0x67F5B2A7.ps_5_0.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/TheAscent_HUD_0x67F5B2A7.ps_5_0.hlsl",
+      "sha256": "0c61ae27c2de7aac7713925bc22b9321e9b88536c586480f6cead10d0594e769",
+      "size": 1585
+    },
+    {
+      "path": "Luma/Unreal Engine/TheAscent_Overlay_0x9F7FC5A3.ps_5_0.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/TheAscent_Overlay_0x9F7FC5A3.ps_5_0.hlsl",
+      "sha256": "83845c65b4a8593421c2dd125fa968d1cc393b07edd022fa1efc48549f8a6eca",
+      "size": 6592
+    },
+    {
+      "path": "Luma/Unreal Engine/TheAscent_SwapchainCopy_0xCB51E127.ps_5_0.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/TheAscent_SwapchainCopy_0xCB51E127.ps_5_0.hlsl",
+      "sha256": "86a2e1d6ad1755bfeffe910f15aed6a215c55adf16ecdc9015d62c1ea9865f00",
+      "size": 786
+    },
+    {
+      "path": "Luma/Unreal Engine/includes/Common.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/includes/Common.hlsl",
+      "sha256": "c7b0226c20febb24f25879d546986e4930ba1efb0db3032491f77cb1587412d3",
+      "size": 1674
+    },
+    {
+      "path": "Luma/Unreal Engine/includes/GameCBuffers.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/includes/GameCBuffers.hlsl",
+      "sha256": "da4c15f84856a262e14c656e984fbb5935e505f7aca361d213a6b5bff1d6c9b4",
+      "size": 556
+    },
+    {
+      "path": "Luma/Unreal Engine/includes/Settings.hlsl",
+      "source": "luma",
+      "entry": "Luma/Unreal Engine/includes/Settings.hlsl",
+      "sha256": "1dad915f34ab96937aaaeb66dab2b2c70997f2352970ce7875a8d18408b9639d",
+      "size": 788
+    },
+    {
+      "path": "Luma/d3dcompiler_47.dll",
+      "source": "luma",
+      "entry": "Luma/d3dcompiler_47.dll",
+      "sha256": "7b06a9669b48608ab576659f4f5ee4ec94c82e5b3109fa7290f5fbab84d544ec",
+      "size": 4753904
+    },
+    {
+      "path": "ReShade64.dll",
+      "source": "luma",
+      "entry": "dxgi.dll",
+      "sha256": "f7689d0aed71508ca9cad3f500831b44cfad6037627da0ae8520f6ea3f8a8516",
+      "size": 5590528
+    },
+    {
+      "path": "nvngx_dlss.dll",
+      "source": "luma",
+      "entry": "nvngx_dlss.dll",
+      "sha256": "d00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e",
+      "size": 58956912
+    },
+    {
+      "path": "D3D12_Optiscaler/D3D12Core.dll",
+      "source": "optiscaler",
+      "entry": "D3D12_Optiscaler/D3D12Core.dll",
+      "sha256": "07d286c306f8117321422affd9e6388c12d0fb4be1c7fc689d9e899324feeb24",
+      "size": 3351064
+    },
+    {
+      "path": "Licenses/OptiScaler/DirectX_LICENSE.txt",
+      "source": "optiscaler",
+      "entry": "Licenses/DirectX_LICENSE.txt",
+      "sha256": "5239850894610071566f7ecee0b751fde43c862032d92b99d7d0f596b3433ebd",
+      "size": 13147
+    },
+    {
+      "path": "Licenses/OptiScaler/FidelityFX_v1_LICENSE.md",
+      "source": "optiscaler",
+      "entry": "Licenses/FidelityFX_v1_LICENSE.md",
+      "sha256": "a335c2bb2bd28184b9a30b6e35b0c7e4aa7826abd1c388fc2aa02405e9d04f03",
+      "size": 1142
+    },
+    {
+      "path": "Licenses/OptiScaler/FidelityFX_v2_LICENSE.md",
+      "source": "optiscaler",
+      "entry": "Licenses/FidelityFX_v2_LICENSE.md",
+      "sha256": "f0da09d71ad5c82759a179e774535d4a829e5c96c49294167c1152402b2cb400",
+      "size": 61784
+    },
+    {
+      "path": "Licenses/OptiScaler/XeSS_LICENSE.txt",
+      "source": "optiscaler",
+      "entry": "Licenses/XeSS_LICENSE.txt",
+      "sha256": "784be42c39a4a4d03cf85d88e15e59d75828fca773ce45b8dbfffbd7eaf208df",
+      "size": 4194
+    },
+    {
+      "path": "OptiScaler.dll",
+      "source": "optiscaler",
+      "entry": "OptiScaler.dll",
+      "sha256": "fbfb6676b829dad7e020fb830586a16aa0ec6add78016db48ef12e2ae1803231",
+      "size": 25379632
+    },
+    {
+      "path": "OptiScaler.ini",
+      "source": "optiscaler",
+      "entry": "OptiScaler.ini",
+      "sha256": "6d7ed07e2e9df3d611b6f59047716bcbc0b67834296b8e4414816189b1233aa7",
+      "size": 47477,
+      "template": true
+    },
+    {
+      "path": "amd_fidelityfx_dx12.dll",
+      "source": "optiscaler",
+      "entry": "amd_fidelityfx_dx12.dll",
+      "sha256": "e2d85aa05a9bd9ed8b38935fdf5199372cca6f74c12015143bb6f945ee1608aa",
+      "size": 26376
+    },
+    {
+      "path": "amd_fidelityfx_upscaler_dx12.dll",
+      "source": "optiscaler",
+      "entry": "amd_fidelityfx_upscaler_dx12.dll",
+      "sha256": "d0dcccc74a43c44ba435b7a369b456e0970d8a4464e4bd683119b374f2c9fb46",
+      "size": 28761864
+    },
+    {
+      "path": "libxess.dll",
+      "source": "optiscaler",
+      "entry": "libxess.dll",
+      "sha256": "251659dd84a3e84de67c886a4186e01f3eca49b00641906fe38bb6b807e5d5b7",
+      "size": 77795704
+    },
+    {
+      "path": "libxess_dx11.dll",
+      "source": "optiscaler",
+      "entry": "libxess_dx11.dll",
+      "sha256": "c7cfe86f0c9d94e4fb3696d3cd5035e2bbb6a8b1b0572f8b7395a4cdfd0c625e",
+      "size": 156016
+    }
+  ]
+}
