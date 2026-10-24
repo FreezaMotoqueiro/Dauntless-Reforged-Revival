@@ -55,39 +55,13 @@ export function splitLines(text: string): string[] {
 // stays the anti-aliasing method and the resolution scale is left to the player (in game, or
 // sg.ResolutionQuality in GameUserSettings.ini) unless the launcher's upscaler mode sets r.ScreenPercentage, and a
 // forced graphics level no longer pins it at 100. upscaler: null = not installed, 0 = scale left to the game,
-// otherwise the render resolution in percent (the mode: 67 = Quality, 50 = Performance, ...).
+// 100 = native, the only scale Luma upscales (see below).
 export const UPSCALER_LINES = ["r.DefaultFeature.AntiAliasing=2", "r.PostProcessAAQuality=4", "r.TemporalAA.Upsampling=1", "r.TemporalAA.Upscaler=1"];
 
-// Luma's Unreal Engine mod only runs DLSS when the render resolution has exactly the output's aspect ratio (it
-// compares the two as floats, and otherwise skips DLSS every frame). Unreal sizes the view as
-// ceil(width * percentage / 100) and ceil(height * percentage / 100), so 67% of 1920x1080 is 1287x724, which is
-// not 16:9, and DLSS never ran. The percentage is therefore the nearest one whose sizes are exact multiples of the
-// resolution's reduced ratio (1080p Quality: 1280x720 = 66.66%), a hair under it so the ceil lands on the integer.
-export function exactScreenPercentage(mode: number, width: number, height: number): string {
-  if (mode >= 100) return "100";
-  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
-  const w = Number.isInteger(width) && width >= 320 ? width : 1920;
-  const h = Number.isInteger(height) && height >= 200 ? height : 1080;
-  const g = gcd(w, h);
-  const n = Math.max(1, Math.min(g, Math.round((g * mode) / 100)));
-  if (n >= g) return "100";
-  return ((n / g) * 100 - 0.0005).toFixed(6).replace(/0+$/, "");
-}
-
-// The game's render resolution from GameUserSettings.ini (the safe window is 1280x720).
-export function gameResolution(gusLines: readonly string[] | null, safeWindow = false): { width: number; height: number } {
-  if (safeWindow) return { width: 1280, height: 720 };
-  const get = (k: string) => {
-    for (const l of gusLines ?? []) {
-      const m = new RegExp(`^${k}=(\\d+)\\s*$`, "i").exec(l.trim());
-      if (m) return Number(m[1]);
-    }
-    return 0;
-  };
-  return { width: get("ResolutionSizeX") || get("LastUserConfirmedResolutionSizeX"), height: get("ResolutionSizeY") || get("LastUserConfirmedResolutionSizeY") };
-}
-
-export function systemSettingsLines(graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null, resolution: { width: number; height: number } = { width: 1920, height: 1080 }): string[] {
+// Luma's Unreal Engine mod replaces TAA only at native resolution (DLAA): it looks for TAA textures at least as
+// large as the swapchain, and its own code calls the mode "DLAA only". Any scale below 100% (in game or here)
+// turns DLSS / FSR off, so the launcher's default mode pins r.ScreenPercentage at 100.
+export function systemSettingsLines(graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null): string[] {
   if (graphics < 0 && !memory && upscaler === null) return [];
   const sys = ["[SystemSettings]"];
   if (memory) sys.push("r.Streaming.PoolSize=3000", "r.Streaming.LimitPoolSizeToVRAM=1", "gc.TimeBetweenPurgingPendingKillObjects=10", "s.ForceGCAfterLevelStreamedOut=1");
@@ -97,7 +71,7 @@ export function systemSettingsLines(graphics: GraphicsPreset, memory = false, up
   }
   if (upscaler !== null) {
     sys.push(...UPSCALER_LINES);
-    if (upscaler > 0) sys.push(`r.ScreenPercentage=${exactScreenPercentage(upscaler, resolution.width, resolution.height)}`);
+    if (upscaler > 0) sys.push(`r.ScreenPercentage=${upscaler}`);
   }
   return sys;
 }
@@ -110,7 +84,7 @@ export function xmppLines(host: string, port: number): string[] {
 
 const OWNED_SECTIONS = /^\[(SystemSettings|OnlineSubsystemMcp\.XMPP)\]/i;
 
-export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null, resolution?: { width: number; height: number }): string[] {
+export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null): string[] {
   const keep: string[] = [];
   let skip = false;
   for (const l of existing) {
@@ -123,7 +97,7 @@ export function rewriteEngineIniText(existing: string[], host: string, port: num
   }
   // Drop the blank lines a removed section leaves at the top.
   while (keep.length > 0 && keep[0].trim() === "") keep.shift();
-  const sys = systemSettingsLines(graphics, memory, upscaler, resolution);
+  const sys = systemSettingsLines(graphics, memory, upscaler);
   return [...(sys.length ? [...sys, ""] : []), ...xmppLines(host, port), "", ...keep];
 }
 
@@ -223,7 +197,7 @@ export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engin
   const lines = await readLines(gus);
   const engine = path.join(dir, "Engine.ini");
   const existing = (await readLines(engine)) ?? [];
-  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true, opts.upscaler ?? null, gameResolution(lines, opts.safeWindow))));
+  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true, opts.upscaler ?? null)));
   let displayRepaired = false;
   if (lines !== null || opts.safeWindow) {
     const display = repairDisplaySettings(lines ?? [], opts.safeWindow);

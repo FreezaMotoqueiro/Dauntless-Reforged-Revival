@@ -16,11 +16,13 @@ export const GRAPHICS_PRESETS: readonly GraphicsPreset[] = [-1, 0, 1, 2, 3, 4];
 export const DEFAULT_GRAPHICS: GraphicsPreset = -1;
 
 // The optional DLSS/FSR upscaler's mode, as the render resolution in percent of the output (r.ScreenPercentage):
-// 100 = native (DLAA), 77 Ultra Quality, 67 Quality, 58 Balanced, 50 Performance, 33 Ultra Performance.
-// 0 leaves the resolution scale to the game. Only used when the upscaler is installed (docs/upscaling.md).
-export type UpscalerMode = 0 | 100 | 77 | 67 | 58 | 50 | 33;
-export const UPSCALER_MODES: readonly UpscalerMode[] = [100, 77, 67, 58, 50, 33, 0];
-export const DEFAULT_UPSCALER_MODE: UpscalerMode = 67;
+// 100 = native (DLAA / FSR native AA), 0 leaves the resolution scale to the game. Only used when the upscaler is
+// installed (docs/upscaling.md). Luma's Unreal Engine mod only works at native resolution, so there are no
+// Quality / Performance modes: launcher 1.5.3 offered them and they turned DLSS / FSR off. A saved 77..33 is
+// not a mode any more and loads as the default.
+export type UpscalerMode = 0 | 100;
+export const UPSCALER_MODES: readonly UpscalerMode[] = [100, 0];
+export const DEFAULT_UPSCALER_MODE: UpscalerMode = 100;
 
 // The game's own text language, sent to it as -epiclocale; "auto" follows the operating system.
 export type GameLanguage = "auto" | "en-US" | "de-DE" | "es-ES" | "fr-FR" | "it-IT" | "ja-JP" | "pt-BR" | "ru-RU";

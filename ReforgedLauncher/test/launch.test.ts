@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildLaunchArgs, describeLaunch, gameLocale, launchEnvironment, maskArgs } from "../src/main/launch";
-import { applyGameConfig, decodeIni, exactScreenPercentage, gameResolution, PHOENIX_ENDPOINTS_SECTION, removeIniSection, rewriteEngineIniText, rewriteGameUserSettingsText, UPSCALER_LINES, upscalerInstalled, xmppLines } from "../src/main/engineini";
+import { applyGameConfig, decodeIni, PHOENIX_ENDPOINTS_SECTION, removeIniSection, rewriteEngineIniText, rewriteGameUserSettingsText, UPSCALER_LINES, upscalerInstalled, xmppLines } from "../src/main/engineini";
 import { redact } from "../src/main/log";
 
 const KEY = "RRK_" + "c".repeat(48);
@@ -72,13 +72,12 @@ test("Engine.ini: chat goes to the relay, the owned sections are replaced and ev
   assert.deepEqual(rewriteGameUserSettingsText(["sg.TextureQuality=0", "Other=1"], 3), ["sg.TextureQuality=3", "Other=1"]);
 });
 
-test("Engine.ini: the upscaler turns temporal upsampling on and sets the mode's resolution scale", () => {
-  const plain = rewriteEngineIniText([], "127.0.0.1", 61100, -1, false, 67);
+test("Engine.ini: the upscaler turns temporal upsampling on and pins native resolution", () => {
+  const plain = rewriteEngineIniText([], "127.0.0.1", 61100, -1, false, 100);
   assert.equal(plain[0], "[SystemSettings]");
   for (const l of UPSCALER_LINES) assert.ok(plain.includes(l), l);
   assert.ok(plain.includes("r.TemporalAA.Upsampling=1"));
-  assert.ok(plain.includes("r.ScreenPercentage=66.666167"), plain.join("|"));
-  assert.ok(rewriteEngineIniText([], "127.0.0.1", 61100, -1, false, 100).includes("r.ScreenPercentage=100"));
+  assert.ok(plain.includes("r.ScreenPercentage=100"), plain.join("|"));
   const forced = rewriteEngineIniText([], "127.0.0.1", 61100, 3, false, 0);
   assert.ok(forced.includes("sg.ShadowQuality=3"));
   assert.ok(!forced.some((l) => /^(r\.ScreenPercentage|sg\.ResolutionQuality)=/.test(l)), "resolution scale not pinned");
@@ -156,25 +155,4 @@ test("applyGameConfig (1.14.7): Revived's 127.0.0.1 endpoints leave Game.ini, wi
   dirs.push(empty);
   await applyGameConfig({ host: "127.0.0.1", port: 61100, graphics: -1, configDir: empty, clearPhoenixEndpoints: true });
   assert.ok(!existsSync(path.join(empty, "Game.ini")));
-});
-
-// Unreal sizes the view as ceil(size * percentage / 100); Luma runs DLSS only when that view has exactly the
-// output's aspect ratio. Check the sizes Unreal will compute (in float, as it does).
-test("the upscaler modes give render sizes with exactly the output's aspect ratio", () => {
-  const f32 = (x: number) => Math.fround(x);
-  for (const [w, h] of [[1920, 1080], [2560, 1440], [3840, 2160], [3440, 1440], [1280, 720], [1680, 1050], [2560, 1080]]) {
-    for (const mode of [77, 67, 58, 50, 33]) {
-      const p = Number(exactScreenPercentage(mode, w, h));
-      const frac = f32(f32(p) / 100);
-      const vw = Math.ceil(f32(w * frac));
-      const vh = Math.ceil(f32(h * frac));
-      assert.equal(vw * h, vh * w, `${w}x${h} mode ${mode}: ${p}% -> ${vw}x${vh}`);
-      assert.ok(Math.abs(p - mode) < 9, `${w}x${h} mode ${mode}: ${p}%`);
-    }
-  }
-  assert.equal(exactScreenPercentage(67, 1920, 1080), "66.666167");
-  assert.equal(exactScreenPercentage(50, 1920, 1080), "49.9995");
-  assert.equal(exactScreenPercentage(100, 1920, 1080), "100");
-  assert.deepEqual(gameResolution(["[/Script/Engine.GameUserSettings]", "ResolutionSizeX=2560", "ResolutionSizeY=1440"]), { width: 2560, height: 1440 });
-  assert.deepEqual(gameResolution(null, true), { width: 1280, height: 720 });
 });

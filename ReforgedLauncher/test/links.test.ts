@@ -58,5 +58,5 @@ test("the preload forwards every setting the main process accepts", () => {
   const keys = [...body.slice(0, body.indexOf("\n}\n")).matchAll(/k === "([A-Za-z]+)"/g)].map((m) => m[1]);
   assert.ok(keys.includes("upscalerMode") && keys.includes("graphics"));
   for (const k of keys) assert.ok(preload.includes(`patch.${k} !== undefined`), `preload.ts drops ${k}`);
-  assert.deepEqual(settingsPatch({ upscalerMode: 50, upscaler: false }), { upscalerMode: 50, upscaler: false });
+  assert.deepEqual(settingsPatch({ upscalerMode: 0, upscaler: false }), { upscalerMode: 0, upscaler: false });
 });
