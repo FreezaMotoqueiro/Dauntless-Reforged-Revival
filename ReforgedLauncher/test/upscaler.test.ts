@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { assetUrl, DISABLE_FLAG, dx11Upscaler, ensureUpscaler, gpuVendorFromIds, MANIFEST_NAME, optiScalerIni, resolveInside, UPSCALER_PACK, VCRT_BACKUP_DIR, type FetchToFile, type UpscalerPack } from "../src/main/upscaler";
+import { assetUrl, lumaHdrDefault, DISABLE_FLAG, dx11Upscaler, ensureUpscaler, gpuVendorFromIds, MANIFEST_NAME, optiScalerIni, resolveInside, UPSCALER_PACK, VCRT_BACKUP_DIR, type FetchToFile, type UpscalerPack } from "../src/main/upscaler";
 import { upscalerInstalled } from "../src/main/engineini";
 
 const dirs: string[] = [];
@@ -64,6 +64,14 @@ test("the compiled-in pack: Luma, ReShade as ReShade64.dll, OptiScaler, safe pat
   assert.equal(assetUrl(UPSCALER_PACK.files[0]), `https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival/releases/download/upscaler-${UPSCALER_PACK.id}/${UPSCALER_PACK.files[0].sha256}`);
 });
 
+test("Luma's HDR starts matching Windows HDR, and a player's choice is kept", () => {
+  assert.equal(lumaHdrDefault("[INSTALL]\r\nLogging=1\r\n", false), "[INSTALL]\r\nLogging=1\r\n\r\n[Luma]\r\nEnableHDR=0\r\n");
+  assert.equal(lumaHdrDefault("[Luma]\r\nSRUserType=2\r\n", true), "[Luma]\r\nEnableHDR=1\r\nSRUserType=2\r\n");
+  const chosen = "[Luma]\r\nEnableHDR=1\r\n[X]\r\nEnableHDR=0\r\n";
+  assert.equal(lumaHdrDefault(chosen, false), chosen);
+  assert.match(lumaHdrDefault("[X]\r\nEnableHDR=1\r\n", false), /\[Luma\]\r\nEnableHDR=0/);
+});
+
 test("unsafe pack paths are refused", () => {
   for (const p of ["../x.dll", "a/../../x", "/x", "C:/x", "a\\b", "", "a//b"]) assert.throws(() => resolveInside("/g", p), p);
 });
@@ -97,7 +105,7 @@ test("ensureUpscaler installs every file, writes the ini once, moves the old VC+
   assert.ok(urls.every((u) => u.startsWith("https://github.com/FreezaMotoqueiro/Dauntless-Reforged-Revival/releases/download/upscaler-7/")));
   assert.equal(readFileSync(path.join(win64, "Luma", "Includes", "Common.hlsl"), "utf8"), "hlsl");
   assert.match(readFileSync(path.join(win64, "OptiScaler.ini"), "utf8"), /^Dx11Upscaler=dlss$/m);
-  assert.ok(existsSync(path.join(win64, "ReShade.ini")));
+  assert.match(readFileSync(path.join(win64, "ReShade.ini"), "utf8"), /^\[Luma\]\r\nEnableHDR=0$/m);
   assert.ok(!existsSync(path.join(win64, "msvcp140.dll")) && existsSync(path.join(win64, VCRT_BACKUP_DIR, "msvcp140.dll")));
   assert.ok(!existsSync(path.join(win64, DISABLE_FLAG)));
   assert.ok(await upscalerInstalled(win64));

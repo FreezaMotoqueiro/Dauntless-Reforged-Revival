@@ -145,6 +145,8 @@ export interface Platform {
   runtimeFilesExist?: (file: string) => boolean;
   // PCI vendor ids of this PC's GPUs (Electron's GPU info), to pick OptiScaler's first upscaler.
   gpuVendorIds?: () => Promise<number[]>;
+  // Windows HDR is on for the main display (Luma's HDR then starts on).
+  hdrDisplay?: () => boolean;
   // Tests: how the upscaler files are downloaded.
   upscalerFetch?: FetchToFile;
   chooseFolder(purpose: FolderPurpose, defaultPath: string): Promise<string | null>;
@@ -1710,6 +1712,7 @@ export class Controller {
         enabled: this.s.upscaler,
         vendor,
         systemVcRuntime,
+        hdrDisplay: this.p.hdrDisplay ? this.p.hdrDisplay() : false,
         fetchFile: this.p.upscalerFetch,
         signal: abort.signal,
         onStart: (p) => {

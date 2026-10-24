@@ -54,6 +54,8 @@ the upscaler still works, as Luma alone) and the VC++ 2015-2022 x64 redistributa
      from the pinned upstream archives; the [Upscaler pack](../.github/workflows/upscaler-pack.yml) workflow publishes it);
    - `OptiScaler.ini` is written once with `LoadReshade=true` and the first upscaler for your GPU, then left to you;
    - `ReShade.ini` is created if missing; the game's old VC++ 14.24 DLLs are moved to `reforged-vcrt-backup\`;
+   - Luma's HDR (`[Luma] EnableHDR` in `ReShade.ini`) is set once to match Windows HDR: off on an SDR display, where it
+     gains nothing and makes OptiScaler's menu look washed out. A choice made in Luma's menu is kept;
    - a file it did not install is never overwritten; `reforged-upscaler.json` lists what it installed.
    A failed download never stops the launch: the game starts as it is and the launcher tries again next time.
 2. The launcher writes `r.TemporalAA.Upsampling=1` and the mode's resolution scale (see below).
@@ -115,5 +117,6 @@ jogo, só no **cliente**. Vem ligado e pode ser desligado em **Configurações >
   deixe **Super Resolution** em **DLSS** ou **Auto** (é a entrada que o OptiScaler troca).
 - **Modo:** Configurações > Gráficos > Modo do DLSS / FSR (Nativo/DLAA, Ultra Qualidade, Qualidade, Equilibrado, Desempenho,
   Ultra Desempenho). O modo é a resolução interna do jogo (`r.ScreenPercentage`).
+- **HDR do Luma:** o launcher deixa desligado se o HDR do Windows estiver desligado (com ele ligado, o menu do OptiScaler fica desbotado). A escolha feita no menu do Luma é mantida.
 - **Desligar:** a chave em Configurações > Gráficos (cria `DISABLE_UPSCALER.flag`). `DISABLE_OPTISCALER.flag` deixa só o Luma.
 - **Precisa:** runtime com o patch 0043 e o VC++ 2015-2022 x64.

@@ -80,6 +80,29 @@ export function optiScalerIni(template: string, vendor: GpuVendor): string {
   return lines.join("\r\n");
 }
 
+// Luma's Unreal Engine mod starts with its HDR on ([Luma] EnableHDR in ReShade.ini), which turns the swapchain into
+// scRGB. On an SDR display that gains nothing and OptiScaler's overlay (drawn for SDR) comes out washed out. The
+// launcher sets it once, to match Windows HDR, only while the player has not chosen (no EnableHDR key yet).
+export function lumaHdrDefault(ini: string, hdrDisplay: boolean): string {
+  const lines = ini.split(/\r?\n/);
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  let section = "";
+  let lumaAt = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const h = /^\s*\[([^\]]*)\]/.exec(lines[i]);
+    if (h) {
+      section = h[1].trim().toLowerCase();
+      if (section === "luma") lumaAt = i;
+      continue;
+    }
+    if (section === "luma" && /^\s*EnableHDR\s*=/i.test(lines[i])) return ini;
+  }
+  const line = `EnableHDR=${hdrDisplay ? 1 : 0}`;
+  if (lumaAt >= 0) lines.splice(lumaAt + 1, 0, line);
+  else lines.push("", "[Luma]", line);
+  return lines.join("\r\n") + "\r\n";
+}
+
 export function assetUrl(f: UpscalerFile, p: UpscalerPack = UPSCALER_PACK, project = PROJECT_URL): string {
   return `${project}/releases/download/upscaler-${p.id}/${f.sha256}`;
 }
@@ -172,6 +195,8 @@ export interface EnsureUpscalerOptions {
   // false when the system has no VC++ 2015-2022 runtime: the game's own old copy then stays, and Luma with it
   // would crash, so nothing is installed.
   systemVcRuntime: boolean;
+  // Windows HDR is on for the display: Luma's HDR is then left on, otherwise it starts off (see lumaHdrDefault).
+  hdrDisplay?: boolean;
   fetchFile?: FetchToFile;
   pack?: UpscalerPack;
   signal?: AbortSignal;
@@ -252,7 +277,9 @@ export async function ensureUpscaler(o: EnsureUpscalerOptions): Promise<EnsureUp
   // ReShade loaded under a non-proxy name only starts when ReShade.ini exists (OptiScaler skips that check,
   // the runtime's fallback without OptiScaler does not).
   const reshadeIni = path.join(o.win64Dir, "ReShade.ini");
-  if (!(await exists(reshadeIni))) await fsp.writeFile(reshadeIni, "[INSTALL]\r\nLogging=1\r\n");
+  const iniText = (await exists(reshadeIni)) ? await fsp.readFile(reshadeIni, "latin1") : "[INSTALL]\r\nLogging=1\r\n";
+  const withHdr = lumaHdrDefault(iniText, o.hdrDisplay === true);
+  if (withHdr !== iniText || !(await exists(reshadeIni))) await fsp.writeFile(reshadeIni, withHdr, "latin1");
 
   const vcrtMoved: string[] = [];
   for (const name of VCRT_FILES) {
