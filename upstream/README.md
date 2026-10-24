@@ -607,6 +607,19 @@ only the first shot of a hunt, spawned fresh, could hit (VPS 2026-10-24: 7 of 8 
 significance (`UInstigatorDrivenSigComp::Disabled`) off (`[ProjectileTick]` in the runtime log); in the test all
 shots hit three Behemoths in a row. `DISABLE_PROJECTILE_TICK_FIX.flag` beside the game executable turns it off.
 
+### 0041: the player client loads the optional upscaler
+
+`ParadoxRuntime/dllmain.cpp`, client only. Dauntless 1.14.7 (Unreal Engine 4.26.2, DirectX 11) has no DLSS or
+FSR. The [Luma Framework](https://github.com/Filoppi/Luma-Framework)'s Unreal Engine mod adds both by replacing the
+game's TAA pass (DLSS 4 Super Resolution, or FSR 3.1 on any GPU). It is a ReShade add-on, and ReShade normally
+loads as a proxy `dxgi.dll`, which would also load into every game server started from the same folder. The files
+are therefore installed with ReShade renamed to `ReShade64.dll`, which Windows never loads on its own, and the
+runtime loads it right after its client hooks, before the engine creates its D3D11 device (`[Upscaler]` in the
+runtime log). The server role (`-server`) and `-nullrhi` never load it, so the upscaler cannot reach a game server
+or conflict with the runtime's own proxy (`winmm.dll`). Without `ReShade64.dll` nothing changes;
+`DISABLE_UPSCALER.flag` beside the game executable turns it off without uninstalling. Installation and settings:
+[docs/upscaling.md](../docs/upscaling.md).
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)

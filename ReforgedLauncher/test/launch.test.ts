@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildLaunchArgs, describeLaunch, gameLocale, launchEnvironment, maskArgs } from "../src/main/launch";
-import { applyGameConfig, decodeIni, PHOENIX_ENDPOINTS_SECTION, removeIniSection, rewriteEngineIniText, rewriteGameUserSettingsText, xmppLines } from "../src/main/engineini";
+import { applyGameConfig, decodeIni, PHOENIX_ENDPOINTS_SECTION, removeIniSection, rewriteEngineIniText, rewriteGameUserSettingsText, UPSCALER_LINES, upscalerInstalled, xmppLines } from "../src/main/engineini";
 import { redact } from "../src/main/log";
 
 const KEY = "RRK_" + "c".repeat(48);
@@ -70,6 +70,31 @@ test("Engine.ini: chat goes to the relay, the owned sections are replaced and ev
   assert.ok(forced.includes("sg.ShadowQuality=2"));
   assert.throws(() => xmppLines("bad host!", 1));
   assert.deepEqual(rewriteGameUserSettingsText(["sg.TextureQuality=0", "Other=1"], 3), ["sg.TextureQuality=3", "Other=1"]);
+});
+
+test("Engine.ini: the upscaler turns temporal upsampling on and leaves the resolution scale to the game", () => {
+  const plain = rewriteEngineIniText([], "127.0.0.1", 61100, -1, false, true);
+  assert.equal(plain[0], "[SystemSettings]");
+  for (const l of UPSCALER_LINES) assert.ok(plain.includes(l), l);
+  assert.ok(plain.includes("r.TemporalAA.Upsampling=1"));
+  const forced = rewriteEngineIniText([], "127.0.0.1", 61100, 3, false, true);
+  assert.ok(forced.includes("sg.ShadowQuality=3"));
+  assert.ok(!forced.some((l) => /^(r\.ScreenPercentage|sg\.ResolutionQuality)=/.test(l)), "resolution scale not pinned");
+  const without = rewriteEngineIniText([], "127.0.0.1", 61100, 3);
+  assert.ok(without.includes("r.ScreenPercentage=100") && !without.includes("r.TemporalAA.Upsampling=1"));
+});
+
+test("upscalerInstalled needs ReShade64.dll and a Luma add-on, and honours DISABLE_UPSCALER.flag", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "rr-upscaler-"));
+  dirs.push(dir);
+  assert.equal(await upscalerInstalled(dir), false);
+  writeFileSync(path.join(dir, "ReShade64.dll"), "");
+  assert.equal(await upscalerInstalled(dir), false, "ReShade alone is not the upscaler");
+  writeFileSync(path.join(dir, "Luma-Unreal Engine.addon"), "");
+  assert.equal(await upscalerInstalled(dir), true);
+  writeFileSync(path.join(dir, "DISABLE_UPSCALER.flag"), "");
+  assert.equal(await upscalerInstalled(dir), false);
+  assert.equal(await upscalerInstalled(path.join(dir, "missing")), false);
 });
 
 test("applyGameConfig writes Engine.ini and keeps a UTF-16 file readable", async () => {

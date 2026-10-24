@@ -95,6 +95,8 @@ servers that run 0.1.35's server side):
 - **Launcher**: the language, streamer mode (hides addresses, fingerprints, folders and other
   players' names), the logs, and **Advanced** options for hosts.
 
+Optional: DLSS 4 or FSR 3.1 on the client, see [upscaling.md](upscaling.md).
+
 ## Troubleshooting
 
 | The launcher says | What to do |
