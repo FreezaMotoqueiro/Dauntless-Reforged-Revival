@@ -67,7 +67,9 @@ the upscaler still works, as Luma alone) and the VC++ 2015-2022 x64 redistributa
 4. Pick the mode in the launcher, **Settings > Graphics > DLSS / FSR mode**. Luma has no mode menu of its own: the
    mode is the game's render resolution, which the launcher writes as `r.ScreenPercentage`: Native (DLAA) = 100,
    Ultra Quality = 77, Quality = 67 (default), Balanced = 58, Performance = 50, Ultra Performance = 33.
-   "Game's resolution scale" leaves it to the in-game setting (or `sg.ResolutionQuality` in
+   The launcher rounds the mode to the nearest scale whose render size has exactly your resolution's aspect ratio
+   (1080p Quality = 1280x720, `r.ScreenPercentage=66.666167`): Luma skips DLSS when the two differ even slightly,
+   which 67% of 1920x1080 (1287x724) did. "Game's resolution scale" leaves it to the in-game setting (or `sg.ResolutionQuality` in
    `%LOCALAPPDATA%\Archon\Saved\Config\WindowsClient\GameUserSettings.ini`). Keep dynamic resolution off.
 
 The runtime log (`mysticparadox_dll_port0.log`) says `[Upscaler] OptiScaler.dll loaded`; OptiScaler writes
@@ -118,5 +120,6 @@ jogo, só no **cliente**. Vem ligado e pode ser desligado em **Configurações >
 - **Modo:** Configurações > Gráficos > Modo do DLSS / FSR (Nativo/DLAA, Ultra Qualidade, Qualidade, Equilibrado, Desempenho,
   Ultra Desempenho). O modo é a resolução interna do jogo (`r.ScreenPercentage`).
 - **HDR do Luma:** o launcher deixa desligado se o HDR do Windows estiver desligado (com ele ligado, o menu do OptiScaler fica desbotado). A escolha feita no menu do Luma é mantida.
+- **Escala exata:** o launcher arredonda o modo para uma escala com a mesma proporção exata da sua resolução (1080p Qualidade = 1280x720). Com proporção diferente, mesmo por um pixel, o Luma não chama o DLSS. Na opção "Escala de resolução do jogo", use 50% ou 75%.
 - **Desligar:** a chave em Configurações > Gráficos (cria `DISABLE_UPSCALER.flag`). `DISABLE_OPTISCALER.flag` deixa só o Luma.
 - **Precisa:** runtime com o patch 0043 e o VC++ 2015-2022 x64.

@@ -1,7 +1,7 @@
 {
   "name": "dauntless-reforged-revival-launcher",
   "productName": "Dauntless Reforged Revival Launcher",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Windows launcher for Dauntless Reforged Revival: join community servers from an invite, check your Dauntless 1.14.7 install, install the host's game runtime and play on a private server.",
   "main": ".vite/build/main.js",
   "private": true,

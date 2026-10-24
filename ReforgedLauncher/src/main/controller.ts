@@ -1662,7 +1662,7 @@ export class Controller {
         let displayRepaired = false;
         try {
           const upscaler = await upscalerInstalled(dir);
-          if (upscaler) log.info("upscaler installed (ReShade64.dll + Luma add-on): temporal upsampling on, resolution scale left to the game");
+          if (upscaler) log.info(`upscaler installed (ReShade64.dll + Luma add-on): temporal upsampling on, mode ${this.s.upscalerMode === 0 ? "left to the game" : `${this.s.upscalerMode}%`}`);
           const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true, upscaler: upscaler ? this.s.upscalerMode : null });
           displayRepaired = config.displayRepaired;
           if (config.phoenixEndpointsRemoved > 0) {
