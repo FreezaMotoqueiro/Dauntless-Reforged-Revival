@@ -39,6 +39,7 @@ export interface StoredSettings {
   revivedVerified: string | null; // the 1.4.4 folder whose every file was last checked against the manifest
   graphics: GraphicsPreset;
   upscalerMode: UpscalerMode;
+  upscaler: boolean;
   windowed: boolean;
   streamerMode: boolean; // hide addresses, fingerprints, paths and player names on screen
   language: Language;
@@ -63,6 +64,7 @@ export function defaultSettings(language: Language): StoredSettings {
     revivedVerified: null,
     graphics: DEFAULT_GRAPHICS,
     upscalerMode: DEFAULT_UPSCALER_MODE,
+    upscaler: true,
     windowed: false,
     streamerMode: false,
     language,
@@ -146,6 +148,7 @@ export function sanitizeSettings(raw: unknown, language: Language, platform: Nod
   s.revivedVerified = validDir(raw.revivedVerified, platform);
   if (GRAPHICS_PRESETS.includes(raw.graphics as GraphicsPreset)) s.graphics = raw.graphics as GraphicsPreset;
   if (UPSCALER_MODES.includes(raw.upscalerMode as UpscalerMode)) s.upscalerMode = raw.upscalerMode as UpscalerMode;
+  s.upscaler = raw.upscaler !== false;
   s.windowed = raw.windowed === true;
   s.streamerMode = raw.streamerMode === true;
   s.hostTools = raw.hostTools === true;

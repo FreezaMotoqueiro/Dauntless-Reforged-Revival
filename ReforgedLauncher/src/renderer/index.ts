@@ -1919,6 +1919,7 @@ function renderSettings(): void {
         t("set_graphics_text"),
         dropdown<GraphicsPreset>({ id: "gfx-select", fk: "gfx", value: snap.settings.graphics, options: GRAPHICS_PRESETS.map((g) => ({ value: g, label: t(graphicsKey(g)) })), onChange: (graphics) => void api.setSettings({ graphics }) }),
       ),
+      infoRow(h("span", { class: "settings-row-title", id: "upscaler-on-label" }, t("set_upscaler_on")), t("set_upscaler_on_help"), toggle("upscaler-on", "upscaler-on-label", snap.settings.upscaler, (on) => void api.setSettings({ upscaler: on }))),
       infoRow(
         h("label", { class: "settings-row-title", for: "upscaler-select" }, t("set_upscaler")),
         t("set_upscaler_text"),

@@ -132,7 +132,7 @@ export type InviteCheck =
   | { ok: false; error: LauncherError };
 
 // download, dlls: installing Dauntless 1.4.4 for a Dauntless Revived server.
-export type TaskKind = "verify" | "runtime" | "download" | "dlls";
+export type TaskKind = "verify" | "runtime" | "download" | "dlls" | "upscaler";
 
 export interface TaskProgress {
   kind: TaskKind;
@@ -214,6 +214,8 @@ export interface RuntimeInfo {
 export interface Settings {
   graphics: GraphicsPreset;
   upscalerMode: UpscalerMode;
+  // DLSS / FSR / XeSS (Luma + OptiScaler), installed and kept up to date by the launcher before each launch.
+  upscaler: boolean;
   windowed: boolean;
   language: Language;
   gameLanguage: GameLanguage;

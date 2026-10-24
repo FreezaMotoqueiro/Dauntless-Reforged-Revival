@@ -1,0 +1,68 @@
+# Publishes the upscaler pack the launcher installs beside the game (docs/upscaling.md).
+#
+# ReforgedLauncher/src/main/upscaler-pack.json pins two upstream archives (Luma's Unreal Engine mod, OptiScaler) and every file taken from
+# them, by SHA-256. This workflow downloads the archives, checks them and every file (upscaler/pack.mjs build),
+# and attaches each file to the release "upscaler-<id>" under its SHA-256 as the asset name. The launcher
+# downloads https://github.com/<repo>/releases/download/upscaler-<id>/<sha256> and keeps a file only when its
+# hash is the pinned one, so the release can never hand it anything else. Upstream releases can be deleted;
+# this one keeps the pinned files available.
+#
+#  - A push to main that changes the pack file or this file: creates the release if it does not exist yet
+#    (never "Latest", so the launcher's download page is unaffected) and uploads missing assets.
+#  - Run workflow (workflow_dispatch): the same, to repair a release.
+#  - A push to another branch, or a pull request, that changes them: builds and checks only.
+name: Upscaler pack
+
+on:
+  push:
+    paths: [ReforgedLauncher/src/main/upscaler-pack.json, upscaler/pack.mjs, .github/workflows/upscaler-pack.yml]
+  pull_request:
+    paths: [ReforgedLauncher/src/main/upscaler-pack.json, upscaler/pack.mjs, .github/workflows/upscaler-pack.yml]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  pack:
+    name: Build, check and publish the upscaler pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    concurrency:
+      group: upscaler-pack
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PUBLISH: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Tools (unzip, 7z)
+        run: |
+          command -v 7z > /dev/null || { sudo apt-get update -q && sudo apt-get install -y -q p7zip-full; }
+          command -v unzip > /dev/null || sudo apt-get install -y -q unzip
+      - name: Build and check
+        run: node upscaler/pack.mjs build pack-out
+      - name: Publish
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          id="$(node -p "require('./ReforgedLauncher/src/main/upscaler-pack.json').id")"
+          [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::pack.json id must be a number"; exit 1; }
+          tag="upscaler-$id"
+          if ! gh release view "$tag" --json tagName > /dev/null 2>&1; then
+            gh release create "$tag" --target "$GITHUB_SHA" --latest=false --title "Upscaler pack $id" \
+              --notes "Files the launcher installs for DLSS / FSR / XeSS on the Dauntless 1.14.7 client, each named by its SHA-256. Sources and licenses: ReforgedLauncher/src/main/upscaler-pack.json and docs/upscaling.md. Not a launcher release: download the launcher from the latest release."
+          fi
+          gh release view "$tag" --json assets --jq '.assets[].name' > present.txt
+          cd pack-out
+          for f in *; do
+            grep -qxF "$f" ../present.txt || gh release upload "$tag" "$f"
+          done
+          echo "::notice::upscaler pack $id: $(gh release view "$tag" --json url --jq .url)"

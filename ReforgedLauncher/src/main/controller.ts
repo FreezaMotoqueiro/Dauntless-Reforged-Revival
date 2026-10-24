@@ -78,6 +78,7 @@ import { DISK_MARGIN_BYTES, REVIVED_DLLS, REVIVED_EXE_RELATIVE_PATH, REVIVED_LAU
 import { AbortedError, HashCache } from "./verify";
 import { checkRuntime, installLocalRuntime, installRuntime, isCompleteRuntimeDir, RuntimeError, runtimeSetId } from "./runtime-files";
 import { applyGameConfig, upscalerInstalled } from "./engineini";
+import { ensureUpscaler, gpuVendorFromIds, UPSCALER_PACK, VCRT_BACKUP_DIR, type FetchToFile, type UpscalerProgress } from "./upscaler";
 import { detectStoreInstalls, locateExistingGame, readGameVersion, hasGameExe } from "./game-folder";
 import { buildLaunchArgs, describeLaunch, GameProcess, gameExitDetail, gameLocale, launchEnvironment, STATUS_CONTROL_C_EXIT, type SpawnFn } from "./launch";
 import { backupFileText, KeyStore, KeyStoreError, serverId, type Encryptor, type KeySlot } from "./keystore";
@@ -142,6 +143,10 @@ export interface Platform {
   revivedDlls?: readonly PinnedDll[];
   revivedDllFetch?: FetchBytes;
   runtimeFilesExist?: (file: string) => boolean;
+  // PCI vendor ids of this PC's GPUs (Electron's GPU info), to pick OptiScaler's first upscaler.
+  gpuVendorIds?: () => Promise<number[]>;
+  // Tests: how the upscaler files are downloaded.
+  upscalerFetch?: FetchToFile;
   chooseFolder(purpose: FolderPurpose, defaultPath: string): Promise<string | null>;
   chooseDll(defaultPath: string): Promise<string | null>;
   chooseSaveFile(defaultName: string): Promise<string | null>;
@@ -341,6 +346,7 @@ export class Controller {
     return {
       graphics: s.graphics,
       upscalerMode: s.upscalerMode,
+      upscaler: s.upscaler,
       windowed: s.windowed,
       language: s.language,
       gameLanguage: s.gameLanguage,
@@ -1644,6 +1650,8 @@ export class Controller {
         return this.fail(this.runtimeInfo.state === "untrusted" ? "runtime_untrusted" : this.runtimeInfo.state === "unavailable" ? "runtime_unavailable" : "runtime_failed");
       }
 
+      await this.prepareUpscaler(dir, missingVc.length === 0);
+
       const started = await this.startRelay(sv);
       if (!started.ok) return started;
       const relayPort = this.relay?.port ?? DEFAULT_RELAY_PORT;
@@ -1683,6 +1691,48 @@ export class Controller {
         if (!launched) await this.stopRelay();
       }
     });
+  }
+
+  // The upscaler files beside the game, downloaded or turned off before the launch. A failure is logged and
+  // never stops the launch: the game then starts with whatever upscaler state the folder already has.
+  private async prepareUpscaler(dir: string, systemVcRuntime: boolean): Promise<void> {
+    const abort = new AbortController();
+    this.taskAbort = abort;
+    const started = Date.now();
+    const show = (p: UpscalerProgress) => {
+      const rate = p.doneBytes / Math.max(0.001, (Date.now() - started) / 1000);
+      this.task = { kind: "upscaler", ...p, bytesPerSecond: rate, etaSeconds: rate > 0 ? (p.totalBytes - p.doneBytes) / rate : null };
+    };
+    try {
+      const vendor = gpuVendorFromIds(this.p.gpuVendorIds ? await this.p.gpuVendorIds().catch(() => []) : []);
+      const r = await ensureUpscaler({
+        win64Dir: dir,
+        enabled: this.s.upscaler,
+        vendor,
+        systemVcRuntime,
+        fetchFile: this.p.upscalerFetch,
+        signal: abort.signal,
+        onStart: (p) => {
+          show(p);
+          this.publish();
+        },
+        onProgress: (p) => {
+          show(p);
+          if (this.task) this.p.emitProgress(this.task);
+        },
+      });
+      if (r.state === "ready") {
+        if (r.downloaded) log.info(`upscaler pack ${UPSCALER_PACK.id} installed (${r.downloaded} files; OptiScaler output for a ${vendor} GPU)`);
+        if (r.vcrtMoved.length) log.info(`upscaler: the game's old VC++ runtime moved to ${VCRT_BACKUP_DIR} (${r.vcrtMoved.join(", ")})`);
+      } else if (r.state === "disabled") log.info("upscaler turned off in the settings");
+      else log.warn(`upscaler not installed: ${r.reason}${r.state === "skipped" && r.file ? ` (${r.file} exists and was not installed by the launcher)` : ""}`);
+    } catch (e) {
+      log.warn(`upscaler not updated: ${describeError(e)}`);
+    } finally {
+      this.task = null;
+      this.taskAbort = null;
+      this.publish();
+    }
   }
 
   private async startRelay(sv: StoredServer): Promise<ActionResult> {
@@ -1728,6 +1778,7 @@ export class Controller {
       await this.settings.update((s) => {
         if (GRAPHICS_PRESETS.includes(p.graphics as GraphicsPreset)) s.graphics = p.graphics as GraphicsPreset;
         if (UPSCALER_MODES.includes(p.upscalerMode as UpscalerMode)) s.upscalerMode = p.upscalerMode as UpscalerMode;
+        if (typeof p.upscaler === "boolean") s.upscaler = p.upscaler;
         if (typeof p.windowed === "boolean") s.windowed = p.windowed;
         if (typeof p.streamerMode === "boolean") s.streamerMode = p.streamerMode;
         if (typeof p.hostTools === "boolean") {

@@ -95,8 +95,8 @@ export interface TaskView {
 }
 
 export function taskView(t: TaskProgress, lang: Language): TaskView {
-  const titleKey: StringKey = t.kind === "runtime" ? "task_runtime" : t.kind === "download" ? "task_download" : t.kind === "dlls" ? "task_dlls" : "task_verify";
-  const moving = t.kind === "runtime" || t.kind === "download";
+  const titleKey: StringKey = t.kind === "upscaler" ? "task_upscaler" : t.kind === "runtime" ? "task_runtime" : t.kind === "download" ? "task_download" : t.kind === "dlls" ? "task_dlls" : "task_verify";
+  const moving = t.kind === "runtime" || t.kind === "download" || t.kind === "upscaler";
   return {
     titleKey,
     percent: formatPercent(t.doneBytes, t.totalBytes),

@@ -627,6 +627,15 @@ log never said whether the upscaler loaded. It now uses `MpLog`: `mysticparadox_
 `[Upscaler] not installed`, `[Upscaler] ReShade64.dll loaded`, `failed error=<code>` or that
 `DISABLE_UPSCALER.flag` is set.
 
+### 0043: OptiScaler over Luma (FSR 4, XeSS, DLSS)
+
+`ParadoxRuntime/dllmain.cpp`, client only. When `OptiScaler.dll` (OptiScaler's non-proxy name) is installed beside
+`ReShade64.dll`, the runtime loads OptiScaler instead of ReShade. With `LoadReshade=true` in `OptiScaler.ini`,
+OptiScaler loads ReShade (and Luma) itself, after the D3D12 device it creates for Luma. Luma's DLSS calls then go
+through OptiScaler, which runs FSR 4 / FSR 3.1 or XeSS over a D3D12 interop device, or DLSS. Same rules as 0041:
+never on `-server` or `-nullrhi`, and `DISABLE_UPSCALER.flag` turns everything off. `DISABLE_OPTISCALER.flag` keeps
+Luma alone. If OptiScaler fails to load, ReShade64.dll is loaded as before. The log says `[Upscaler] OptiScaler.dll loaded`.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)

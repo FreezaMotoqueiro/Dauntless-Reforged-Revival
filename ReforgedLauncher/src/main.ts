@@ -435,6 +435,10 @@ function makePlatform(): Platform {
     emitHostServer: (v) => send(IPC.hostServer, v),
     findTailscale: () => findTailscale(process.env, existsSync, process.platform),
     findRunningClients: () => findRunningClients(process.platform),
+    gpuVendorIds: async () => {
+      const info = (await app.getGPUInfo("basic")) as { gpuDevice?: { vendorId?: number }[] };
+      return (info.gpuDevice ?? []).map((d) => d.vendorId).filter((v): v is number => typeof v === "number");
+    },
     inject: (opts) => injectDll(opts),
     installUpdate: () => {
       if (app.isPackaged && process.platform === "win32") {

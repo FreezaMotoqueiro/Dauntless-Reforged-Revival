@@ -31,6 +31,7 @@ export function settingsPatch(v: unknown): Partial<Settings> | null {
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
     if (k === "graphics" && GRAPHICS_PRESETS.includes(val as GraphicsPreset)) out.graphics = val as GraphicsPreset;
     else if (k === "upscalerMode" && UPSCALER_MODES.includes(val as UpscalerMode)) out.upscalerMode = val as UpscalerMode;
+    else if (k === "upscaler" && typeof val === "boolean") out.upscaler = val;
     else if (k === "windowed" && typeof val === "boolean") out.windowed = val;
     else if (k === "streamerMode" && typeof val === "boolean") out.streamerMode = val;
     else if (k === "hostTools" && typeof val === "boolean") out.hostTools = val;
