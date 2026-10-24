@@ -577,6 +577,9 @@ answers (0,0). The War Pike's projectile special (`mspear_special_projectile_bpc
 without hitting them. On the server the function's native entry is wrapped once (`[ServerViewportSize]`): a size
 of 0 becomes 1920x1080. Only the aspect ratio is used there, and the aim is the centre of the screen at any size.
 `DISABLE_SERVER_VIEWPORT_SIZE.flag` beside the game executable turns it off.
+Note (2026-10-24): this did not fix the War Pike special. The blueprint's call to `GetViewportSize` is a
+BlueprintCosmetic one that the dedicated server skips, so the wrapped entry is never reached and the warning stays.
+The warning is harmless; the real cause was the projectile's tick, fixed by 0040.
 
 ### 0039: two-player Escalation gets past the amp
 
@@ -592,6 +595,17 @@ first bunch, faults (access violation at +0x3F90A77), and the fault unwinds the 
 RPC on a quarantined channel or on a server channel with no actor (`[RpcChannelGuard] DROP fn=...`). Stock UE never
 sends a controller's multicast to another connection either; the owner still gets it. `DISABLE_RPC_UNBOUND_CHANNEL_GUARD.flag`
 beside the game executable turns it off.
+
+### 0040: server projectiles tick again when they come back from the pool
+
+`ParadoxRuntime/dllmain.cpp`, server only. `AArchonProjectileBase` runs its hit sweep (`AuthSweepHit` ->
+`AuthProcessHits`) from its tick, and projectiles are pooled (`UPhxPoolableComponent`). On the game server a
+projectile taken back from the pool begins play with its actor tick still disabled, so it flies and explodes on
+expiry without ever sweeping. The War Pike's concussive shot (`ms_projectile_frost_bp`) passed through Behemoths:
+only the first shot of a hunt, spawned fresh, could hit (VPS 2026-10-24: 7 of 8 shots began play with tick=0). At
+`ReceiveBeginPlay` on the server every projectile now gets its tick enabled at full rate and its instigator-driven
+significance (`UInstigatorDrivenSigComp::Disabled`) off (`[ProjectileTick]` in the runtime log); in the test all
+shots hit three Behemoths in a row. `DISABLE_PROJECTILE_TICK_FIX.flag` beside the game executable turns it off.
 
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
