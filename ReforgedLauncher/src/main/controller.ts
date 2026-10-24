@@ -76,7 +76,7 @@ import { detectRevivedInstalls, revivedDefaultDir } from "./revived/detect";
 import { DISK_MARGIN_BYTES, REVIVED_DLLS, REVIVED_EXE_RELATIVE_PATH, REVIVED_LAUNCHER_VERSION, REVIVED_XMPP_PORT, type PinnedDll } from "./revived/constants";
 import { AbortedError, HashCache } from "./verify";
 import { checkRuntime, installLocalRuntime, installRuntime, isCompleteRuntimeDir, RuntimeError, runtimeSetId } from "./runtime-files";
-import { applyGameConfig } from "./engineini";
+import { applyGameConfig, upscalerInstalled } from "./engineini";
 import { detectStoreInstalls, locateExistingGame, readGameVersion, hasGameExe } from "./game-folder";
 import { buildLaunchArgs, describeLaunch, GameProcess, gameExitDetail, gameLocale, launchEnvironment, STATUS_CONTROL_C_EXIT, type SpawnFn } from "./launch";
 import { backupFileText, KeyStore, KeyStoreError, serverId, type Encryptor, type KeySlot } from "./keystore";
@@ -1649,7 +1649,9 @@ export class Controller {
       try {
         let displayRepaired = false;
         try {
-          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true });
+          const upscaler = await upscalerInstalled(dir);
+          if (upscaler) log.info("upscaler installed (ReShade64.dll + Luma add-on): temporal upsampling on, resolution scale left to the game");
+          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true, upscaler });
           displayRepaired = config.displayRepaired;
           if (config.phoenixEndpointsRemoved > 0) {
             log.info(`removed ${config.phoenixEndpointsRemoved} endpoint overrides ([OnlineSubsystemPhoenix], written by Dauntless Revived's launcher) from Game.ini: they send Dauntless 1.14.7 to 127.0.0.1 (copy kept as Game.ini.before-reforged)`);
