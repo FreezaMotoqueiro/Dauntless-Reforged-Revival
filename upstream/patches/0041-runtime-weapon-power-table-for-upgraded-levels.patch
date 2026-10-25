@@ -1,0 +1,95 @@
+diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
+index 87627e1..5075437 100644
+--- a/ParadoxRuntime/dllmain.cpp
++++ b/ParadoxRuntime/dllmain.cpp
+@@ -16767,10 +16767,82 @@ static void ExecGetViewportSizeHook(void* ctx, void* stack, void* result) {
+ 
+ static void RrInstallTravelCrashFix();   // [Dauntless Reforged Revival] defined after CwVerifySite (uses it)
+ 
++// [Reforged 0041] Upgraded weapons get a power table again.
++// UArchonGlobalTuning::GetWeaponPowerTable(ItemLevel) (+0x01AAF300 in 1.14.7) has two paths. With the
++// ProgressionReworkFeature flag off it returns the base WeaponPowerTable for every level. With the flag on
++// (as on our servers) it only looks for an exact ItemLevel entry in WeaponPowerTablePerLevels (+0x50,
++// TArray<FSoftDataTablePtrPerLevel>, 0x30 bytes each, level byte at +0x00) and returns null when that level
++// has no entry. The 1.14.7 paks only carry tables for the lowest levels, so a weapon upgraded with Aether
++// Hearts above them has no power table: the weapon logs "Weapon: invalid weapon power table reference", its
++// meter gain and War Pike damage values read as 0. Patch 0036 hid this by serving every weapon at level 0,
++// which made upgraded weapons look reset and let the next save write level 0 over the stored level.
++// The weapon now gets the table of the highest listed level below its own, or the base table when none is
++// listed. Its level itself is kept (GetWeaponPowerAtLevel still scales the row's PerLevel values with it).
++// DISABLE_WEAPON_POWER_TABLE_FALLBACK.flag beside the game executable turns it off.
++using GetWeaponPowerTableFn = void*(__fastcall*)(void* Tuning, uint8_t ItemLevel);
++static void* OrigGetWeaponPowerTable = nullptr;
++
++static void* MpBaseWeaponPowerTable(void* Tuning) {
++    const uintptr_t T = reinterpret_cast<uintptr_t>(Tuning);
++    void* Cached = reinterpret_cast<void*>(SafeReadPtr(T, 0x118));   // CachedWeaponPowerTable
++    if (Cached) return Cached;
++    // Same as the function's own flag-off path: load the WeaponPowerTable soft pointer (+0x28) once.
++    if (SafeReadPtr(T, 0x38) == 0) return nullptr;
++    void* Loaded = reinterpret_cast<void*(__fastcall*)(void*)>(Globals::BaseAddress + 0x01AB3380)(
++        reinterpret_cast<void*>(T + 0x28));
++    if (Loaded) *reinterpret_cast<void**>(T + 0x118) = Loaded;
++    return Loaded;
++}
++
++void* __fastcall GetWeaponPowerTableFallbackHook(void* Tuning, uint8_t ItemLevel) {
++    auto Orig = reinterpret_cast<GetWeaponPowerTableFn>(OrigGetWeaponPowerTable);
++    void* Table = Orig(Tuning, ItemLevel);
++    if (Table || !Tuning) return Table;
++    static const bool s_disabled = MpExeRelativeFlagPresent(L"DISABLE_WEAPON_POWER_TABLE_FALLBACK.flag");
++    if (s_disabled) return Table;
++
++    static std::atomic<bool> s_listed{ false };
++    if (!s_listed.exchange(true)) {
++        const uintptr_t Data = SafeReadPtr(reinterpret_cast<uintptr_t>(Tuning), 0x50);
++        const int32_t Count = *reinterpret_cast<const int32_t*>(reinterpret_cast<uintptr_t>(Tuning) + 0x58);
++        std::string Levels;
++        for (int32_t i = 0; Data && i < Count && i < 64; ++i) {
++            if (!Levels.empty()) Levels += ",";
++            Levels += std::to_string(*reinterpret_cast<const uint8_t*>(Data + i * 0x30));
++        }
++        MpLog("[WeaponPowerTable] WeaponPowerTablePerLevels lists levels [" + Levels + "]");
++    }
++
++    int Used = -1;
++    for (int Level = static_cast<int>(ItemLevel) - 1; Level >= 0 && !Table; --Level) {
++        Table = Orig(Tuning, static_cast<uint8_t>(Level));
++        if (Table) Used = Level;
++    }
++    if (!Table) Table = MpBaseWeaponPowerTable(Tuning);
++
++    static std::atomic<int> s_logged{ 0 };
++    if (s_logged.fetch_add(1, std::memory_order_relaxed) < 16) {
++        MpLog("[WeaponPowerTable] level " + std::to_string(ItemLevel) + " has no table; using "
++            + (Used >= 0 ? "level " + std::to_string(Used) : std::string("the base table"))
++            + (Table ? "" : " (none found)"));
++    }
++    return Table;
++}
++
++static void MpInstallWeaponPowerTableFallback(const char* Role) {
++    void* Target = reinterpret_cast<void*>(Globals::BaseAddress + 0x01AAF300);
++    const MH_STATUS Create = MH_CreateHook(Target, GetWeaponPowerTableFallbackHook, &OrigGetWeaponPowerTable);
++    const MH_STATUS Enable = MH_EnableHook(Target);
++    MpLog(std::string("[") + Role + "] weapon power table fallback create=" + MH_StatusToString(Create)
++        + " enable=" + MH_StatusToString(Enable) + " target=+" + MpHex(0x01AAF300)
++        + (MpExeRelativeFlagPresent(L"DISABLE_WEAPON_POWER_TABLE_FALLBACK.flag") ? " (DISABLE flag present)" : ""));
++}
++
+ void InitClientHooks() {
+     MH_STATUS InitStatus = MH_Initialize();
+     MpLog(std::string("[InitClientHooks] MH_Initialize=") + MH_StatusToString(InitStatus));
+     StartClientHitchSampler();   // HITCH_SAMPLER.flag only
++    MpInstallWeaponPowerTableFallback("InitClientHooks");   // [Reforged 0041]
+ 
+     // Observe the same verified UNetConnection::Close entry used by the server.
+     // This records a bounded caller stack on the client that presses Go Now, where
+@@ -21978,6 +22050,7 @@ void InitServerHooks() {
+     InitLog("[InitServerHooks] Entry - MH_Initialize");
+     MH_Initialize();
+     InitLog("[InitServerHooks] MH_Initialize OK");
++    MpInstallWeaponPowerTableFallback("InitServerHooks");   // [Reforged 0041]
+ 
+     // [1.14.7 NULLRHI ROOT FIX 2026-10-04] Installed before the RHI selector reads the engine command
+     // line: without it the engine's own FCommandLine never carries -nullrhi (see HookFCommandLineGet),

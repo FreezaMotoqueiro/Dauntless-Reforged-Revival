@@ -1,0 +1,167 @@
+diff --git a/ParadoxBackend/src/controllers/inventory.ts b/ParadoxBackend/src/controllers/inventory.ts
+index f115832..fdd8261 100644
+--- a/ParadoxBackend/src/controllers/inventory.ts
++++ b/ParadoxBackend/src/controllers/inventory.ts
+@@ -16,6 +16,7 @@ import { logger } from "../logger";
+ import { ApplyCurrencyDeltas, MergeWalletIntoStacked } from "./wallet";
+ import { EnsureStarterBootstrapRecords, EnsureStarterBootstrapRecordsInTransaction } from "./starterManifest";
+ import crypto from "node:crypto";
++import { KeepStoredWeaponLevel } from "../weaponBaseLevel";
+ import { MigrateInventoryStorageArrays, NormalizeInventoryGrantCollections } from "../inventoryStoragePolicy";
+ 
+ // [hardening] Deterministic serialization (object keys sorted recursively) so a canonical hash of
+@@ -56,7 +57,11 @@ function ComputeInventoryRequestHash(InstancedItemsToAdd: any[], StackedItemsToA
+ function ApplyItemDataSave(existing: any, incomingItemData: any, incomingUpdateVersion: any): any | undefined {
+     const ExistingVersion = typeof existing.updateVersion === "number" ? existing.updateVersion : 0;
+     const IncomingVersion = typeof incomingUpdateVersion === "number" ? incomingUpdateVersion : ExistingVersion;
+-    const NextItemData = incomingItemData ?? null;
++    // [Reforged 0042] A weapon save never lowers the stored CurrentLevel (see weaponBaseLevel.ts).
++    const NextItemData = KeepStoredWeaponLevel(existing.catalogId, existing.itemData ?? null, incomingItemData ?? null) as any;
++    if (NextItemData !== (incomingItemData ?? null)) {
++        logger.warn(`[WeaponLevel] kept stored CurrentLevel of ${existing.catalogId} (instanceId ${existing.instanceId}); the save carried a lower level`);
++    }
+     const ExistingItemData = existing.itemData ?? null;
+ 
+     if (IncomingVersion < ExistingVersion) {
+diff --git a/ParadoxBackend/src/weaponBaseLevel.test.ts b/ParadoxBackend/src/weaponBaseLevel.test.ts
+index 51cf215..c9d9397 100644
+--- a/ParadoxBackend/src/weaponBaseLevel.test.ts
++++ b/ParadoxBackend/src/weaponBaseLevel.test.ts
+@@ -1,19 +1,29 @@
+ import { test } from "node:test";
+ import assert from "node:assert/strict";
+-import { ServeWeaponsAtBaseLevel, WeaponItemDataAtBaseLevel } from "./weaponBaseLevel";
++import { KeepStoredWeaponLevel, ServeWeaponsAtBaseLevel, WeaponItemDataAtBaseLevel } from "./weaponBaseLevel";
+ 
+ const Levelled = JSON.stringify({ TransmogCatalogID: "None", UnlockedAsTransmog: false, CurrentLevel: 5, DataVersion: 1, EquippedCells: [], EquippedWeaponParts: [], CurrentXP: 0 });
+ 
+-function WithEnv(Value: string | undefined, Run: () => void) {
+-    const Before = process.env.KEEP_WEAPON_ITEM_LEVELS;
+-    if (Value === undefined) delete process.env.KEEP_WEAPON_ITEM_LEVELS;
+-    else process.env.KEEP_WEAPON_ITEM_LEVELS = Value;
++function WithVars(Vars: Record<string, string | undefined>, Run: () => void) {
++    const Before: Record<string, string | undefined> = {};
++    for (const [Name, Value] of Object.entries(Vars)) {
++        Before[Name] = process.env[Name];
++        if (Value === undefined) delete process.env[Name];
++        else process.env[Name] = Value;
++    }
+     try { Run(); } finally {
+-        if (Before === undefined) delete process.env.KEEP_WEAPON_ITEM_LEVELS;
+-        else process.env.KEEP_WEAPON_ITEM_LEVELS = Before;
++        for (const [Name, Value] of Object.entries(Before)) {
++            if (Value === undefined) delete process.env[Name];
++            else process.env[Name] = Value;
++        }
+     }
+ }
+ 
++// The level-0 serving of 0036 is opt-in since 0042.
++function WithEnv(Keep: string | undefined, Run: () => void) {
++    WithVars({ SERVE_WEAPONS_AT_BASE_LEVEL: "true", KEEP_WEAPON_ITEM_LEVELS: Keep }, Run);
++}
++
+ test("a levelled weapon is served at level 0 with the rest of its data kept", () => {
+     const Out = JSON.parse(WeaponItemDataAtBaseLevel("WP_MS_MCROLLIN", Levelled) as string);
+     assert.equal(Out.CurrentLevel, 0);
+@@ -66,3 +76,41 @@ test("KEEP_WEAPON_ITEM_LEVELS=true serves the stored level", () => {
+         assert.equal(ServeWeaponsAtBaseLevel(Item), Item);
+     });
+ });
++
++test("weapons are served at their stored level unless SERVE_WEAPONS_AT_BASE_LEVEL=true", () => {
++    WithVars({ SERVE_WEAPONS_AT_BASE_LEVEL: undefined, KEEP_WEAPON_ITEM_LEVELS: undefined }, () => {
++        const Item = { catalogId: "WP_MS_FULGAR", instanceId: "i", itemData: Levelled, updateVersion: 2 };
++        assert.equal(ServeWeaponsAtBaseLevel(Item), Item);
++    });
++});
++
++test("a weapon save never lowers the stored level", () => {
++    WithVars({ ALLOW_WEAPON_LEVEL_DOWNGRADE: undefined }, () => {
++        const Saved = JSON.stringify({ CurrentLevel: 0, EquippedCells: ["CELL_A"], DataVersion: 1 });
++        const Kept = JSON.parse(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, Saved) as string);
++        assert.equal(Kept.CurrentLevel, 5);
++        assert.deepEqual(Kept.EquippedCells, ["CELL_A"]);
++        const NoLevel = JSON.parse(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, JSON.stringify({ EquippedCells: [] })) as string);
++        assert.equal(NoLevel.CurrentLevel, 5);
++    });
++});
++
++test("raising the level, other items, unlevelled weapons and bad data pass through", () => {
++    WithVars({ ALLOW_WEAPON_LEVEL_DOWNGRADE: undefined }, () => {
++        const Higher = JSON.stringify({ CurrentLevel: 6 });
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, Higher), Higher);
++        const Zero = JSON.stringify({ CurrentLevel: 0 });
++        assert.equal(KeepStoredWeaponLevel("AR_ROCK_HELM", JSON.stringify({ CurrentLevel: 5 }), Zero), Zero);
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Zero, Zero), Zero);
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", null, Zero), Zero);
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, "{bad"), "{bad");
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, null), null);
++    });
++});
++
++test("ALLOW_WEAPON_LEVEL_DOWNGRADE=true lets a lower level through", () => {
++    WithVars({ ALLOW_WEAPON_LEVEL_DOWNGRADE: "true" }, () => {
++        const Zero = JSON.stringify({ CurrentLevel: 0 });
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, Zero), Zero);
++    });
++});
+diff --git a/ParadoxBackend/src/weaponBaseLevel.ts b/ParadoxBackend/src/weaponBaseLevel.ts
+index e3ed71b..a01d891 100644
+--- a/ParadoxBackend/src/weaponBaseLevel.ts
++++ b/ParadoxBackend/src/weaponBaseLevel.ts
+@@ -13,6 +13,45 @@
+ // The stored level is left as it is; only what the game reads is set to 0, so the base table is used.
+ // KEEP_WEAPON_ITEM_LEVELS=true serves the stored levels again.
+ 
++// [Dauntless Reforged Revival 0042] Weapons are served at their stored level again, and a save never lowers it.
++//
++// Serving level 0 made every weapon upgraded with Aether Hearts look reset when the player opened the game,
++// and the game then saved that level 0 back with the weapon's next save (cells, parts, ...), which
++// overwrote the stored level (players' reports, 2026-10-25). Runtime patch 0041 now gives upgraded
++// weapons a power table, so the workaround is off by default: SERVE_WEAPONS_AT_BASE_LEVEL=true turns it
++// back on. KeepStoredWeaponLevel (used by every itemData save) keeps a weapon's stored CurrentLevel when a
++// save carries a lower one; ALLOW_WEAPON_LEVEL_DOWNGRADE=true lets such saves through.
++
++export function ServeWeaponsAtBaseLevelEnabled(): boolean {
++    return (process.env.SERVE_WEAPONS_AT_BASE_LEVEL ?? "").trim().toLowerCase() === "true" && !KeepWeaponItemLevels();
++}
++
++export function AllowWeaponLevelDowngrade(): boolean {
++    return (process.env.ALLOW_WEAPON_LEVEL_DOWNGRADE ?? "").trim().toLowerCase() === "true";
++}
++
++function ParseItemData(itemData: unknown): any | undefined {
++    if (typeof itemData !== "string" || !itemData.includes("CurrentLevel")) return undefined;
++    try {
++        const Parsed = JSON.parse(itemData);
++        return Parsed != null && typeof Parsed === "object" && !Array.isArray(Parsed) ? Parsed : undefined;
++    } catch { return undefined; }
++}
++
++// The itemData to store for a save of a weapon (catalog id WP_...): the incoming data, with CurrentLevel
++// raised back to the stored one when the save carries a lower (or no) level. Anything else is unchanged.
++export function KeepStoredWeaponLevel(catalogId: unknown, storedItemData: unknown, incomingItemData: unknown): unknown {
++    if (AllowWeaponLevelDowngrade() || typeof catalogId !== "string" || !catalogId.startsWith("WP_")) return incomingItemData;
++    const Stored = ParseItemData(storedItemData);
++    if (Stored === undefined || typeof Stored.CurrentLevel !== "number" || Stored.CurrentLevel <= 0) return incomingItemData;
++    if (typeof incomingItemData !== "string") return incomingItemData;
++    let Incoming: any;
++    try { Incoming = JSON.parse(incomingItemData); } catch { return incomingItemData; }
++    if (Incoming == null || typeof Incoming !== "object" || Array.isArray(Incoming)) return incomingItemData;
++    if (typeof Incoming.CurrentLevel === "number" && Incoming.CurrentLevel >= Stored.CurrentLevel) return incomingItemData;
++    return JSON.stringify({ ...Incoming, CurrentLevel: Stored.CurrentLevel });
++}
++
+ export function KeepWeaponItemLevels(): boolean {
+     return (process.env.KEEP_WEAPON_ITEM_LEVELS ?? "").trim().toLowerCase() === "true";
+ }
+@@ -32,7 +71,7 @@ export function WeaponItemDataAtBaseLevel(catalogId: unknown, itemData: unknown)
+ // A copy of `value` in which every item object ({catalogId, itemData}) found in it, in arrays or
+ // object fields up to a few levels deep, has its weapon level served as 0. Nothing is mutated.
+ export function ServeWeaponsAtBaseLevel<T>(value: T, depth: number = 0): T {
+-    if (KeepWeaponItemLevels() || value == null || typeof value !== "object" || depth > 4) return value;
++    if (!ServeWeaponsAtBaseLevelEnabled() || value == null || typeof value !== "object" || depth > 4) return value;
+     if (Array.isArray(value)) {
+         let Changed = false;
+         const Out = value.map((entry) => {
