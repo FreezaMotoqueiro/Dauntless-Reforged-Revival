@@ -607,6 +607,28 @@ only the first shot of a hunt, spawned fresh, could hit (VPS 2026-10-24: 7 of 8 
 significance (`UInstigatorDrivenSigComp::Disabled`) off (`[ProjectileTick]` in the runtime log); in the test all
 shots hit three Behemoths in a row. `DISABLE_PROJECTILE_TICK_FIX.flag` beside the game executable turns it off.
 
+### 0041: upgraded weapons get a power table
+
+`ParadoxRuntime/dllmain.cpp`, server and client. `UArchonGlobalTuning::GetWeaponPowerTable(ItemLevel)` (`+0x01AAF300`)
+returns the base `WeaponPowerTable` for every level while the `ProgressionReworkFeature` flag is off. With the flag on,
+it only looks for an exact entry for that level in `WeaponPowerTablePerLevels` and returns null when there is none.
+The 1.14.7 data only lists the lowest levels, so a weapon upgraded with Aether Hearts above them had no power table
+(`Weapon: invalid weapon power table reference`): its meter gain and War Pike damage values read as 0, which 0036 had
+hidden by serving every weapon at level 0. When the exact level has no table, the hook now returns the table of the
+highest listed level below it, or the base table (`[WeaponPowerTable]` in the runtime log, which also lists the levels
+the data carries). The weapon keeps its level. `DISABLE_WEAPON_POWER_TABLE_FALLBACK.flag` beside the game executable
+turns it off.
+
+### 0042: weapons keep their upgrade level
+
+`ParadoxBackend/src/weaponBaseLevel.ts` and `ParadoxBackend/src/controllers/inventory.ts`. Serving weapons at level 0
+(0036) made every weapon upgraded with Aether Hearts look reset when its owner opened the game, and the weapon's next
+save (cells, parts, ...) carried that level 0 and overwrote the stored level (players' reports, 2026-10-25). With 0041
+the workaround is no longer needed, so it is off by default (`SERVE_WEAPONS_AT_BASE_LEVEL=true` in the backend's
+environment turns it back on). Every itemData save of a weapon now also keeps the stored `CurrentLevel` when the save
+carries a lower one (`[WeaponLevel] kept stored CurrentLevel` in the backend log); `ALLOW_WEAPON_LEVEL_DOWNGRADE=true`
+lets such saves through. Levels already overwritten are not brought back by this patch.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
