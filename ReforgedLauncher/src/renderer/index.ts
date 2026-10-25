@@ -9,14 +9,12 @@ import { isStringKey, translate, type StringKey } from "../shared/i18n";
 import { localized, PROJECTS, SOFTWARE, type CreditPerson, type CreditRole } from "../shared/credits";
 import { parseInvite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
-import { graphicsKey, upscalerKey, hostSteps, primaryButton, shortHash, STEP_KEYS, stepIndex, taskView, whereKey, type StepState } from "../shared/ui-model";
+import { graphicsKey, hostSteps, primaryButton, shortHash, STEP_KEYS, stepIndex, taskView, whereKey, type StepState } from "../shared/ui-model";
 import { formatBytes, formatDate, formatDuration, formatPercentText, formatRunningTime } from "../shared/format";
 import { sortInstances, type InstanceKind, type ServerStatus, type StatusInstance } from "../shared/status";
 import {
   GAME_LANGUAGES,
   GRAPHICS_PRESETS,
-  UPSCALER_MODES,
-  type UpscalerMode,
   LANGUAGES,
   MAX_MULTIPLIER,
   RUNTIME_PROFILES,
@@ -1918,12 +1916,6 @@ function renderSettings(): void {
         h("label", { class: "settings-row-title", for: "gfx-select" }, t("set_graphics_level")),
         t("set_graphics_text"),
         dropdown<GraphicsPreset>({ id: "gfx-select", fk: "gfx", value: snap.settings.graphics, options: GRAPHICS_PRESETS.map((g) => ({ value: g, label: t(graphicsKey(g)) })), onChange: (graphics) => void api.setSettings({ graphics }) }),
-      ),
-      infoRow(h("span", { class: "settings-row-title", id: "upscaler-on-label" }, t("set_upscaler_on")), t("set_upscaler_on_help"), toggle("upscaler-on", "upscaler-on-label", snap.settings.upscaler, (on) => void api.setSettings({ upscaler: on }))),
-      infoRow(
-        h("label", { class: "settings-row-title", for: "upscaler-select" }, t("set_upscaler")),
-        t("set_upscaler_text"),
-        dropdown<UpscalerMode>({ id: "upscaler-select", fk: "upscaler", value: snap.settings.upscalerMode, options: UPSCALER_MODES.map((m) => ({ value: m, label: t(upscalerKey(m)) })), onChange: (upscalerMode) => void api.setSettings({ upscalerMode }) }),
       ),
       infoRow(h("span", { class: "settings-row-title", id: "windowed-label" }, t("set_windowed")), t("set_windowed_help"), toggle("windowed", "windowed-label", snap.settings.windowed, (on) => void api.setSettings({ windowed: on }))),
     );

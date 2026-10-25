@@ -54,8 +54,6 @@ const api = {
   setSettings: (patch: Partial<Settings>): Promise<Settings> =>
     ipcRenderer.invoke(IPC.setSettings, {
       ...(patch.graphics !== undefined ? { graphics: patch.graphics } : {}),
-      ...(patch.upscalerMode !== undefined ? { upscalerMode: patch.upscalerMode } : {}),
-      ...(patch.upscaler !== undefined ? { upscaler: patch.upscaler } : {}),
       ...(patch.windowed !== undefined ? { windowed: patch.windowed } : {}),
       ...(patch.streamerMode !== undefined ? { streamerMode: patch.streamerMode } : {}),
       ...(patch.hostTools !== undefined ? { hostTools: patch.hostTools } : {}),

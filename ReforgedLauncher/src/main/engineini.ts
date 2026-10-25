@@ -6,8 +6,7 @@
 //                                 (ws://127.0.0.1:<relay port>, no TLS on this PC) instead of Epic's
 //                                 old server, which would otherwise receive the account id and token.
 //                                 The runtime answers the same keys itself; this is the fallback.
-//      [SystemSettings]           the forced graphics level, only when one is chosen, and the
-//                                 temporal upsampling the optional upscaler needs (docs/upscaling.md).
+//      [SystemSettings]           the forced graphics level, only when one is chosen.
 //  - GameUserSettings.ini: when a graphics level is forced, its sg.*Quality lines are set to match,
 //    and an impossible saved window size is repaired (display-repair.ts).
 //  - Game.ini (Dauntless 1.14.7 only): Dauntless Revived's [OnlineSubsystemPhoenix] endpoints, which
@@ -17,7 +16,7 @@ import { repairDisplaySettings } from "./display-repair";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { isValidHost } from "../shared/invite";
-import type { GraphicsPreset, UpscalerMode } from "../shared/types";
+import type { GraphicsPreset } from "../shared/types";
 
 export const SCALABILITY_GROUPS = ["ViewDistance", "AntiAliasing", "Shadow", "PostProcess", "Texture", "Effects", "Foliage", "Shading"];
 
@@ -49,30 +48,13 @@ export function splitLines(text: string): string[] {
 
 // memory: Dauntless 1.4.4 (Dauntless Revived servers) always gets the streaming and garbage-collection
 // lines Dauntless Revived's launcher writes for it.
-// The optional upscaler (Luma's Unreal Engine mod, loaded by runtime patch 0041) replaces the game's TAA pass
-// with DLSS or FSR. That pass only upscales when Unreal's temporal upsampling is on; otherwise a lower
-// resolution scale is stretched by a later spatial pass and DLSS/FSR only anti-alias. With it installed, TAA
-// stays the anti-aliasing method and the resolution scale is left to the player (in game, or
-// sg.ResolutionQuality in GameUserSettings.ini) unless the launcher's upscaler mode sets r.ScreenPercentage, and a
-// forced graphics level no longer pins it at 100. upscaler: null = not installed, 0 = scale left to the game,
-// 100 = native, the only scale Luma upscales (see below).
-export const UPSCALER_LINES = ["r.DefaultFeature.AntiAliasing=2", "r.PostProcessAAQuality=4", "r.TemporalAA.Upsampling=1", "r.TemporalAA.Upscaler=1"];
-
-// Luma's Unreal Engine mod replaces TAA only at native resolution (DLAA): it looks for TAA textures at least as
-// large as the swapchain, and its own code calls the mode "DLAA only". Any scale below 100% (in game or here)
-// turns DLSS / FSR off, so the launcher's default mode pins r.ScreenPercentage at 100.
-export function systemSettingsLines(graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null): string[] {
-  if (graphics < 0 && !memory && upscaler === null) return [];
+export function systemSettingsLines(graphics: GraphicsPreset, memory = false): string[] {
+  if (graphics < 0 && !memory) return [];
   const sys = ["[SystemSettings]"];
   if (memory) sys.push("r.Streaming.PoolSize=3000", "r.Streaming.LimitPoolSizeToVRAM=1", "gc.TimeBetweenPurgingPendingKillObjects=10", "s.ForceGCAfterLevelStreamedOut=1");
-  if (graphics >= 0) {
-    for (const g of SCALABILITY_GROUPS) sys.push(`sg.${g}Quality=${graphics}`);
-    if (upscaler === null) sys.push("sg.ResolutionQuality=100", "r.ScreenPercentage=100");
-  }
-  if (upscaler !== null) {
-    sys.push(...UPSCALER_LINES);
-    if (upscaler > 0) sys.push(`r.ScreenPercentage=${upscaler}`);
-  }
+  if (graphics < 0) return sys;
+  for (const g of SCALABILITY_GROUPS) sys.push(`sg.${g}Quality=${graphics}`);
+  sys.push("sg.ResolutionQuality=100", "r.ScreenPercentage=100");
   return sys;
 }
 
@@ -84,7 +66,7 @@ export function xmppLines(host: string, port: number): string[] {
 
 const OWNED_SECTIONS = /^\[(SystemSettings|OnlineSubsystemMcp\.XMPP)\]/i;
 
-export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset, memory = false, upscaler: UpscalerMode | null = null): string[] {
+export function rewriteEngineIniText(existing: string[], host: string, port: number, graphics: GraphicsPreset, memory = false): string[] {
   const keep: string[] = [];
   let skip = false;
   for (const l of existing) {
@@ -97,7 +79,7 @@ export function rewriteEngineIniText(existing: string[], host: string, port: num
   }
   // Drop the blank lines a removed section leaves at the top.
   while (keep.length > 0 && keep[0].trim() === "") keep.shift();
-  const sys = systemSettingsLines(graphics, memory, upscaler);
+  const sys = systemSettingsLines(graphics, memory);
   return [...(sys.length ? [...sys, ""] : []), ...xmppLines(host, port), "", ...keep];
 }
 
@@ -160,21 +142,6 @@ export interface ApplyConfigOptions {
   safeWindow?: boolean;
   // Dauntless 1.14.7: remove Dauntless Revived's [OnlineSubsystemPhoenix] endpoints from Game.ini.
   clearPhoenixEndpoints?: boolean;
-  // The optional upscaler's mode when it is installed beside the game executable (see upscalerInstalled), else null.
-  upscaler?: UpscalerMode | null;
-}
-
-// The upscaler files are in the game's Win64 folder: ReShade renamed to ReShade64.dll (the runtime loads it
-// on the client only) and Luma's Unreal Engine add-on. DISABLE_UPSCALER.flag there turns it off.
-export async function upscalerInstalled(win64Dir: string): Promise<boolean> {
-  try {
-    const names = await fsp.readdir(win64Dir);
-    const lower = new Set(names.map((n) => n.toLowerCase()));
-    if (!lower.has("reshade64.dll") || lower.has("disable_upscaler.flag")) return false;
-    return names.some((n) => /^luma-.*\.addon(64)?$/i.test(n));
-  } catch {
-    return false;
-  }
 }
 
 export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engineIni: string; displayRepaired: boolean; phoenixEndpointsRemoved: number }> {
@@ -193,11 +160,11 @@ export async function applyGameConfig(opts: ApplyConfigOptions): Promise<{ engin
       }
     }
   }
-  const gus = path.join(dir, "GameUserSettings.ini");
-  const lines = await readLines(gus);
   const engine = path.join(dir, "Engine.ini");
   const existing = (await readLines(engine)) ?? [];
-  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true, opts.upscaler ?? null)));
+  await writeAtomically(engine, encodeIni(rewriteEngineIniText(existing, opts.host, opts.port, opts.graphics, opts.memory === true)));
+  const gus = path.join(dir, "GameUserSettings.ini");
+  const lines = await readLines(gus);
   let displayRepaired = false;
   if (lines !== null || opts.safeWindow) {
     const display = repairDisplaySettings(lines ?? [], opts.safeWindow);

@@ -69,7 +69,7 @@ function base(phase: Phase): Snapshot {
     runtime: { state: "ok", version: "20261014-1a2b3c4d", files: runtimeFiles, localDir: null },
     task: null,
     running: { game: false, relayPort: null },
-    settings: { graphics: -1, upscalerMode: 100, upscaler: true, windowed: false, language: lang, gameLanguage: "auto", runtimeProfile: "production", streamerMode: params.get("streamer") === "1", hostTools: true },
+    settings: { graphics: -1, windowed: false, language: lang, gameLanguage: "auto", runtimeProfile: "production", streamerMode: params.get("streamer") === "1", hostTools: true },
     app: { version: "0.1.0", packaged: false, updateReady: false, platform: "win32" },
     status,
     statusUnsupported: false,

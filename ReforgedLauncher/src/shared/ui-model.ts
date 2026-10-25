@@ -2,7 +2,7 @@
 // tested without a DOM.
 
 import type { StringKey } from "./i18n";
-import type { GraphicsPreset, Language, UpscalerMode, Phase, Snapshot, TaskProgress } from "./types";
+import type { GraphicsPreset, Language, Phase, Snapshot, TaskProgress } from "./types";
 import type { InstanceKind, PlayerWhere } from "./status";
 import { formatBytes, formatDuration, formatPercent, formatSpeed } from "./format";
 
@@ -95,8 +95,8 @@ export interface TaskView {
 }
 
 export function taskView(t: TaskProgress, lang: Language): TaskView {
-  const titleKey: StringKey = t.kind === "upscaler" ? "task_upscaler" : t.kind === "runtime" ? "task_runtime" : t.kind === "download" ? "task_download" : t.kind === "dlls" ? "task_dlls" : "task_verify";
-  const moving = t.kind === "runtime" || t.kind === "download" || t.kind === "upscaler";
+  const titleKey: StringKey = t.kind === "runtime" ? "task_runtime" : t.kind === "download" ? "task_download" : t.kind === "dlls" ? "task_dlls" : "task_verify";
+  const moving = t.kind === "runtime" || t.kind === "download";
   return {
     titleKey,
     percent: formatPercent(t.doneBytes, t.totalBytes),
@@ -118,10 +118,6 @@ export function kindKey(k: InstanceKind): StringKey {
 
 export function graphicsKey(g: GraphicsPreset): StringKey {
   return g < 0 ? "gfx_menu" : (`gfx_${g}` as StringKey);
-}
-
-export function upscalerKey(m: UpscalerMode): StringKey {
-  return `ups_${m}` as StringKey;
 }
 
 // A short display form of a SHA-256: the first 16 hex digits in groups of four.
