@@ -607,35 +607,6 @@ only the first shot of a hunt, spawned fresh, could hit (VPS 2026-10-24: 7 of 8 
 significance (`UInstigatorDrivenSigComp::Disabled`) off (`[ProjectileTick]` in the runtime log); in the test all
 shots hit three Behemoths in a row. `DISABLE_PROJECTILE_TICK_FIX.flag` beside the game executable turns it off.
 
-### 0041: the player client loads the optional upscaler
-
-`ParadoxRuntime/dllmain.cpp`, client only. Dauntless 1.14.7 (Unreal Engine 4.26.2, DirectX 11) has no DLSS or
-FSR. The [Luma Framework](https://github.com/Filoppi/Luma-Framework)'s Unreal Engine mod adds both by replacing the
-game's TAA pass (DLSS 4 Super Resolution, or FSR 3.1 on any GPU). It is a ReShade add-on, and ReShade normally
-loads as a proxy `dxgi.dll`, which would also load into every game server started from the same folder. The files
-are therefore installed with ReShade renamed to `ReShade64.dll`, which Windows never loads on its own, and the
-runtime loads it right after its client hooks, before the engine creates its D3D11 device (`[Upscaler]` in the
-runtime log). The server role (`-server`) and `-nullrhi` never load it, so the upscaler cannot reach a game server
-or conflict with the runtime's own proxy (`winmm.dll`). Without `ReShade64.dll` nothing changes;
-`DISABLE_UPSCALER.flag` beside the game executable turns it off without uninstalling. The launcher stopped
-installing the upscaler in 1.5.5 and removes it, so these loads find nothing and do nothing.
-
-### 0042: the upscaler's load is written to the runtime log
-
-`ParadoxRuntime/dllmain.cpp`, client only. 0041 reported through `InitLog`, which the runtime compiles out, so the
-log never said whether the upscaler loaded. It now uses `MpLog`: `mysticparadox_dll_port0.log` says
-`[Upscaler] not installed`, `[Upscaler] ReShade64.dll loaded`, `failed error=<code>` or that
-`DISABLE_UPSCALER.flag` is set.
-
-### 0043: OptiScaler over Luma (FSR 4, XeSS, DLSS)
-
-`ParadoxRuntime/dllmain.cpp`, client only. When `OptiScaler.dll` (OptiScaler's non-proxy name) is installed beside
-`ReShade64.dll`, the runtime loads OptiScaler instead of ReShade. With `LoadReshade=true` in `OptiScaler.ini`,
-OptiScaler loads ReShade (and Luma) itself, after the D3D12 device it creates for Luma. Luma's DLSS calls then go
-through OptiScaler, which runs FSR 4 / FSR 3.1 or XeSS over a D3D12 interop device, or DLSS. Same rules as 0041:
-never on `-server` or `-nullrhi`, and `DISABLE_UPSCALER.flag` turns everything off. `DISABLE_OPTISCALER.flag` keeps
-Luma alone. If OptiScaler fails to load, ReShade64.dll is loaded as before. The log says `[Upscaler] OptiScaler.dll loaded`.
-
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
