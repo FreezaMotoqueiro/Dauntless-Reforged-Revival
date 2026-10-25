@@ -45,6 +45,7 @@
     "patches/0037-runtime-loadout-slot-repair-reapplies-cells.patch",
     "patches/0038-runtime-server-viewport-size-for-aiming.patch",
     "patches/0039-runtime-drop-rpc-on-unbound-controller-channel.patch",
-    "patches/0040-runtime-server-projectiles-tick-after-pool.patch"
+    "patches/0040-runtime-server-projectiles-tick-after-pool.patch",
+    "patches/0041-backend-weapon-saves-keep-stored-level.patch"
   ]
 }

@@ -1,0 +1,100 @@
+diff --git a/ParadoxBackend/src/controllers/inventory.ts b/ParadoxBackend/src/controllers/inventory.ts
+index f115832..50c8ca9 100644
+--- a/ParadoxBackend/src/controllers/inventory.ts
++++ b/ParadoxBackend/src/controllers/inventory.ts
+@@ -17,6 +17,7 @@ import { ApplyCurrencyDeltas, MergeWalletIntoStacked } from "./wallet";
+ import { EnsureStarterBootstrapRecords, EnsureStarterBootstrapRecordsInTransaction } from "./starterManifest";
+ import crypto from "node:crypto";
+ import { MigrateInventoryStorageArrays, NormalizeInventoryGrantCollections } from "../inventoryStoragePolicy";
++import { KeepStoredWeaponLevel } from "../weaponBaseLevel";
+ 
+ // [hardening] Deterministic serialization (object keys sorted recursively) so a canonical hash of
+ // a request body is stable regardless of JSON key ordering - a genuine client retry of the same
+@@ -56,7 +57,7 @@ function ComputeInventoryRequestHash(InstancedItemsToAdd: any[], StackedItemsToA
+ function ApplyItemDataSave(existing: any, incomingItemData: any, incomingUpdateVersion: any): any | undefined {
+     const ExistingVersion = typeof existing.updateVersion === "number" ? existing.updateVersion : 0;
+     const IncomingVersion = typeof incomingUpdateVersion === "number" ? incomingUpdateVersion : ExistingVersion;
+-    const NextItemData = incomingItemData ?? null;
++    const NextItemData = KeepStoredWeaponLevel(existing.catalogId, existing.itemData, incomingItemData ?? null) ?? null; // [Reforged 0041]
+     const ExistingItemData = existing.itemData ?? null;
+ 
+     if (IncomingVersion < ExistingVersion) {
+diff --git a/ParadoxBackend/src/weaponBaseLevel.test.ts b/ParadoxBackend/src/weaponBaseLevel.test.ts
+index 51cf215..23d215d 100644
+--- a/ParadoxBackend/src/weaponBaseLevel.test.ts
++++ b/ParadoxBackend/src/weaponBaseLevel.test.ts
+@@ -1,6 +1,6 @@
+ import { test } from "node:test";
+ import assert from "node:assert/strict";
+-import { ServeWeaponsAtBaseLevel, WeaponItemDataAtBaseLevel } from "./weaponBaseLevel";
++import { KeepStoredWeaponLevel, ServeWeaponsAtBaseLevel, WeaponItemDataAtBaseLevel } from "./weaponBaseLevel";
+ 
+ const Levelled = JSON.stringify({ TransmogCatalogID: "None", UnlockedAsTransmog: false, CurrentLevel: 5, DataVersion: 1, EquippedCells: [], EquippedWeaponParts: [], CurrentXP: 0 });
+ 
+@@ -66,3 +66,31 @@ test("KEEP_WEAPON_ITEM_LEVELS=true serves the stored level", () => {
+         assert.equal(ServeWeaponsAtBaseLevel(Item), Item);
+     });
+ });
++
++const Saved = (Level: number) => JSON.stringify({ CurrentLevel: Level, DataVersion: 1, EquippedCells: ["CELL_A"] });
++
++test("0041: saving the served level 0 keeps the stored weapon level and the new data", () => {
++    WithEnv(undefined, () => {
++        const Out = JSON.parse(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, Saved(0)) as string);
++        assert.equal(Out.CurrentLevel, 5);
++        assert.deepEqual(Out.EquippedCells, ["CELL_A"]);
++    });
++});
++
++test("0041: a higher or equal level, other items and unparsable data are saved as sent", () => {
++    WithEnv(undefined, () => {
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, Saved(6)), Saved(6));
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, Saved(5)), Saved(5));
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Saved(0), Saved(0)), Saved(0));
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", null, Saved(0)), Saved(0));
++        assert.equal(KeepStoredWeaponLevel("AR_ROCK_HELM", Saved(5), Saved(0)), Saved(0));
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, "{CurrentLevel"), "{CurrentLevel");
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, null), null);
++    });
++});
++
++test("0041: KEEP_WEAPON_ITEM_LEVELS=true saves the incoming level as sent", () => {
++    WithEnv("true", () => {
++        assert.equal(KeepStoredWeaponLevel("WP_MS_MCROLLIN", Levelled, Saved(0)), Saved(0));
++    });
++});
+diff --git a/ParadoxBackend/src/weaponBaseLevel.ts b/ParadoxBackend/src/weaponBaseLevel.ts
+index e3ed71b..960d623 100644
+--- a/ParadoxBackend/src/weaponBaseLevel.ts
++++ b/ParadoxBackend/src/weaponBaseLevel.ts
+@@ -59,3 +59,30 @@ export function ServeWeaponsAtBaseLevel<T>(value: T, depth: number = 0): T {
+     }
+     return (Out ?? value) as T;
+ }
++
++// [Reforged 0041] A weapon save never lowers the stored level while weapons are served at level 0.
++//
++// The game saves itemData back as it holds it, and since 0036 it holds CurrentLevel 0. Without this,
++// the next save of an upgraded weapon (equipping a cell, a part, ...) wrote level 0 over the stored
++// one and the Aether Heart upgrades were lost for good. Here the saved level is the higher of the
++// stored and the incoming one: a real upgrade still raises it, a save of the served 0 keeps it.
++// Anything else (not a weapon, no stored level, unparsable data, KEEP_WEAPON_ITEM_LEVELS=true)
++// is saved as sent.
++function ParsedLevel(itemData: unknown): { parsed: any; level: number } | undefined {
++    if (typeof itemData !== "string" || !itemData.includes("CurrentLevel")) return undefined;
++    let Parsed: any;
++    try { Parsed = JSON.parse(itemData); } catch { return undefined; }
++    if (Parsed == null || typeof Parsed !== "object" || Array.isArray(Parsed)) return undefined;
++    if (typeof Parsed.CurrentLevel !== "number") return undefined;
++    return { parsed: Parsed, level: Parsed.CurrentLevel };
++}
++
++export function KeepStoredWeaponLevel(catalogId: unknown, storedItemData: unknown, incomingItemData: unknown): unknown {
++    if (KeepWeaponItemLevels()) return incomingItemData;
++    if (typeof catalogId !== "string" || !catalogId.startsWith("WP_")) return incomingItemData;
++    const Stored = ParsedLevel(storedItemData);
++    if (Stored === undefined || Stored.level <= 0) return incomingItemData;
++    const Incoming = ParsedLevel(incomingItemData);
++    if (Incoming === undefined || Incoming.level >= Stored.level) return incomingItemData;
++    return JSON.stringify({ ...Incoming.parsed, CurrentLevel: Stored.level });
++}

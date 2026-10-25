@@ -607,6 +607,16 @@ only the first shot of a hunt, spawned fresh, could hit (VPS 2026-10-24: 7 of 8 
 significance (`UInstigatorDrivenSigComp::Disabled`) off (`[ProjectileTick]` in the runtime log); in the test all
 shots hit three Behemoths in a row. `DISABLE_PROJECTILE_TICK_FIX.flag` beside the game executable turns it off.
 
+### 0041: a weapon save never lowers the stored level
+
+`ParadoxBackend`, `src/weaponBaseLevel.ts` and `src/controllers/inventory.ts`. Since 0036 the game holds every
+weapon at `CurrentLevel` 0 and saves its itemData back that way, so the next save of an upgraded weapon
+(equipping a cell or a part) wrote 0 over the stored level and the Aether Heart upgrades were lost: players saw
+their weapons back at the base level. Both item saves (`POST /inventory/instanceditem` and a transaction's
+`saveInstancedItems`) now keep the higher of the stored and the incoming level for a `WP_` item, and store the
+rest of the incoming data. A real upgrade still raises the level. With `KEEP_WEAPON_ITEM_LEVELS=true` the level is
+saved as sent. Levels already overwritten before this patch are not brought back by it.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
