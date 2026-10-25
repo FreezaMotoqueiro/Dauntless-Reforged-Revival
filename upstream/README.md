@@ -617,8 +617,8 @@ are therefore installed with ReShade renamed to `ReShade64.dll`, which Windows n
 runtime loads it right after its client hooks, before the engine creates its D3D11 device (`[Upscaler]` in the
 runtime log). The server role (`-server`) and `-nullrhi` never load it, so the upscaler cannot reach a game server
 or conflict with the runtime's own proxy (`winmm.dll`). Without `ReShade64.dll` nothing changes;
-`DISABLE_UPSCALER.flag` beside the game executable turns it off without uninstalling. Installation and settings:
-[docs/upscaling.md](../docs/upscaling.md).
+`DISABLE_UPSCALER.flag` beside the game executable turns it off without uninstalling. The launcher stopped
+installing the upscaler in 1.5.5 and removes it, so these loads find nothing and do nothing.
 
 ### 0042: the upscaler's load is written to the runtime log
 

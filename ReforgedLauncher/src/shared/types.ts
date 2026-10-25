@@ -15,15 +15,6 @@ export type GraphicsPreset = -1 | 0 | 1 | 2 | 3 | 4;
 export const GRAPHICS_PRESETS: readonly GraphicsPreset[] = [-1, 0, 1, 2, 3, 4];
 export const DEFAULT_GRAPHICS: GraphicsPreset = -1;
 
-// The optional DLSS/FSR upscaler's mode, as the render resolution in percent of the output (r.ScreenPercentage):
-// 100 = native (DLAA / FSR native AA), 0 leaves the resolution scale to the game. Only used when the upscaler is
-// installed (docs/upscaling.md). Luma's Unreal Engine mod only works at native resolution, so there are no
-// Quality / Performance modes: launcher 1.5.3 offered them and they turned DLSS / FSR off. A saved 77..33 is
-// not a mode any more and loads as the default.
-export type UpscalerMode = 0 | 100;
-export const UPSCALER_MODES: readonly UpscalerMode[] = [100, 0];
-export const DEFAULT_UPSCALER_MODE: UpscalerMode = 100;
-
 // The game's own text language, sent to it as -epiclocale; "auto" follows the operating system.
 export type GameLanguage = "auto" | "en-US" | "de-DE" | "es-ES" | "fr-FR" | "it-IT" | "ja-JP" | "pt-BR" | "ru-RU";
 export const GAME_LANGUAGES: readonly GameLanguage[] = ["auto", "en-US", "de-DE", "es-ES", "fr-FR", "it-IT", "ja-JP", "pt-BR", "ru-RU"];
@@ -134,7 +125,7 @@ export type InviteCheck =
   | { ok: false; error: LauncherError };
 
 // download, dlls: installing Dauntless 1.4.4 for a Dauntless Revived server.
-export type TaskKind = "verify" | "runtime" | "download" | "dlls" | "upscaler";
+export type TaskKind = "verify" | "runtime" | "download" | "dlls";
 
 export interface TaskProgress {
   kind: TaskKind;
@@ -215,9 +206,6 @@ export interface RuntimeInfo {
 
 export interface Settings {
   graphics: GraphicsPreset;
-  upscalerMode: UpscalerMode;
-  // DLSS / FSR / XeSS (Luma + OptiScaler), installed and kept up to date by the launcher before each launch.
-  upscaler: boolean;
   windowed: boolean;
   language: Language;
   gameLanguage: GameLanguage;

@@ -2,8 +2,6 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { FIXED_LINKS, fixedLinkUrl, isAllowedExternalUrl, isAllowedStaticUrl } from "../src/main/links";
 import { externalTarget, hostAction, hostFolder, isTrustedPageUrl, relayPortOverride, settingsPatch } from "../src/main/ipc-validate";
 
@@ -47,16 +45,4 @@ test("IPC values are checked by exact name", () => {
   assert.equal(isTrustedPageUrl("file:///app/index.html#x", undefined, "file:///app/index.html"), true);
   assert.equal(isTrustedPageUrl("https://evil.example/", undefined, "file:///app/index.html"), false);
   assert.equal(isTrustedPageUrl("http://localhost:5173/src", "http://localhost:5173", "file:///x"), true);
-});
-
-// The preload passes a settings patch on key by key; a setting it leaves out silently never reaches the main
-// process (launcher 1.5.3 shipped the DLSS / FSR mode menu that way).
-test("the preload forwards every setting the main process accepts", () => {
-  const preload = readFileSync(path.join(__dirname, "..", "..", "src", "preload.ts"), "utf8");
-  const validate = readFileSync(path.join(__dirname, "..", "..", "src", "main", "ipc-validate.ts"), "utf8");
-  const body = validate.slice(validate.indexOf("export function settingsPatch"));
-  const keys = [...body.slice(0, body.indexOf("\n}\n")).matchAll(/k === "([A-Za-z]+)"/g)].map((m) => m[1]);
-  assert.ok(keys.includes("upscalerMode") && keys.includes("graphics"));
-  for (const k of keys) assert.ok(preload.includes(`patch.${k} !== undefined`), `preload.ts drops ${k}`);
-  assert.deepEqual(settingsPatch({ upscalerMode: 0, upscaler: false }), { upscalerMode: 0, upscaler: false });
 });

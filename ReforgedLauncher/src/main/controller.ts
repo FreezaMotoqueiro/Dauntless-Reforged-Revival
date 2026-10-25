@@ -27,7 +27,6 @@ import type {
   GameLanguage,
   GameProblem,
   GraphicsPreset,
-  UpscalerMode,
   HostAction,
   HostFolder,
   HostJob,
@@ -51,7 +50,7 @@ import type {
   Snapshot,
   TaskProgress,
 } from "../shared/types";
-import { GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES, RUNTIME_PROFILES, UPSCALER_MODES } from "../shared/types";
+import { GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES, RUNTIME_PROFILES } from "../shared/types";
 import type { Endpoint } from "./http";
 import {
   fetchBrandingImage,
@@ -77,8 +76,8 @@ import { detectRevivedInstalls, revivedDefaultDir } from "./revived/detect";
 import { DISK_MARGIN_BYTES, REVIVED_DLLS, REVIVED_EXE_RELATIVE_PATH, REVIVED_LAUNCHER_VERSION, REVIVED_XMPP_PORT, type PinnedDll } from "./revived/constants";
 import { AbortedError, HashCache } from "./verify";
 import { checkRuntime, installLocalRuntime, installRuntime, isCompleteRuntimeDir, RuntimeError, runtimeSetId } from "./runtime-files";
-import { applyGameConfig, upscalerInstalled } from "./engineini";
-import { ensureUpscaler, gpuVendorFromIds, UPSCALER_PACK, VCRT_BACKUP_DIR, type FetchToFile, type UpscalerProgress } from "./upscaler";
+import { applyGameConfig } from "./engineini";
+import { removeUpscaler } from "./upscaler-cleanup";
 import { detectStoreInstalls, locateExistingGame, readGameVersion, hasGameExe } from "./game-folder";
 import { buildLaunchArgs, describeLaunch, GameProcess, gameExitDetail, gameLocale, launchEnvironment, STATUS_CONTROL_C_EXIT, type SpawnFn } from "./launch";
 import { backupFileText, KeyStore, KeyStoreError, serverId, type Encryptor, type KeySlot } from "./keystore";
@@ -143,12 +142,6 @@ export interface Platform {
   revivedDlls?: readonly PinnedDll[];
   revivedDllFetch?: FetchBytes;
   runtimeFilesExist?: (file: string) => boolean;
-  // PCI vendor ids of this PC's GPUs (Electron's GPU info), to pick OptiScaler's first upscaler.
-  gpuVendorIds?: () => Promise<number[]>;
-  // Windows HDR is on for the main display (Luma's HDR then starts on).
-  hdrDisplay?: () => boolean;
-  // Tests: how the upscaler files are downloaded.
-  upscalerFetch?: FetchToFile;
   chooseFolder(purpose: FolderPurpose, defaultPath: string): Promise<string | null>;
   chooseDll(defaultPath: string): Promise<string | null>;
   chooseSaveFile(defaultName: string): Promise<string | null>;
@@ -347,8 +340,6 @@ export class Controller {
     const s = this.s;
     return {
       graphics: s.graphics,
-      upscalerMode: s.upscalerMode,
-      upscaler: s.upscaler,
       windowed: s.windowed,
       language: s.language,
       gameLanguage: s.gameLanguage,
@@ -1638,6 +1629,15 @@ export class Controller {
         return this.fail(exeHash === "" ? "game_folder_not_found" : "game_wrong_version");
       }
 
+      // Launchers 1.5.2 to 1.5.4 installed a DLSS / FSR upscaler beside the game; 1.5.5 withdrew it and removes it.
+      try {
+        const cleanup = await removeUpscaler(dir);
+        if (cleanup.removed.length || cleanup.restored.length) log.info(`upscaler removed: ${cleanup.removed.length} files deleted, ${cleanup.restored.length} game VC++ DLLs restored`);
+        if (cleanup.failed.length) log.warn(`upscaler removal incomplete, tried again next launch: ${cleanup.failed.join(", ")}`);
+      } catch (e) {
+        log.warn(`upscaler removal failed: ${describeError(e)}`);
+      }
+
       // The runtime: a local build, or the server's files checked again by hash.
       if (this.s.localRuntimeDir) {
         try {
@@ -1652,8 +1652,6 @@ export class Controller {
         return this.fail(this.runtimeInfo.state === "untrusted" ? "runtime_untrusted" : this.runtimeInfo.state === "unavailable" ? "runtime_unavailable" : "runtime_failed");
       }
 
-      await this.prepareUpscaler(dir, missingVc.length === 0);
-
       const started = await this.startRelay(sv);
       if (!started.ok) return started;
       const relayPort = this.relay?.port ?? DEFAULT_RELAY_PORT;
@@ -1661,9 +1659,7 @@ export class Controller {
       try {
         let displayRepaired = false;
         try {
-          const upscaler = await upscalerInstalled(dir);
-          if (upscaler) log.info(`upscaler installed (ReShade64.dll + Luma add-on): temporal upsampling on, mode ${this.s.upscalerMode === 0 ? "left to the game" : `${this.s.upscalerMode}%`}`);
-          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true, upscaler: upscaler ? this.s.upscalerMode : null });
+          const config = await applyGameConfig({ host: "127.0.0.1", port: relayPort, graphics: this.s.graphics, safeWindow: this.s.windowed, configDir: this.p.gameConfigDir, clearPhoenixEndpoints: true });
           displayRepaired = config.displayRepaired;
           if (config.phoenixEndpointsRemoved > 0) {
             log.info(`removed ${config.phoenixEndpointsRemoved} endpoint overrides ([OnlineSubsystemPhoenix], written by Dauntless Revived's launcher) from Game.ini: they send Dauntless 1.14.7 to 127.0.0.1 (copy kept as Game.ini.before-reforged)`);
@@ -1693,49 +1689,6 @@ export class Controller {
         if (!launched) await this.stopRelay();
       }
     });
-  }
-
-  // The upscaler files beside the game, downloaded or turned off before the launch. A failure is logged and
-  // never stops the launch: the game then starts with whatever upscaler state the folder already has.
-  private async prepareUpscaler(dir: string, systemVcRuntime: boolean): Promise<void> {
-    const abort = new AbortController();
-    this.taskAbort = abort;
-    const started = Date.now();
-    const show = (p: UpscalerProgress) => {
-      const rate = p.doneBytes / Math.max(0.001, (Date.now() - started) / 1000);
-      this.task = { kind: "upscaler", ...p, bytesPerSecond: rate, etaSeconds: rate > 0 ? (p.totalBytes - p.doneBytes) / rate : null };
-    };
-    try {
-      const vendor = gpuVendorFromIds(this.p.gpuVendorIds ? await this.p.gpuVendorIds().catch(() => []) : []);
-      const r = await ensureUpscaler({
-        win64Dir: dir,
-        enabled: this.s.upscaler,
-        vendor,
-        systemVcRuntime,
-        hdrDisplay: this.p.hdrDisplay ? this.p.hdrDisplay() : false,
-        fetchFile: this.p.upscalerFetch,
-        signal: abort.signal,
-        onStart: (p) => {
-          show(p);
-          this.publish();
-        },
-        onProgress: (p) => {
-          show(p);
-          if (this.task) this.p.emitProgress(this.task);
-        },
-      });
-      if (r.state === "ready") {
-        if (r.downloaded) log.info(`upscaler pack ${UPSCALER_PACK.id} installed (${r.downloaded} files; OptiScaler output for a ${vendor} GPU)`);
-        if (r.vcrtMoved.length) log.info(`upscaler: the game's old VC++ runtime moved to ${VCRT_BACKUP_DIR} (${r.vcrtMoved.join(", ")})`);
-      } else if (r.state === "disabled") log.info("upscaler turned off in the settings");
-      else log.warn(`upscaler not installed: ${r.reason}${r.state === "skipped" && r.file ? ` (${r.file} exists and was not installed by the launcher)` : ""}`);
-    } catch (e) {
-      log.warn(`upscaler not updated: ${describeError(e)}`);
-    } finally {
-      this.task = null;
-      this.taskAbort = null;
-      this.publish();
-    }
   }
 
   private async startRelay(sv: StoredServer): Promise<ActionResult> {
@@ -1780,8 +1733,6 @@ export class Controller {
       const p = patch as Record<string, unknown>;
       await this.settings.update((s) => {
         if (GRAPHICS_PRESETS.includes(p.graphics as GraphicsPreset)) s.graphics = p.graphics as GraphicsPreset;
-        if (UPSCALER_MODES.includes(p.upscalerMode as UpscalerMode)) s.upscalerMode = p.upscalerMode as UpscalerMode;
-        if (typeof p.upscaler === "boolean") s.upscaler = p.upscaler;
         if (typeof p.windowed === "boolean") s.windowed = p.windowed;
         if (typeof p.streamerMode === "boolean") s.streamerMode = p.streamerMode;
         if (typeof p.hostTools === "boolean") {
