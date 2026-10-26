@@ -181,7 +181,7 @@ slow, it was missing something:
 
 - The client: the player controller's own readiness (`+0x1CB1360`) waits for the character's weapon
   (`AArchonCharacter` `+0x5F0`) and armour slots. The HUD it releases reads that weapon without a null check
-  (`UHUDLegendaryAbilityWidget::NativeConstruct` `+0x1F7AA00` → `HandleWeaponEquipped` `+0x1F6D4F0`, which
+  (`UHUDLegendaryAbilityWidget::NativeConstruct` `+0x1F7AA00` â†’ `HandleWeaponEquipped` `+0x1F6D4F0`, which
   reads `weapon+0x248` at `+0x1F6D6BE`), so forcing readiness without a weapon always crashed. The override now
   also requires the weapon, and otherwise leaves the loading screen up.
 - The server: the runtime answers `GameModeBase.PlayerCanRestart` with `true` for every controller, so any
@@ -661,3 +661,14 @@ bytes do not match its pinned hash is refused.
 
 Hosts then run `npm run setup` again; it replaces `.workspace/Mystic-Paradox/` but keeps the SDK,
 the game data and the builds it finds there (see `ReforgedHost/README.md`).
+
+### 0044: seasonal validity for Granny's Heartbreaker
+
+`ParadoxBackend/src/routes/tuning.ts` and `src/seasonalEvents.ts`. The seasonal schedule previously returned
+an empty list. `SEASONAL_EVENTS=Season_11A_StoryMissions` now publishes the event required by the native
+`QI_11A_CRIT_POTION` catalog row. IDs are validated and deduplicated; an unset value preserves the empty
+schedule. Tests cover the response shape and the HTTP route.
+
+The game server also needs the reversible native-catalog overlay described in
+[`docs/crit-potion.md`](../docs/crit-potion.md). Its generator changes only this potion's seasonal expiry and
+carry limit (3 to 7), from the host's own 1.14.7 installation. No cooked assets are committed here.

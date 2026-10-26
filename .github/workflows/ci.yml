@@ -74,7 +74,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
-          node --import tsx --test src/reforgedApiRules.test.ts src/testMultipliers.test.ts src/chatWheels.test.ts src/maintenanceStatus.test.ts src/realtime/cityRooms.test.ts src/realtime/RoomService.test.ts
+          node --import tsx --test src/reforgedApiRules.test.ts src/testMultipliers.test.ts src/chatWheels.test.ts src/maintenanceStatus.test.ts src/realtime/cityRooms.test.ts src/realtime/RoomService.test.ts src/seasonalEvents.test.ts src/sessionSupplies.test.ts
       - name: Director (build and tests)
         working-directory: .workspace/Mystic-Paradox/ParadoxDirector
         run: |
@@ -118,3 +118,10 @@ jobs:
     uses: ./.github/workflows/launcher-release.yml
     with:
       auto: true
+
+  crit-potion:
+    name: Crit Potion overlay generator (tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 -m unittest discover -s tools/crit-potion -p "test_*.py" -v

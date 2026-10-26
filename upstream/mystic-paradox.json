@@ -48,6 +48,7 @@
     "patches/0040-runtime-server-projectiles-tick-after-pool.patch",
     "patches/0041-runtime-weapon-power-table-for-upgraded-levels.patch",
     "patches/0042-backend-weapons-keep-their-upgrade-level.patch",
-    "patches/0043-backend-weapon-reforge-grants-an-aether-heart.patch"
+    "patches/0043-backend-weapon-reforge-grants-an-aether-heart.patch",
+    "patches/0044-backend-crit-potion-seasonal-event.patch"
   ]
 }

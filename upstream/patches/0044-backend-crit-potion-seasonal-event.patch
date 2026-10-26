@@ -1,0 +1,94 @@
+diff --git a/ParadoxBackend/src/routes/tuning.ts b/ParadoxBackend/src/routes/tuning.ts
+--- a/ParadoxBackend/src/routes/tuning.ts
++++ b/ParadoxBackend/src/routes/tuning.ts
+@@ -11,6 +11,7 @@
+ 
+ import { Router } from "express";
+ import { logger } from "../logger";
++import { GetSeasonalEventSchedule } from "../seasonalEvents";
+ 
+ export const tuningRouter = Router();
+ 
+@@ -47,16 +48,8 @@
+ }
+ 
+ tuningRouter.get("/game_tuning/seasonal_event_schedule", (req: any, res) => {
+-    logger.info("Seasonal Event Schedule (stubbed)");
+-
+-    res.status(200);
+-    res.json({
+-        code: null,
+-        message: "OK",
+-        payload: {
+-            ScheduledItems: []
+-        }
+-    });
++    logger.info("Seasonal Event Schedule");
++    res.status(200).json(GetSeasonalEventSchedule());
+ })
+ 
+ tuningRouter.get("/game_tuning/huntpass_xp_config", (req: any, res) => {
+diff --git a/ParadoxBackend/src/seasonalEvents.ts b/ParadoxBackend/src/seasonalEvents.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/seasonalEvents.ts
+@@ -0,0 +1,18 @@
++// Seasonal items remain usable while their catalog ExpiryEventId is scheduled.
++export function GetSeasonalEventSchedule(value: string | undefined = process.env.SEASONAL_EVENTS) {
++    const ids = [...new Set((value ?? "").split(",").map(id => id.trim()).filter(id => /^[A-Za-z0-9_]{1,64}$/.test(id)))];
++    return {
++        code: null,
++        message: "OK",
++        payload: {
++            ScheduledItems: ids.map(id => ({
++                EndTime: "2099.12.31-23.59.59",
++                IsRepeatable: false,
++                Name: id,
++                RepeatableDetails: { EachDay: false, EachWeek: false },
++                ScheduledItems: [{ ID: id, MaxCompletionPerInterval: -1 }],
++                StartTime: "2020.01.01-00.00.00"
++            }))
++        }
++    };
++}
+diff --git a/ParadoxBackend/src/seasonalEvents.test.ts b/ParadoxBackend/src/seasonalEvents.test.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/seasonalEvents.test.ts
+@@ -0,0 +1,36 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import express from "express";
++import { GetSeasonalEventSchedule } from "./seasonalEvents";
++import { tuningRouter } from "./routes/tuning";
++
++test("seasonal schedule keeps the unconfigured response empty", () => {
++    assert.deepEqual(GetSeasonalEventSchedule("").payload.ScheduledItems, []);
++});
++test("event schedule validates IDs, deduplicates and publishes the catalog expiry event", () => {
++    const entries = GetSeasonalEventSchedule(" Season_11A_StoryMissions,invalid/id,Season_11A_StoryMissions,Other_Event ").payload.ScheduledItems;
++    assert.deepEqual(entries.map(e => e.Name), ["Season_11A_StoryMissions", "Other_Event"]);
++    const event = entries[0];
++    assert.deepEqual(event.ScheduledItems, [{ ID: "Season_11A_StoryMissions", MaxCompletionPerInterval: -1 }]);
++    assert.equal(event.StartTime, "2020.01.01-00.00.00");
++    assert.equal(event.EndTime, "2099.12.31-23.59.59");
++    assert.equal(event.IsRepeatable, false);
++});
++test("HTTP tuning route returns the configured crit potion event", async () => {
++    const previous = process.env.SEASONAL_EVENTS;
++    process.env.SEASONAL_EVENTS = "Season_11A_StoryMissions";
++    const app = express(); app.use(tuningRouter);
++    const server = app.listen(0, "127.0.0.1");
++    try {
++        await new Promise<void>(resolve => server.once("listening", resolve));
++        const address = server.address() as { port: number };
++        const response = await fetch(`http://127.0.0.1:${address.port}/game_tuning/seasonal_event_schedule`);
++        assert.equal(response.status, 200);
++        const body = await response.json() as any;
++        assert.equal(body.payload.ScheduledItems[0].ScheduledItems[0].ID, "Season_11A_StoryMissions");
++    } finally {
++        if (previous === undefined) delete process.env.SEASONAL_EVENTS;
++        else process.env.SEASONAL_EVENTS = previous;
++        await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
++    }
++});
