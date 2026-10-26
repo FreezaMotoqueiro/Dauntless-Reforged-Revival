@@ -694,7 +694,7 @@ objects, which the 1.14.7 client does not accept.
   form (`Season01` level 1 is `10000001`). Both read `completedLevel` from the `gauntletProgress` collection
   (`_id` `<season>:<user>`). A player can only read their own progress; a game server can read anyone's.
 - Guild rewards answer `0` and the leaderboard answers `[]`, the shapes the client parses.
-- `POST /matchmaking/candidate/join` for `CR19_PlayerHunt_Gauntlet` refuses a level above the next one
+- `POST /candidate/join` for `CR19_PlayerHunt_Gauntlet` refuses a level above the next one
   (403 `GAUNTLET_LEVEL_LOCKED`). The level may come as a number, a string or `{ level }`, native ids included.
 - The Director launches the Gauntlet map with the `?GauntletLevel=10000001` map option, which
   `AArchonGameMode::InitGame` reads.
