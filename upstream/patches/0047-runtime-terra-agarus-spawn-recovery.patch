@@ -1,0 +1,120 @@
+diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
+--- a/ParadoxRuntime/dllmain.cpp
++++ b/ParadoxRuntime/dllmain.cpp
+@@ -4911,6 +4911,7 @@ static void TickPlayerRoleRetries();
+ static void TickPlayerRolePostActivationRefresh();
+ static void TickTempestModifierEnsure();
+ static void TickEscalationBuffChoiceSpawn();
++static void TickTerraAgarusSpawnRecovery();
+ static void NoteEscalationStateChangeForBuffChoices(UObject* ModeComponent, void* Parms);
+ static void TickTempestChargeDiag();
+ static void TickProgressionHudRefresh();
+@@ -5282,6 +5283,7 @@ void GameEngineTickHook(UGameEngine* GameEngine, float DeltaTime, char CanRender
+             TickPlayerRolePostActivationRefresh();
+             TickTempestModifierEnsure();
+             TickEscalationBuffChoiceSpawn();
++            TickTerraAgarusSpawnRecovery();
+         }
+     }
+ 
+@@ -17553,6 +17555,100 @@ static void NoteEscalationStateChangeForBuffChoices(UObject* ModeComponent, void
+         + " trigger=EventEnding(7) entry");
+ }
+ 
++// Terra 10-50: the fifth patrol actor's BeginPlay ground query fails while the
++// arena streams and replaces its cooked transform with (0,0,200). Restore only
++// that invalid point to its verified cooked location, then recover a live boss
++// left at the origin. Game thread only; never revive or modify health/rewards.
++static void TickTerraAgarusSpawnRecovery() {
++    if (!Globals::AmServer || !Globals::MatchmakerHuntId
++        || std::wstring(Globals::MatchmakerHuntId) != L"CR19_MatchmakerHunt_Escalation_Funguy_Hard"
++        || MpExeRelativeFlagPresent(L"DISABLE_AGARUS_SPAWN_RECOVERY.flag")) return;
++    UWorld* World = UWorld::GetWorld();
++    static UWorld* ReportedWorld = nullptr;
++    if (World && IsRegisteredLiveObject(World) && World != ReportedWorld) {
++        ReportedWorld = World;
++        MpLog("[AgarusSpawnRecovery] watching world=" + World->GetName());
++    }
++    if (!World || !IsRegisteredLiveObject(World)
++        || World->GetName().find("escalation_island_terra_00") == std::string::npos) return;
++    static UWorld* LastWorld = nullptr;
++    static AActor* Anchor = nullptr;
++    static AActor* Handled = nullptr;
++    static TArray<AActor*> Candidates;
++    static TArray<AActor*> Bosses;
++    static bool ReportedCandidates = false;
++    if (World != LastWorld) { LastWorld = World; Anchor = nullptr; Handled = nullptr; ReportedCandidates = false; }
++    if (!Anchor || !IsRegisteredLiveObject(Anchor)) {
++        Anchor = nullptr;
++        UGameplayStatics::GetAllActorsOfClass(World, AActor::StaticClass(), &Candidates);
++        for (AActor* Candidate : Candidates) {
++            if (!ReportedCandidates && Candidate && Candidate->Class
++                && Candidate->Class->GetName().find("patrol") != std::string::npos) {
++                FVector P = Candidate->K2_GetActorLocation();
++                MpLog("[AgarusSpawnRecovery] patrol=" + Candidate->GetName()
++                    + " class=" + Candidate->Class->GetName() + " pos=" + std::to_string(P.X)
++                    + "," + std::to_string(P.Y) + "," + std::to_string(P.Z));
++            }
++            if (Candidate && IsRegisteredLiveObject(Candidate)
++                && Candidate->Class && Candidate->Class->GetName() == "escalation_patrol_point_bp_C") {
++                FVector P = Candidate->K2_GetActorLocation();
++                if (Candidate->GetName() == "escalation_patrol_point_bp_5"
++                    && std::isfinite(P.X) && std::isfinite(P.Y) && std::isfinite(P.Z)
++                    && std::abs(P.X) < 2000.f && std::abs(P.Y) < 2000.f) {
++                    FVector CookedLocation{};
++                    CookedLocation.X = -138925.9375f;
++                    CookedLocation.Y = 1258.1826171875f;
++                    CookedLocation.Z = 35405.05859375f;
++                    FHitResult Hit{};
++                    const bool Moved = Candidate->K2_SetActorLocation(CookedLocation, false, &Hit, true);
++                    P = Candidate->K2_GetActorLocation();
++                    MpLog("[AgarusSpawnRecovery] restored patrol moved=" + std::to_string(Moved)
++                        + " actual=" + std::to_string(P.X) + "," + std::to_string(P.Y) + "," + std::to_string(P.Z));
++                }
++                if (std::isfinite(P.X) && std::isfinite(P.Y) && std::isfinite(P.Z)
++                    && std::abs(P.X + 138925.9375f) < 2000.f
++                    && std::abs(P.Y - 1258.1826f) < 2000.f
++                    && std::abs(P.Z - 35405.0586f) < 2000.f) {
++                    Anchor = Candidate;
++                    MpLog("[AgarusSpawnRecovery] armed anchor=" + Anchor->GetName()
++                        + " pos=" + std::to_string(P.X) + "," + std::to_string(P.Y) + "," + std::to_string(P.Z));
++                }
++                if (Anchor) break;
++            }
++        }
++        if (!ReportedCandidates) {
++            ReportedCandidates = true;
++            MpLog("[AgarusSpawnRecovery] anchor search actors=" + std::to_string(Candidates.Num())
++                + " found=" + std::to_string(Anchor != nullptr));
++        }
++    }
++    if (!Anchor) return;
++    UGameplayStatics::GetAllActorsOfClass(World, AArchonBehemoth::StaticClass(), &Bosses);
++    for (AActor* Actor : Bosses) {
++        if (!Actor || Actor == Handled || !IsRegisteredLiveObject(Actor) || !Actor->Class
++            || Actor->Class->GetName() != "funguy_normal_bp_C" || Actor->IsActorBeingDestroyed()) continue;
++        auto* Boss = static_cast<AArchonBehemoth*>(Actor);
++        const FVector Before = Boss->K2_GetActorLocation();
++        const float Health = Boss->GetCurrentHealth();
++        if (!(Health > 0.f)) continue;
++        const bool AtOrigin = std::isfinite(Before.X) && std::isfinite(Before.Y)
++            && std::isfinite(Before.Z) && std::abs(Before.X) < 2000.f && std::abs(Before.Y) < 2000.f;
++        Handled = Actor;
++        MpLog("[AgarusSpawnRecovery] actor=" + Actor->GetName()
++            + " pos=" + std::to_string(Before.X) + "," + std::to_string(Before.Y) + "," + std::to_string(Before.Z)
++            + " health=" + std::to_string(Health) + " invalidOrigin=" + (AtOrigin ? "1" : "0"));
++        if (!AtOrigin) continue;
++        FVector Destination = Anchor->K2_GetActorLocation();
++        Destination.Z += 200.f;
++        FHitResult Hit{};
++        const bool Moved = Boss->K2_SetActorLocation(Destination, false, &Hit, true);
++        const FVector After = Boss->K2_GetActorLocation();
++        MpLog("[AgarusSpawnRecovery] recovery moved=" + std::to_string(Moved)
++            + " anchor=" + Anchor->GetName() + " actual=" + std::to_string(After.X)
++            + "," + std::to_string(After.Y) + "," + std::to_string(After.Z));
++    }
++}
++
+ static void TickEscalationBuffChoiceSpawn() {
+     if (!Globals::AmServer || !OrigProcessEvent) return;
+     if (!s_escalationBuffChoiceRequest.Pending) return;

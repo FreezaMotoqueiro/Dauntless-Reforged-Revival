@@ -1,0 +1,269 @@
+diff --git a/ParadoxBackend/src/gauntletProgress.test.ts b/ParadoxBackend/src/gauntletProgress.test.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/gauntletProgress.test.ts
+@@ -0,0 +1,52 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { GauntletNativeLevel, RequestedGauntletLevel, IsGauntletLevelAllowed, CompletedGauntletLevel, GauntletAccountAllowed, GauntletLevelAccess, GauntletProgressPayload, GauntletSeasonConfig } from "./gauntletProgress";
++
++test("a fresh Gauntlet player has zero completions and access to level one only", () => {
++    assert.equal(GauntletLevelAccess(undefined), 1);
++    assert.deepEqual(GauntletProgressPayload(undefined), { personal_progression: 0, guild_progression: 0 });
++});
++test("access is the next level after the saved completion, returned as an integer", () => {
++    assert.equal(GauntletLevelAccess(2), 3);
++    assert.equal(typeof GauntletLevelAccess(0), "number");
++});
++test("invalid saved values do not unlock levels", () => {
++    for (const value of [-1, NaN, Infinity, "99", 1.5, 2147483647]) {
++        assert.equal(CompletedGauntletLevel(value), 0);
++        assert.equal(GauntletLevelAccess(value), 1);
++    }
++});
++test("one player cannot read another player's Gauntlet progress", () => {
++    assert.equal(GauntletAccountAllowed({ userId: "a" }, "a"), true);
++    assert.equal(GauntletAccountAllowed({ userId: "a" }, "b"), false);
++    assert.equal(GauntletAccountAllowed(undefined, "a"), false);
++    assert.equal(GauntletAccountAllowed({ IsGameserver: true }, "a"), true);
++    assert.equal(GauntletAccountAllowed({ IsGameserver: true }, { $ne: null }), false);
++});
++test("season dates cover the running game", () => {
++    const season = GauntletSeasonConfig();
++    assert.ok(Date.parse(season.start_at) < Date.now());
++    assert.ok(Date.parse(season.end_at) > Date.now());
++});
++
++test("higher levels cannot be selected before preceding completions", () => {
++    assert.equal(IsGauntletLevelAllowed(0, 1), true);
++    for (const level of [0, 2, 100, "1", null, NaN]) assert.equal(IsGauntletLevelAllowed(0, level), false);
++    assert.equal(IsGauntletLevelAllowed(1, 2), true);
++    assert.equal(IsGauntletLevelAllowed(1, 3), false);
++});
++
++test("selected Gauntlet level accepts scalar and native structured payloads without unlocking higher levels", () => {
++    for (const value of [1, "1", { level: 1 }, { gauntlet_id: "Season01", level: 1 }]) assert.equal(RequestedGauntletLevel(value), 1);
++    for (const value of [0, -1, [], {}, { level: "bad" }, "1x"]) assert.equal(RequestedGauntletLevel(value), undefined);
++    assert.equal(IsGauntletLevelAllowed(0, RequestedGauntletLevel({ level: 2 })), false);
++});
++
++test("native Season01 level IDs are decoded before checking progression", () => {
++    assert.equal(RequestedGauntletLevel(10000001), 1);
++    assert.equal(RequestedGauntletLevel({ level: 10000001 }), 1);
++    assert.equal(IsGauntletLevelAllowed(0, RequestedGauntletLevel(10000001)), true);
++    assert.equal(IsGauntletLevelAllowed(0, RequestedGauntletLevel(10000002)), false);
++    assert.equal(RequestedGauntletLevel(20000001), undefined);
++    assert.equal(GauntletNativeLevel(GauntletLevelAccess(0)), 10000001);
++});
+diff --git a/ParadoxBackend/src/gauntletProgress.ts b/ParadoxBackend/src/gauntletProgress.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/gauntletProgress.ts
+@@ -0,0 +1,49 @@
++import { GetMongoDb } from "./persistence/mongo/client";
++
++export const GAUNTLET_COLLECTION = "gauntletProgress";
++export const GAUNTLET_SEASON_ID = "Season01";
++
++export function CompletedGauntletLevel(value: unknown): number {
++    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < 2147483647 ? value : 0;
++}
++
++export function GauntletLevelAccess(completedLevel: unknown): number {
++    return CompletedGauntletLevel(completedLevel) + 1;
++}
++
++export function GauntletProgressPayload(completedLevel: unknown) {
++    return { personal_progression: CompletedGauntletLevel(completedLevel), guild_progression: 0 };
++}
++
++export function GauntletAccountAllowed(auth: { IsGameserver?: boolean; userId?: string } | undefined, userId: unknown): userId is string {
++    return typeof userId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(userId)
++        && (auth?.IsGameserver === true || auth?.userId === userId);
++}
++
++export async function ReadGauntletCompletedLevel(season: string, userId: string): Promise<number> {
++    const db = await GetMongoDb();
++    const row = await db.collection(GAUNTLET_COLLECTION).findOne({ _id: `${season}:${userId}` as any });
++    return CompletedGauntletLevel(row?.completedLevel);
++}
++
++export function GauntletSeasonConfig() {
++    return { gauntlet_id: GAUNTLET_SEASON_ID, start_at: "2020-01-01T00:00:00+00:00", end_at: "2099-12-31T23:59:59+00:00" };
++}
++
++export function IsGauntletLevelAllowed(completed: unknown, requested: unknown): boolean {
++    return typeof requested === "number" && Number.isSafeInteger(requested) && requested >= 1 && requested <= GauntletLevelAccess(completed);
++}
++
++export function RequestedGauntletLevel(value: unknown): number | undefined {
++    const raw = value != null && typeof value === "object" && !Array.isArray(value) ? (value as { level?: unknown }).level : value;
++    const parsed = typeof raw === "string" && /^[1-9][0-9]{0,8}$/.test(raw) ? Number(raw) : raw;
++    if (typeof parsed !== "number" || !Number.isSafeInteger(parsed) || parsed < 1) return undefined;
++    // Native FGauntletLevel numbers include the season: Season01 level 1 = 10000001.
++    if (parsed >= 10000000) return parsed > 10000000 && parsed < 20000000 ? parsed - 10000000 : undefined;
++    return parsed;
++}
++
++export function GauntletNativeLevel(level: number): number {
++    if (!Number.isSafeInteger(level) || level < 1 || level >= 10000000) throw new Error("Invalid Gauntlet level");
++    return 10000000 + level;
++}
+diff --git a/ParadoxBackend/src/routes/matchmaking.ts b/ParadoxBackend/src/routes/matchmaking.ts
+--- a/ParadoxBackend/src/routes/matchmaking.ts
++++ b/ParadoxBackend/src/routes/matchmaking.ts
+@@ -10,6 +10,7 @@
+  */
+ 
+ import { Router } from "express";
++import { RequestedGauntletLevel, IsGauntletLevelAllowed, ReadGauntletCompletedLevel } from "../gauntletProgress";
+ import crypto from "node:crypto";
+ import { HasParadoxBackendAuth } from "../middleware/HasParadoxBackendAuth";
+ import { logger } from "../logger";
+@@ -309,6 +310,17 @@ matchmakingRouter.post("/candidate/join", HasParadoxBackendAuth, async (req: any
+     const GameArgs = req.body.gameArgs;
+     const HuntId = req.body.playerHuntId;
+ 
++    if (HuntId === "CR19_PlayerHunt_Gauntlet") {
++        const rawGauntlet = req.body.gauntletLevel ?? req.body.gauntlet_level ?? 1;
++        const requested = RequestedGauntletLevel(rawGauntlet);
++        const completed = await ReadGauntletCompletedLevel("Season01", UserId);
++        if (!IsGauntletLevelAllowed(completed, requested)) {
++            logger.warn(`[Gauntlet] refused selected level: shape=${typeof rawGauntlet} keys=${rawGauntlet && typeof rawGauntlet === "object" ? Object.keys(rawGauntlet).join(",") : ""} requested=${requested} allowed=${completed + 1}`);
++            res.status(403).json({ code: "GAUNTLET_LEVEL_LOCKED", message: "Complete the preceding level first", payload: null });
++            return;
++        }
++    }
++
+     // [1.12 matchmaking pass-through — 2026-07-10]
+     // Every account is force-normalized to "returning player" state in
+     // NormalizeCharacterData (character.ts). So the client's LoginScreen always
+diff --git a/ParadoxBackend/src/routes/system.ts b/ParadoxBackend/src/routes/system.ts
+--- a/ParadoxBackend/src/routes/system.ts
++++ b/ParadoxBackend/src/routes/system.ts
+@@ -23,6 +23,7 @@ import { GetCooldownState, SaveCooldowns } from "../controllers/cooldowns";
+ import { BountyGroupCounts, BountySaveValidationError, BountyStatePayload, IsAuthorizedBountyReader, IsAuthorizedBountyWriter } from "../bountyState";
+ import { DeleteBountyState, GetBountyState, SaveBountyState } from "../controllers/bounty";
+ import { EscalationSeasonProgressUpdate, IsAuthorizedEscalationReader, IsAuthorizedEscalationWriter } from "../escalationProgress";
++import { GauntletNativeLevel, GauntletAccountAllowed, GauntletLevelAccess, GauntletProgressPayload, GauntletSeasonConfig, ReadGauntletCompletedLevel } from "../gauntletProgress";
+ 
+ export const systemRouter = Router();
+ 
+@@ -444,16 +445,7 @@ systemRouter.get("/config", HasParadoxBackendAuth, (req: any, res, next) => {
+     // (escalation_level, next_level_xp, talents_progress, unlock_progress, update_version) - plus
+     // the gauntlet_id field the client itself references (0x14512EEC0). The client's own parse log
+     // is the oracle: any change in its message tells us whether this endpoint is the one it wants.
+-    const ProbePayload = (process.env.GAUNTLET_CONFIG_PROBE ?? "1") === "1"
+-        ? {
+-            gauntlet_id: "ESC_SEASON_1",
+-            escalation_level: 0,
+-            next_level_xp: 0,
+-            talents_progress: [],
+-            unlock_progress: [],
+-            update_version: 0
+-        }
+-        : {};
++    const ProbePayload = GauntletSeasonConfig();
+     res.status(200);
+     res.json({
+         code: null,
+@@ -477,7 +469,7 @@ systemRouter.get("/config", HasParadoxBackendAuth, (req: any, res, next) => {
+ // copy. These stubs return the same envelope every other Phoenix stub uses; the client's own
+ // parser log is the oracle for refining the payloads. Every handler passes through with next()
+ // for any other origin host, so no existing route is shadowed.
+-const GauntletEnvelope = (payload: Record<string, unknown>) => ({
++const GauntletEnvelope = (payload: unknown) => ({
+     code: null,
+     message: "OK",
+     payload
+@@ -491,10 +483,18 @@ function IsGauntletOrigin(req: any): boolean {
+ // named ":season" parameters never match (Express params are non-empty). Regex routes are used so
+ // the empty segment is accepted - that is the whole reason the first attempt still 404'd. They are case-insensitive
+ // ("i") like Express's string routes, so an upper-case path still meets HasParadoxBackendAuth here.
+-systemRouter.get(/^\/progression\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, (req: any, res, next) => {
++systemRouter.get(/^\/progression\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, async (req: any, res, next) => {
+     if (!IsGauntletOrigin(req)) { next(); return; }
+-    logger.info(`Gauntlet progression requested season='${req.params[0]}' user='${req.params[1]}' (1.14.7 stub)`);
+-    res.status(200).json(GauntletEnvelope({}));
++    const accessRequest = String(req.params[0]).toLowerCase() === "level_access";
++    const season = accessRequest ? String(req.params[1]) : String(req.params[0]);
++    const userId = accessRequest ? req.query.account_id : req.params[1];
++    if (!GauntletAccountAllowed(req.AuthData, userId)) {
++        res.status(403).json({ code: "FORBIDDEN", message: "Account mismatch", payload: null });
++        return;
++    }
++    const completed = await ReadGauntletCompletedLevel(season, userId);
++    logger.info(`[Gauntlet] ${accessRequest ? "level access" : "progression"} season=${season} completed=${completed}`);
++    res.status(200).json(GauntletEnvelope(accessRequest ? GauntletNativeLevel(GauntletLevelAccess(completed)) : GauntletProgressPayload(completed)));
+ });
+ 
+ systemRouter.get(/^\/rewards\/personal\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, (req: any, res, next) => {
+@@ -506,7 +506,7 @@ systemRouter.get(/^\/rewards\/personal\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAu
+ systemRouter.get(/^\/rewards\/guild\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, (req: any, res, next) => {
+     if (!IsGauntletOrigin(req)) { next(); return; }
+     logger.info(`Gauntlet guild rewards requested season='${req.params[0]}' user='${req.params[1]}' (1.14.7 stub)`);
+-    res.status(200).json(GauntletEnvelope({}));
++    res.status(200).json(GauntletEnvelope(0));
+ });
+ 
+ // NOTE: Express 5 (path-to-regexp v6+) rejects a bare "*" route; use an explicit regex so this
+@@ -514,7 +514,7 @@ systemRouter.get(/^\/rewards\/guild\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth,
+ systemRouter.get(/^\/leaderboard\/get_leaderboard\//i, HasParadoxBackendAuth, (req: any, res, next) => {
+     if (!IsGauntletOrigin(req)) { next(); return; }
+     logger.info(`Gauntlet leaderboard requested (1.14.7 stub)`);
+-    res.status(200).json(GauntletEnvelope({ entries: [] }));
++    res.status(200).json(GauntletEnvelope([]));
+ });
+ 
+ systemRouter.get("/huntpass/:userId", HasParadoxBackendAuth, (req: any, res) => {
+diff --git a/ParadoxDirector/src/controllers/gameservers.ts b/ParadoxDirector/src/controllers/gameservers.ts
+--- a/ParadoxDirector/src/controllers/gameservers.ts
++++ b/ParadoxDirector/src/controllers/gameservers.ts
+@@ -19,6 +19,7 @@ import path from "node:path";
+ 
+ import { kill } from "node:process";
+ import { logger } from "../logger";
++import { GauntletMapPath } from "./gauntletLaunch";
+ import { loadGameData } from "../gameData/loader";
+ import { PortPool } from "./portPool";
+ import { CreateSerialGate, HubSupervisor, HubLogLevel } from "./hubSupervisor";
+@@ -1213,7 +1214,8 @@ export function ResolveHuntLaunchManifest(HuntId: string, ExpectedPlayers: strin
+     }
+     const matchmakerHuntId = GetMatchmakerHuntIdFromPlayerHuntId(HuntId);
+     const behemothPath = GetBehemothPathFromMatchmakerHuntId(matchmakerHuntId) ?? "NO_BEHEMOTH";
+-    const mapPath = GetMapPathFromMatchmakerHuntId(matchmakerHuntId);
++    const nativeMapPath = GetMapPathFromMatchmakerHuntId(matchmakerHuntId);
++    const mapPath = HuntId === "CR19_PlayerHunt_Gauntlet" ? GauntletMapPath(nativeMapPath) : nativeMapPath;
+     const expectedPlayerString = TransformExpectedPlayerArgs(ExpectedPlayers.map((playerUid) => ({
+         playerUid,
+         playerHuntId: HuntId
+diff --git a/ParadoxDirector/src/controllers/gauntletLaunch.test.ts b/ParadoxDirector/src/controllers/gauntletLaunch.test.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxDirector/src/controllers/gauntletLaunch.test.ts
+@@ -0,0 +1,12 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import { GauntletMapPath } from "./gauntletLaunch";
++test("Gauntlet launches with the chosen native map option", () => {
++    assert.equal(GauntletMapPath("/Game/Gauntlet"), "/Game/Gauntlet?GauntletLevel=10000001");
++    assert.equal(GauntletMapPath("/Game/Gauntlet", 7), "/Game/Gauntlet?GauntletLevel=10000007");
++});
++test("invalid or duplicate Gauntlet launch options are refused", () => {
++    for (const value of [0, -1, 1.5, NaN, Infinity]) assert.throws(() => GauntletMapPath("/Game/Gauntlet", value));
++    assert.throws(() => GauntletMapPath("bad", 1));
++    assert.throws(() => GauntletMapPath("/Game/Gauntlet?GauntletLevel=10000001", 2));
++});
+diff --git a/ParadoxDirector/src/controllers/gauntletLaunch.ts b/ParadoxDirector/src/controllers/gauntletLaunch.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxDirector/src/controllers/gauntletLaunch.ts
+@@ -0,0 +1,8 @@
++// Unreal map URL option read by AArchonGameMode::InitGame in build 647472.
++export function GauntletMapPath(map: string, level: number = 1): string {
++    if (!map.startsWith("/Game/") || !Number.isSafeInteger(level) || level < 1 || level >= 10000000) {
++        throw new Error("Invalid Gauntlet launch parameters");
++    }
++    if (/\?GauntletLevel=/i.test(map)) throw new Error("Duplicate Gauntlet level option");
++    return `${map}?GauntletLevel=${10000000 + level}`;
++}
