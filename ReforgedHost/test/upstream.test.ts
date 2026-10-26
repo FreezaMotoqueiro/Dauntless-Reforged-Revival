@@ -50,7 +50,7 @@ describe("the pinned upstream", () => {
         write(file, JSON.stringify({ repository: "https://github.com/x/y", commit: "0".repeat(40), patches: ["../../etc"] }));
         assert.throws(() => readPin(file), /patches/);
         const real = readPin(path.resolve(__dirname, "..", "..", "..", "..", "upstream", "mystic-paradox.json"));
-        assert.equal(real.patches.length, 44);
+        assert.equal(real.patches.length, 47);
     });
 
     it("is fetched at the pinned commit and patched; an update keeps the host's ignored files", async () => {

@@ -1,0 +1,58 @@
+diff --git a/ParadoxBackend/scripts/enrich_ladyluck_store.ts b/ParadoxBackend/scripts/enrich_ladyluck_store.ts
+--- a/ParadoxBackend/scripts/enrich_ladyluck_store.ts
++++ b/ParadoxBackend/scripts/enrich_ladyluck_store.ts
+@@ -6,7 +6,7 @@
+  * 1.14.7 catalogue is served with its live prices, names, tags, priority and purchase limit; a SKU whose items
+  * the catalogue lacks (the five per-attribute CONTAINER_CORE_GOLD_*_CELLCORE cores) is reported and skipped.
+  * The 1.12-era changes are retired: the Steel-tier price split, the Trials mantle/title additions and the
+- * Discipline unlock.
++ * Discipline unlock. The verified native 1.14.7 Discipline is restored below.
+  *
+  * SKUs this store already serves keep their item storage flags and duplicateInstancedItems (the inventory
+  * storage work depends on them); new SKUs take instanced/stacked from the catalogue. Every SKU gets an explicit
+@@ -131,6 +131,19 @@ for (const LiveOffer of Live) {
+     });
+ }
+ 
++// Native 1.14.7 Discipline exists even though this captured rotation omitted it.
++const Discipline = Catalog.get("PR_DISCIPLINE");
++if (Discipline && !Store.some(Sku => Sku.items.some(Item => Item.catalogId === "PR_DISCIPLINE"))) {
++    Store.push({
++        id: "trials_pr_discipline", displayName: "Discipline",
++        displayDescription: "A critical-strike Omnicell with a flaming parry. Successful parries build stacks toward a disciplined state.",
++        displayPriority: 1, prices: [{ currencyId: STEEL, price: 300 }], maxAllowed: 1,
++        tags: ["ladyluckstore", "store_trials_tab_cells"],
++        items: [{ catalogId: "PR_DISCIPLINE", quantity: 1, instanced: true }],
++        duplicateInstancedItems: ["PR_DISCIPLINE"]
++    });
++}
++
+ // Explicit server-authored images: applying the catalogue image to every resolvable offer removes reliance on
+ // local StoreItemsTable row naming (this is what fixed Entropy and Sundown on 1.12).
+ let ImageCount = 0;
+diff --git a/ParadoxBackend/src/controllers/storeRegistry.gamedata.test.ts b/ParadoxBackend/src/controllers/storeRegistry.gamedata.test.ts
+--- a/ParadoxBackend/src/controllers/storeRegistry.gamedata.test.ts
++++ b/ParadoxBackend/src/controllers/storeRegistry.gamedata.test.ts
+@@ -263,8 +263,8 @@ test("Lady Luck matches the live 1.14.7 rotation with explicit catalog images",
+     // [1.14.7 2026-10-08] Built from the live capture (scripts/enrich_ladyluck_store.ts): 38 of its 43 SKUs -
+     // the five per-attribute gold cell cores do not exist in the 1.14.7 catalogue.
+     const LadyLuck = GetLadyLuckSkus();
+-    assert.equal(LadyLuck.length, 38);
+-    assert.equal(new Set(LadyLuck.map((Sku) => Sku.id)).size, 38);
++    assert.equal(LadyLuck.length, 39);
++    assert.equal(new Set(LadyLuck.map((Sku) => Sku.id)).size, 39);
+     assert.equal(GetStoreSkus("ladyluckstore"), LadyLuck);
+ 
+     const ById = new Map(LadyLuck.map((Sku) => [Sku.id, Sku]));
+@@ -281,6 +281,11 @@ test("Lady Luck matches the live 1.14.7 rotation with explicit catalog images",
+     // The 1.12-era additions are retired and the unavailable gold cores are not served.
+     assert.equal(LadyLuck.filter((Sku) => Sku.tags.includes("mystic_trials_expansion")).length, 0);
+     assert.equal(ById.get("ladyluck_omnicell_discipline_unlock"), undefined);
++    const Discipline = ById.get("trials_pr_discipline");
++    assert.equal(Discipline?.displayName, "Discipline");
++    assert.deepEqual(Discipline?.items, [{ catalogId: "PR_DISCIPLINE", quantity: 1, instanced: true }]);
++    assert.deepEqual(Discipline?.prices, [{ currencyId: "id_currency_marks_steel", price: 300 }]);
++    assert.match(Discipline?.images?.standard ?? "", /icon_omnicell_discipline/);
+     assert.equal(LadyLuck.some((Sku) => Sku.items.some((Item) => /^CONTAINER_CORE_GOLD_.+_CELLCORE$/.test(Item.catalogId))), false);
+ });
+ 

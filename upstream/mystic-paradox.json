@@ -49,6 +49,9 @@
     "patches/0041-runtime-weapon-power-table-for-upgraded-levels.patch",
     "patches/0042-backend-weapons-keep-their-upgrade-level.patch",
     "patches/0043-backend-weapon-reforge-grants-an-aether-heart.patch",
-    "patches/0044-backend-crit-potion-seasonal-event.patch"
+    "patches/0044-backend-crit-potion-seasonal-event.patch",
+    "patches/0045-backend-discipline-in-lady-luck-store.patch",
+    "patches/0046-backend-director-gauntlet-level-access.patch",
+    "patches/0047-runtime-terra-agarus-spawn-recovery.patch"
   ]
 }

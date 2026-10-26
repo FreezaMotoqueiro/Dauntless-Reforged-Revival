@@ -672,3 +672,42 @@ schedule. Tests cover the response shape and the HTTP route.
 The game server also needs the reversible native-catalog overlay described in
 [`docs/crit-potion.md`](../docs/crit-potion.md). Its generator changes only this potion's seasonal expiry and
 carry limit (3 to 7), from the host's own 1.14.7 installation. No cooked assets are committed here.
+
+### 0045: Discipline is back in the Lady Luck store
+
+`ParadoxBackend/scripts/enrich_ladyluck_store.ts`. The captured live rotation that the store is built from does
+not list the Discipline Omnicell, so 1.14.7 players could not buy it. When the catalogue has `PR_DISCIPLINE`
+and no SKU already sells it, the enrichment adds `trials_pr_discipline` (300 Steel Marks, one per account,
+in the Trials cells tab), and it gets its catalogue image like every other offer. The Lady Luck test now expects
+39 SKUs and checks the new one. Hosts get it from `npm run gamedata`, which reruns the enrichment.
+
+### 0046: Gauntlet level access and launch
+
+`ParadoxBackend/src/gauntletProgress.ts`, `src/routes/system.ts`, `src/routes/matchmaking.ts`, and
+`ParadoxDirector/src/controllers/gauntletLaunch.ts` with `gameservers.ts`. The Gauntlet stubs answered empty
+objects, which the 1.14.7 client does not accept.
+
+- `GET /config` on the Gauntlet origin answers the `Season01` season with start and end dates that cover
+  the running game (the old `GAUNTLET_CONFIG_PROBE` payload is gone).
+- `GET /progression/<season>/<user>` answers `personal_progression` and `guild_progression`, and
+  `GET /progression/level_access/<season>?account_id=<user>` answers the next playable level in the native
+  form (`Season01` level 1 is `10000001`). Both read `completedLevel` from the `gauntletProgress` collection
+  (`_id` `<season>:<user>`). A player can only read their own progress; a game server can read anyone's.
+- Guild rewards answer `0` and the leaderboard answers `[]`, the shapes the client parses.
+- `POST /candidate/join` for `CR19_PlayerHunt_Gauntlet` refuses a level above the next one
+  (403 `GAUNTLET_LEVEL_LOCKED`). The level may come as a number, a string or `{ level }`, native ids included.
+- The Director launches the Gauntlet map with the `?GauntletLevel=10000001` map option, which
+  `AArchonGameMode::InitGame` reads.
+
+Nothing writes `gauntletProgress` yet, so every player stays at level 1 and the Director always launches
+level 1. Tests: `gauntletProgress.test.ts` and `gauntletLaunch.test.ts`.
+
+### 0047: Terra Agarus spawns back on the arena
+
+`ParadoxRuntime/dllmain.cpp`, a game-server tick for `CR19_MatchmakerHunt_Escalation_Funguy_Hard` (Terra
+Escalation 10-50). While the arena streams in, the fifth patrol point's ground check fails and it is moved
+to (0,0,200), so the Agarus that spawns there is left at the world origin. The tick puts
+`escalation_patrol_point_bp_5` back at its cooked location, and moves a live `funguy_normal_bp_C` found
+within 2000 units of the origin to 200 units above that point. It never changes health, revives or rewards;
+each step is logged under `[AgarusSpawnRecovery]`. `DISABLE_AGARUS_SPAWN_RECOVERY.flag` beside the game
+executable turns it off.
