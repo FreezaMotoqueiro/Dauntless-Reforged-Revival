@@ -629,6 +629,18 @@ environment turns it back on). Every itemData save of a weapon now also keeps th
 carries a lower one (`[WeaponLevel] kept stored CurrentLevel` in the backend log); `ALLOW_WEAPON_LEVEL_DOWNGRADE=true`
 lets such saves through. Levels already overwritten are not brought back by this patch.
 
+### 0043: a weapon reforge pays an Aether Heart
+
+`ParadoxBackend/src/controllers/progression.ts`. A reforge took its 100 Aethersparks and reset the weapon (0032), but
+never paid the Aether Heart (`CURRENCY_PJM_PRESTIGE_FILLED`) it is meant to give (VPS 2026-10-25: the Spear's
+reforges 2 and 3, no Heart). The 1.14.7 game server pays the Heart itself only after it reads the weapon back
+(`GET /progression/<user>/<track>`, which answers 404 here) and only from the prestige track's
+`prestige.free_rewards`, which the config built from the export does not have. The backend now credits one Heart
+in the reset's own transaction (`reward=CURRENCY_PJM_PRESTIGE_FILLED x1` on the `[Reforge]` log line), so a
+refused or repeated reset pays nothing. The read-back stays unrouted, since answering it would also let the game
+send its own prestige +1 and banked XP on top of 0032's reset. Hearts owed for earlier reforges are not paid by
+this patch.
+
 [`store-captures.json`](store-captures.json) pins a second source, read by Mystic Paradox's store
 generators and not copied here either: five captures of the live store service from
 [EisigesEis/DauntlessEndpointDocumentation](https://github.com/EisigesEis/DauntlessEndpointDocumentation)
