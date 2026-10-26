@@ -84,7 +84,7 @@ describe("the pinned upstream", () => {
     it("the committed patches have LF line endings only, so reading them back to LF is exact", () => {
         const dir = path.resolve(__dirname, "..", "..", "..", "..", "upstream", "patches");
         const names = fs.readdirSync(dir).filter((n) => n.endsWith(".patch"));
-        assert.equal(names.length, 44);
+        assert.equal(names.length, 47);
         for (const name of names) assert.ok(!fs.readFileSync(path.join(dir, name)).includes(0x0d), `${name} has a CR byte`);
     });
 
