@@ -81,6 +81,7 @@ import { removeUpscaler } from "./upscaler-cleanup";
 import { detectStoreInstalls, locateExistingGame, readGameVersion, hasGameExe } from "./game-folder";
 import { buildLaunchArgs, describeLaunch, GameProcess, gameExitDetail, gameLocale, launchEnvironment, STATUS_CONTROL_C_EXIT, type SpawnFn } from "./launch";
 import { backupFileText, KeyStore, KeyStoreError, serverId, type Encryptor, type KeySlot } from "./keystore";
+import { migratedPublicServer } from "./server-migrations";
 import { SettingsStore, type StoredServer, type StoredSettings } from "./settings";
 import { freeBytes, missingVcRuntime } from "./system";
 import { fixedLinkUrl, isAllowedExternalUrl } from "./links";
@@ -312,6 +313,7 @@ export class Controller {
   }
 
   async init(): Promise<void> {
+    await this.applyKnownServerMoves();
     await this.refreshKeyFlag();
     await this.inspectGame({ detect: true });
     await this.inspectRuntime();
@@ -446,8 +448,9 @@ export class Controller {
   async checkInvite(text: unknown): Promise<InviteCheck> {
     const parsed = parseInvite(text);
     if (!parsed.ok) return err("invite_invalid_format", parsed.error);
-    const change = await this.certificateChange(parsed.invite);
-    const moved = await this.movedServer(parsed.invite);
+    const invite = migratedPublicServer(parsed.invite);
+    const change = await this.certificateChange(invite);
+    const moved = await this.movedServer(invite);
     return { ok: true, certificateChanged: change !== null, previousFingerprint: change?.fp ?? null, movedFrom: moved?.host ?? null };
   }
 
@@ -486,6 +489,57 @@ export class Controller {
     return bound && bound.fp !== inv.fp ? bound : null;
   }
 
+  // Public identity is the pinned certificate, not the IP address. Copy only a
+  // uniquely identified saved account of the same game/name/certificate. Keep
+  // its original encrypted key as a recovery copy, and never replace an account
+  // already stored at the destination (even one bound to another certificate).
+  private async carryPublicAccount(inv: Pick<Invite, "game" | "mode" | "host" | "port" | "name" | "fp">): Promise<void> {
+    if (inv.mode !== "public" || inv.fp === null || await this.keys.certificateOf(inv)) return;
+    const candidates = [this.s.server, ...this.s.savedServers].filter((sv): sv is StoredServer => sv !== null
+      && sv.game === inv.game && sv.mode === "public" && sv.fp === inv.fp
+      && sv.name.trim() === inv.name.trim() && (sv.host !== inv.host || sv.port !== inv.port));
+    const found = new Map<string, StoredServer>();
+    for (const from of candidates) {
+      const key = await this.keys.load(from);
+      if (key) found.set(key, from);
+    }
+    if (found.size !== 1) return;
+    const [key, from] = [...found][0];
+    await this.keys.save(inv, key);
+    const oldId = serverId(from.host, from.port, "public");
+    const newId = serverId(inv.host, inv.port, "public");
+    await this.settings.update(s => {
+      if (!s.usernames[newId] && s.usernames[oldId]) s.usernames[newId] = s.usernames[oldId];
+      if (s.backupOffered[newId] === undefined && s.backupOffered[oldId] !== undefined) s.backupOffered[newId] = s.backupOffered[oldId];
+      if (!s.trustedRuntimes[newId] && s.trustedRuntimes[oldId]) s.trustedRuntimes[newId] = [...s.trustedRuntimes[oldId]];
+      s.savedServers = s.savedServers.filter(sv => serverId(sv.host, sv.port, sv.mode) !== oldId);
+    });
+    log.info(`saved public account followed its pinned server from ${from.host}:${from.port} to ${inv.host}:${inv.port}`);
+  }
+
+  private async applyKnownServerMoves(): Promise<void> {
+    const previous = [this.s.server, ...this.s.savedServers].filter((sv): sv is StoredServer => sv !== null);
+    for (const from of previous) {
+      const to = migratedPublicServer(from);
+      if (to === from) continue;
+      try {
+        await this.carryPublicAccount(to);
+      } catch {
+        log.warn("saved server move deferred: account storage unavailable; original settings kept");
+        continue;
+      }
+      await this.settings.update(s => {
+        if (s.server) s.server = migratedPublicServer(s.server);
+        const seen = new Set<string>();
+        s.savedServers = s.savedServers.map(migratedPublicServer).filter(sv => {
+          const id = serverId(sv.host, sv.port, sv.mode);
+          if (seen.has(id)) return false;
+          seen.add(id); return true;
+        });
+      });
+    }
+  }
+
   // Joins the server from an invite. When a public invite carries another certificate than the
   // one this PC's key for that host:port belongs to, nothing is changed or sent (error
   // cert_changed, detail = the saved fingerprint) until the user confirms the new certificate.
@@ -517,6 +571,7 @@ export class Controller {
   }
 
   private async join(inv: Omit<Invite, "code"> & { code: string | null }, opts: { acceptNewCertificate?: boolean; carryAccount?: boolean } = {}): Promise<ActionResult> {
+    inv = migratedPublicServer(inv);
     const change = await this.certificateChange(inv);
     if (change) {
       if (opts.acceptNewCertificate !== true) {
@@ -526,6 +581,7 @@ export class Controller {
       await this.keys.rebind({ host: inv.host, port: inv.port, mode: "public", fp: change.fp }, inv.fp as string);
       log.warn(`the user accepted a new certificate for ${inv.host}:${inv.port} (was ${change.fp ?? "not recorded"}, now ${inv.fp})`);
     }
+    if (inv.mode === "public") await this.carryPublicAccount(inv);
     if (opts.carryAccount === true) await this.carryAccount(inv);
     const current = this.s.server;
     const same = current !== null && current.game === inv.game && current.mode === inv.mode && current.host === inv.host && current.port === inv.port && current.fp === inv.fp;

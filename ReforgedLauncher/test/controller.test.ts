@@ -22,6 +22,9 @@ import { validateManifest } from "../src/main/revived/manifest";
 import { REVIVED_BUILD, REVIVED_EXE_RELATIVE_PATH } from "../src/main/revived/constants";
 import { makeTestCert, type TestCert } from "./certs";
 import { GAME_VERSION_TEXT } from "../src/main/constants";
+import { KeyStore, serverId } from "../src/main/keystore";
+import { defaultSettings, type StoredServer } from "../src/main/settings";
+import { REFORGED_VPS_CERTIFICATE } from "../src/main/server-migrations";
 
 const EXE_DATA = Buffer.from("MZ this is not really Dauntless 1.14.7");
 const runtime = makeRuntime(5);
@@ -315,6 +318,75 @@ test("a private server at a new address (its host changed Tailscale accounts): t
   assert.deepEqual(hx.last().savedServers.map((sv) => sv.host), ["127.0.0.2"]);
   assert.equal(((await hx.c.checkInvite(moved)) as { movedFrom: string | null }).movedFrom, null, "nothing to take along any more");
   await hx.c.shutdown();
+});
+
+test("a public move with the same certificate reuses the account without registration", async () => {
+  const hx = await harness();
+  const next = new FakeServer({ name: "Friday Hunts", registration: "NONE" });
+  const port = await next.start(0, { cert: cert.certPem, key: cert.keyPem });
+  try {
+    await hx.c.init();
+    await hx.c.submitInvite(formatInvite({ mode: "public", host: "127.0.0.1", port: gatewayPort, fp: cert.fingerprint, code: "SECOND-CODE", name: "Friday Hunts", share: null }));
+    assert.deepEqual(await hx.c.register("PortMover"), { ok: true, username: "PortMover" });
+    const [key, user] = [...gateway.users].find(([, u]) => u.username === "PortMover")!;
+    next.users.set(key, user);
+    await hx.c.submitInvite(formatInvite({ mode: "public", host: "127.0.0.1", port, fp: cert.fingerprint, code: "UNUSED-CODE", name: "Friday Hunts", share: null }));
+    assert.equal(hx.last().account.hasKey, true);
+    assert.equal(hx.last().account.username, "PortMover");
+    assert.equal(hx.last().server?.hasPendingInvite, false);
+    assert.equal(next.registrations.length, 0);
+    assert.ok(next.seen.some(r => r.key === key), "the original account authenticates at the new endpoint");
+    const destinationKey = "RRK_" + "e".repeat(48);
+    next.users.set(destinationKey, { username: "ExistingDest", id: "uid-dest" });
+    assert.deepEqual(await hx.c.useExistingKey(destinationKey), { ok: true });
+    await hx.c.submitInvite(formatInvite({ mode: "public", host: "127.0.0.1", port: gatewayPort, fp: cert.fingerprint, code: "SECOND-CODE", name: "Friday Hunts", share: null }));
+    await hx.c.submitInvite(formatInvite({ mode: "public", host: "127.0.0.1", port, fp: cert.fingerprint, code: "UNUSED-CODE", name: "Friday Hunts", share: null }));
+    assert.equal(hx.last().account.username, "ExistingDest", "an existing destination account is never overwritten");
+  } finally { await hx.c.shutdown(); await next.stop(); }
+});
+
+test("a public move with a different certificate never receives the saved key", async () => {
+  const hx = await harness();
+  const next = new FakeServer({ name: "Friday Hunts" });
+  const port = await next.start(0, { cert: other.certPem, key: other.keyPem });
+  try {
+    await hx.c.init();
+    await hx.c.submitInvite(formatInvite({ mode: "public", host: "127.0.0.1", port: gatewayPort, fp: cert.fingerprint, code: "SECOND-CODE", name: "Friday Hunts", share: null }));
+    await hx.c.register("CertMover");
+    await hx.c.submitInvite(formatInvite({ mode: "public", host: "127.0.0.1", port, fp: other.fingerprint, code: "UNUSED-CODE", name: "Friday Hunts", share: null }));
+    assert.equal(hx.last().account.hasKey, false);
+    assert.ok(next.seen.every(r => !r.key));
+  } finally { await hx.c.shutdown(); await next.stop(); }
+});
+
+test("startup moves the known VPS and encrypted account while keeping the 1.4.4 server", async () => {
+  const dir = temp("rr-public-move-");
+  const from: StoredServer = { game: "reforged", mode: "public", host: "187.127.54.193", port: 4443, name: "ReforgedRevival", fp: REFORGED_VPS_CERTIFICATE, code: null, share: null };
+  const revived: StoredServer = { ...from, game: "revived", host: "179.199.154.171", port: 8443, name: "Dauntless Revived" };
+  const settings = defaultSettings("en");
+  settings.server = from; settings.savedServers = [from, revived];
+  const oldId = serverId(from.host, from.port, from.mode);
+  settings.usernames[oldId] = "OriginalPlayer";
+  settings.trustedRuntimes[oldId] = ["f".repeat(64)];
+  writeFileSync(path.join(dir, "settings.json"), JSON.stringify(settings));
+  const keys = new KeyStore(path.join(dir, "keys"), {
+    isAvailable: () => true,
+    encrypt: plain => Buffer.from("enc:" + Buffer.from(plain).toString("base64")),
+    decrypt: data => Buffer.from(data.toString().slice(4), "base64").toString(),
+  });
+  const key = "RRK_" + "a".repeat(48);
+  await keys.save(from, key);
+  const hx = await harness(undefined, { userDataDir: dir });
+  hx.c.connect = async () => ({ ok: true }); // Test stored-state migration without contacting the real deployment.
+  try {
+    await hx.c.init();
+    assert.equal(hx.last().server?.host, "179.199.154.171");
+    assert.equal(hx.last().account.hasKey, true);
+    assert.equal(hx.last().account.username, "OriginalPlayer");
+    assert.equal(await keys.load({ ...from, host: "179.199.154.171" }), key);
+    assert.equal(await keys.load(from), key, "original key remains available for recovery");
+    assert.ok(hx.last().savedServers.some(s => s.game === "revived" && s.port === 8443));
+  } finally { await hx.c.shutdown(); }
 });
 
 test("a banned account is told why", async () => {
