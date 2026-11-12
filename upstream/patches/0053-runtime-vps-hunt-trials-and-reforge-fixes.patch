@@ -1,0 +1,1161 @@
+diff --git a/ParadoxRuntime/BankedQuestXP.inl b/ParadoxRuntime/BankedQuestXP.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/BankedQuestXP.inl
+@@ -0,0 +1,53 @@
++// 1.14.7: the final rank reports RankPoints=0 even while TotalPoints banks XP.
++// Repair only the event copy delivered to OnlyBankedXP objectives. The native
++// reducer still performs its normal type/status/progression checks and saving.
++static void (*MpOriginalBankedQuestXP)(UObjective_PlayerXP*, const FExperienceGrant&) = nullptr;
++static int MpBankedQuestDelta(int Total, int Increase, int UnlockedLevels) {
++    static const int Costs[] = {0,350,500,700,900,1050,1200,1300,1350,1500,1600,1650,1750,1800,1900,1950,1975,2050,2100,2150};
++    if (Increase <= 0 || UnlockedLevels <= 0 || UnlockedLevels > 20 || Total <= 27775) return 0;
++    int Cap = 0;
++    for (int I = 0; I < UnlockedLevels; ++I) Cap += Costs[I];
++    const long long After = std::clamp<long long>(static_cast<long long>(Total)-27775,0,Cap);
++    const long long Before = std::clamp<long long>(static_cast<long long>(Total)-Increase-27775,0,Cap);
++    return static_cast<int>(After-Before);
++}
++static void MpBankedQuestXPHook(UObjective_PlayerXP* Objective, const FExperienceGrant& Grant) {
++    FExperienceGrant Fixed = Grant;
++    if (Globals::AmServer && Objective && IsRegisteredLiveObject(Objective)
++        && Grant.Level == 20 && Grant.LevelAmount == 0 && Grant.IncreaseAmount > 0
++        && static_cast<int>(Grant.ExperienceType) >= 2 && static_cast<int>(Grant.ExperienceType) <= 8) {
++        auto* Data = reinterpret_cast<TWeakObjectPtr<UObjectiveData>*>(reinterpret_cast<uint8*>(Objective)+0x54)->Get();
++        auto* XP = reinterpret_cast<TWeakObjectPtr<UPlayerExperienceComponent>*>(reinterpret_cast<uint8*>(Objective)+0xC0)->Get();
++        if (Data && IsRegisteredLiveObject(Data) && Data->IsA(UObjectiveData_PlayerXP::StaticClass())
++            && *reinterpret_cast<uint8*>(reinterpret_cast<uint8*>(Data)+0xD2) == 2
++            && XP && IsRegisteredLiveObject(XP)) {
++            auto* Progression = reinterpret_cast<TWeakObjectPtr<UProgressionComponent>*>(reinterpret_cast<uint8*>(XP)+0x1E8)->Get();
++            static const wchar_t* Tracks[] = {L"",L"",L"ExperienceTrack_Weapon_Axe",L"ExperienceTrack_Weapon_ChainBlades",L"ExperienceTrack_Weapon_Hammer",L"ExperienceTrack_Weapon_Repeaters",L"ExperienceTrack_Weapon_Spear",L"ExperienceTrack_Weapon_Strikers",L"ExperienceTrack_Weapon_Sword"};
++            if (Progression && IsRegisteredLiveObject(Progression)) {
++                const int Total = Progression->GetProgressTotal(UKismetStringLibrary::Conv_StringToName(Tracks[static_cast<int>(Grant.ExperienceType)]));
++                int Unlocked = *reinterpret_cast<int*>(reinterpret_cast<uint8*>(XP)+0x1D0);
++                // Some dedicated worlds have a zeroed banking cache. Resolve the
++                // already unlocked native Journey nodes without granting any unlock.
++                if (Unlocked == 0) {
++                    auto* Controller = XP->GetPlayerController();
++                    auto* Journey = Controller && IsRegisteredLiveObject(Controller) ? Controller->GetPlayerJourneyComponent() : nullptr;
++                    if (Journey && IsRegisteredLiveObject(Journey)) {
++                        auto& Maps = *reinterpret_cast<TMap<FName,FPlayerJourneyMapRuntimeData>*>(reinterpret_cast<uint8*>(Journey)+0x1F8);
++                        static const wchar_t* Nodes[] = {L"BankedXP_01",L"BankedXP_02",L"BankedXP_03",L"BankedXP_04",L"BankedXP_05"};
++                        static const int Levels[] = {6,10,13,16,20};
++                        for (auto& Pair : Maps) for (int I=0; I<5; ++I) {
++                            if (Journey->IsNodeUnlocked(UKismetStringLibrary::Conv_StringToName(Nodes[I]),L"BankedQuestXP",Pair.Key()))
++                                Unlocked = (std::max)(Unlocked,Levels[I]);
++                        }
++                    }
++                }
++                const int Delta = MpBankedQuestDelta(Total,Grant.IncreaseAmount,Unlocked);
++                Fixed.LevelAmount = Delta;
++                Fixed.IncreaseAmount = Delta;
++                static int Logged = 0;
++                if (Logged++ < 40) MpLog("[BankedQuestXP] type="+std::to_string(static_cast<int>(Grant.ExperienceType))+" total="+std::to_string(Total)+" bankLevels="+std::to_string(Unlocked)+" questDelta="+std::to_string(Delta));
++            }
++        }
++    }
++    MpOriginalBankedQuestXP(Objective,Fixed);
++}
+diff --git a/ParadoxRuntime/FrostRelicPawnFix.inl b/ParadoxRuntime/FrostRelicPawnFix.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/FrostRelicPawnFix.inl
+@@ -0,0 +1,75 @@
++// Frost relic filters in cooked 1.14.7 call GetPlayerPawn(TestSubject, 0).
++// The index is global, not relative to TestSubject: on our dedicated host it
++// resolves the internal local controller instead of the controller being evaluated.
++// Keep all cooked conditions, boon checks, party checks, weights and unlocks.
++// Only redirect this one native Blueprint getter during the ten affected Evaluate
++// calls, on Frost Escalation servers. Always run the original exec to consume FFrame.
++static thread_local APawn* s_frostRelicSubjectPawn = nullptr;
++static SDK::UFunction::FNativeFuncPtr s_frostOriginalPawnExec = nullptr;
++static bool s_frostRelicPawnFixInstalled = false;
++
++static bool MpIsFrostRelicCondition(const std::string& Name) {
++    static const char* Conditions[] = {
++        "defender_not_last_round_rc_C", "defender_not_max_flask_round_rc_C",
++        "defender_round_has_team_rc_C", "defender_round_rc_C",
++        "mender_round_has_team_rc_C", "mender_round_rc_C",
++        "scout_not_last_round_rc_C", "scout_round_rc_C",
++        "warrior_not_max_flask_round_rc_C", "warrior_round_rc_C"
++    };
++    for (const char* Condition : Conditions) if (Name == Condition) return true;
++    return false;
++}
++
++static void MpFrostRelicGetPlayerPawnExec(void* Context, void* Stack, void* Result) {
++    s_frostOriginalPawnExec(Context, Stack, Result);
++    APawn* SubjectPawn = s_frostRelicSubjectPawn;
++    if (!Result || !SubjectPawn || !IsRegisteredLiveObject(SubjectPawn)) return;
++    APawn*& ReturnedPawn = *reinterpret_cast<APawn**>(Result);
++    if (ReturnedPawn != SubjectPawn) {
++        static int Logged = 0;
++        if (Logged++ < 20) {
++            MpLog("[FrostRelicPawnFix] redirected local pawn=" + MpPtr(ReturnedPawn)
++                + " to evaluated pawn=" + MpPtr(SubjectPawn));
++        }
++        ReturnedPawn = SubjectPawn;
++    }
++}
++
++static void MpInstallFrostRelicPawnFix() {
++    if (s_frostRelicPawnFixInstalled || !Globals::AmServer || !Globals::MatchmakerHuntId
++        || std::wstring(Globals::MatchmakerHuntId).find(L"Escalation_Mint_") == std::wstring::npos
++        || MpExeRelativeFlagPresent(L"DISABLE_FROST_RELIC_PAWN_FIX.flag")) return;
++    UClass* Library = UGameplayStatics::StaticClass();
++    if (!Library || !IsRegisteredLiveObject(Library)) return;
++    UFunction* Fn = Library->GetFunction("GameplayStatics", "GetPlayerPawn");
++    if (!Fn || !IsReadablePointer(Fn, sizeof(UFunction)) || !Fn->ExecFunction) return;
++    s_frostOriginalPawnExec = Fn->ExecFunction;
++    Fn->ExecFunction = &MpFrostRelicGetPlayerPawnExec;
++    s_frostRelicPawnFixInstalled = true;
++    MpLog("[FrostRelicPawnFix] installed; ten cooked conditions use their evaluated player's pawn");
++}
++
++struct MpFrostRelicPawnScope {
++    APawn* Previous = nullptr;
++    bool Active = false;
++    MpFrostRelicPawnScope(UObject* Object, const std::string& FunctionName, void* Parms) {
++        if (!s_frostRelicPawnFixInstalled || !Object || !Object->Class
++            || !FunctionName.ends_with(".Evaluate")) return;
++        // Clear an outer scope for unrelated/nested condition evaluations.
++        Active = true;
++        Previous = s_frostRelicSubjectPawn;
++        s_frostRelicSubjectPawn = nullptr;
++        if (!MpIsFrostRelicCondition(Object->Class->GetName()) || !Parms
++            || !IsReadablePointer(Parms, sizeof(SDK::Params::ArchonCondition_Evaluate))) return;
++        auto* Evaluation = reinterpret_cast<SDK::Params::ArchonCondition_Evaluate*>(Parms);
++        AActor* Subject = Evaluation->Params_0.TestSubject;
++        if (!Subject || !IsRegisteredLiveObject(Subject)
++            || !Subject->IsA(AArchonPlayerController::StaticClass())) return;
++        auto* Controller = static_cast<AArchonPlayerController*>(Subject);
++        APawn* Pawn = Controller->Pawn;
++        if (Pawn && IsRegisteredLiveObject(Pawn) && Pawn->IsA(AArchonCharacter::StaticClass())) {
++            s_frostRelicSubjectPawn = Pawn;
++        }
++    }
++    ~MpFrostRelicPawnScope() { if (Active) s_frostRelicSubjectPawn = Previous; }
++};
+diff --git a/ParadoxRuntime/GatherableStreamGate.inl b/ParadoxRuntime/GatherableStreamGate.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/GatherableStreamGate.inl
+@@ -0,0 +1,58 @@
++// Delay only the initial adventure-island gatherable enumeration until streamed
++// actors are visible. Never replay a completed spawn or manufacture chest rewards.
++static UFunction::FNativeFuncPtr MpGatherableOriginal=nullptr;
++static Ugatherable_manager_C* MpGatherablePending=nullptr;
++static UFunction* MpGatherableFunction=nullptr;
++static uint64_t MpGatherableQueuedAt=0, MpGatherableStableAt=0;
++static bool MpGatherableReleased=false, MpGatherableReleasing=false;
++static bool MpGatherableGateApplies() {
++    return Globals::AmServer && Globals::MatchmakerHuntId
++        && std::wstring(Globals::MatchmakerHuntId).starts_with(L"Adventure_Island")
++        && !MpExeRelativeFlagPresent(L"DISABLE_GATHERABLE_STREAM_GATE.flag");
++}
++static void MpGatherableExec(void* Context,void* Stack,void* Result) {
++    auto* Manager=static_cast<Ugatherable_manager_C*>(Context);
++    if (MpGatherableGateApplies() && !MpGatherableReleased && !MpGatherableReleasing
++        && Manager && IsRegisteredLiveObject(Manager) && Manager->SpawnedGatherables.Num()==0) {
++        if (!MpGatherablePending) {
++            MpGatherablePending=Manager;MpGatherableQueuedAt=GetTickCount64();MpGatherableStableAt=0;
++            MpLog("[GatherableStreamGate] deferred initial gatherable enumeration until island streaming settles");
++        }
++        if (MpGatherablePending==Manager) return;
++    }
++    if (MpGatherableOriginal) MpGatherableOriginal(Context,Stack,Result);
++}
++static void MpInstallGatherableGate(UObject* Object) {
++    if (!MpGatherableGateApplies() || MpGatherableOriginal || !Object || !IsRegisteredLiveObject(Object)
++        || Object->Class->GetName()!="gatherable_manager_C") return;
++    auto* Fn=Object->Class->GetFunction("gatherable_manager_C","SpawnGatherables");
++    if (!Fn || !IsRegisteredLiveObject(Fn)
++        || reinterpret_cast<uintptr_t>(Fn->ExecFunction)!=Globals::BaseAddress+0x2861C20) return;
++    MpGatherableOriginal=Fn->ExecFunction;MpGatherableFunction=Fn;Fn->ExecFunction=MpGatherableExec;
++    MpLog("[GatherableStreamGate] initial SpawnGatherables gate installed");
++}
++static void MpTickGatherableStreamGate() {
++    if (!MpGatherablePending || MpGatherableReleasing || !MpGatherableGateApplies()) return;
++    auto* Manager=MpGatherablePending;
++    if (!IsRegisteredLiveObject(Manager)) {MpGatherablePending=nullptr;return;}
++    UWorld* World=UWorld::GetWorld();
++    if (!World || !IsRegisteredLiveObject(World) || World->GetName().find("adventure_")!=0) return;
++    const uint64_t Now=GetTickCount64();
++    bool Pending=false;
++    if (World->StreamingLevels.Num()<0 || World->StreamingLevels.Num()>256) return;
++    for (auto* Level:World->StreamingLevels) {
++        if (!Level || !IsRegisteredLiveObject(Level)) continue;
++        if (Level->IsStreamingStatePending() || (Level->ShouldBeLoaded() && !Level->IsLevelLoaded())) {Pending=true;break;}
++    }
++    if (Pending) MpGatherableStableAt=0;
++    else if (!MpGatherableStableAt) MpGatherableStableAt=Now;
++    const bool Timeout=Now-MpGatherableQueuedAt>=45000;
++    if (!Timeout && (!MpGatherableStableAt || Now-MpGatherableStableAt<2000)) return;
++    MpGatherablePending=nullptr;MpGatherableReleased=true;MpGatherableReleasing=true;
++    MpLog(std::string("[GatherableStreamGate] releasing initial enumeration world=")+World->GetName()
++        +" waitMs="+std::to_string(Now-MpGatherableQueuedAt)+" timeout="+std::to_string(Timeout));
++    Manager->ProcessEvent(MpGatherableFunction,nullptr);
++    MpGatherableReleasing=false;
++    MpLog("[GatherableStreamGate] enumerated nodes="+std::to_string(Manager->CachedGatherableSpawnNodes.Num())
++        +" spawned="+std::to_string(Manager->SpawnedGatherables.Num()));
++}
+diff --git a/ParadoxRuntime/HuntRewardAudit.inl b/ParadoxRuntime/HuntRewardAudit.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/HuntRewardAudit.inl
+@@ -0,0 +1,59 @@
++// Opt-in, bounded, read-only correlation of native grant receipts, display
++// notifications and the reward list queried for the hunt summary.
++static unsigned MpRewardAuditCount=0;
++static void (*MpOriginalLootCompleted)(void*,bool,const void*,const void*)=nullptr;
++static void (*MpOriginalLootNotify)(void*,const void*)=nullptr;
++static void (*MpOriginalLootQuery)(void*,void*)=nullptr;
++static std::string MpAuditGiveItems(const void* Array) {
++    if (!IsReadablePointer(Array,16)) return "unreadable";
++    const auto* Bytes=static_cast<const uint8_t*>(Array);
++    const auto* Data=*reinterpret_cast<const uint8_t* const*>(Bytes);
++    const int32_t Count=*reinterpret_cast<const int32_t*>(Bytes+8);
++    const int32_t Capacity=*reinterpret_cast<const int32_t*>(Bytes+12);
++    if (Count<0 || Count>256 || Capacity<Count || (Count && !IsReadablePointer(Data,static_cast<size_t>(Count)*0x50))) return "invalid-array";
++    std::string Out="[";
++    for (int I=0;I<Count && I<64;++I) {
++        const uint8_t* Item=Data+static_cast<size_t>(I)*0x50;
++        const auto Id=reinterpret_cast<const FName*>(Item)->GetRawString();
++        const auto Replaced=reinterpret_cast<const FName*>(Item+0x20)->GetRawString();
++        if (I) Out+=",";
++        Out+=Id+"x"+std::to_string(*reinterpret_cast<const int32_t*>(Item+8));
++        if (Replaced!="None") Out+="(replaced="+Replaced+")";
++    }
++    if (Count>64) Out+=",...";
++    return Out+"]";
++}
++static void MpLootCompletedAudit(void* Component,bool Success,const void* Items,const void* Source) {
++    if (MpRewardAuditCount++<160) {
++        const uintptr_t Controller=SafeReadPtr(reinterpret_cast<uintptr_t>(Component),0xA0);
++        MpLog("[HuntRewardAudit] receipt controller="+MpPtr(reinterpret_cast<void*>(Controller))
++            +" success="+std::to_string(Success)+" source="+CoreCapFString(const_cast<void*>(Source))
++            +" items="+MpAuditGiveItems(Items));
++    }
++    MpOriginalLootCompleted(Component,Success,Items,Source);
++}
++static void MpLootNotifyAudit(void* Player,const void* Items) {
++    if (MpRewardAuditCount++<160) MpLog("[HuntRewardAudit] notification controller="+MpPtr(Player)+" items="+MpAuditGiveItems(Items));
++    MpOriginalLootNotify(Player,Items);
++}
++static void MpLootQueryAudit(void* Player,void* Items) {
++    MpOriginalLootQuery(Player,Items);
++    if (MpRewardAuditCount++<160) MpLog("[HuntRewardAudit] summary-query controller="+MpPtr(Player)+" items="+MpAuditGiveItems(Items));
++}
++static void MpInstallHuntRewardAudit() {
++    if (!Globals::AmServer || !MpExeRelativeFlagPresent(L"HUNT_REWARD_AUDIT.flag")) return;
++    // Exact RVAs verified from the loaded UFunctions and their native exec thunks.
++    struct Site {uintptr_t Rva;void* Hook;void** Original;uint8_t Expected[16];};
++    Site Sites[]={
++        {0x1A47830,reinterpret_cast<void*>(MpLootCompletedAudit),reinterpret_cast<void**>(&MpOriginalLootCompleted),{0x40,0x55,0x53,0x56,0x57,0x41,0x55,0x41,0x56,0x48,0x8d,0xac,0x24,0x68,0xfb,0xff}},
++        {0x1A6B450,reinterpret_cast<void*>(MpLootNotifyAudit),reinterpret_cast<void**>(&MpOriginalLootNotify),{0x48,0x85,0xc9,0xf,0x84,0x3e,0xe,0x0,0x0,0x55,0x53,0x57,0x48,0x8d,0xac,0x24}},
++        {0x1A792F0,reinterpret_cast<void*>(MpLootQueryAudit),reinterpret_cast<void**>(&MpOriginalLootQuery),{0x40,0x53,0x55,0x56,0x57,0x48,0x81,0xec,0xd8,0x1,0x0,0x0,0x48,0x8b,0x5,0x95}}
++    };
++    for (const auto& S:Sites) {
++        auto* Target=reinterpret_cast<void*>(Globals::BaseAddress+S.Rva);
++        if (memcmp(Target,S.Expected,sizeof(S.Expected))) {MpLog("[HuntRewardAudit] fingerprint mismatch");continue;}
++        auto C=MH_CreateHook(Target,S.Hook,S.Original);
++        auto E=C==MH_OK?MH_EnableHook(Target):C;
++        MpLog("[HuntRewardAudit] installed rva="+MpHex(S.Rva)+" ready="+std::to_string(E==MH_OK));
++    }
++}
+diff --git a/ParadoxRuntime/ReforgeSync.inl b/ParadoxRuntime/ReforgeSync.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/ReforgeSync.inl
+@@ -0,0 +1,31 @@
++// Native UPlayerExperienceComponent::ServerPrestigeExperience reset completion,
++// verified in build647472. Backend already carries banked XP in the reset's
++// returned total. Keep the native completion/animation, suppress its second XP grant.
++static bool MpNativeReforgeSyncReady=false;
++static void (*MpOriginalReforgeResetComplete)(void*,bool)=nullptr;
++static void MpReforgeResetCompleteHook(void* Capture,bool Success) {
++    if(Globals::AmServer && Success) {
++        if(!IsReadablePointer(Capture,0x28)) {MpOriginalReforgeResetComplete(Capture,false);return;}
++        auto* Banked=reinterpret_cast<int32*>(reinterpret_cast<uint8*>(Capture)+0x20);
++        const int32 AlreadyCarried=*Banked;
++        if(AlreadyCarried<0 || AlreadyCarried>27775) {
++            MpLog("[ReforgeSync] unexpected banked amount; completion refused");
++            MpOriginalReforgeResetComplete(Capture,false);return;
++        }
++        *Banked=0;
++        MpLog("[ReforgeSync] native completion; already-carried bankedXP="+std::to_string(AlreadyCarried));
++    }
++    MpOriginalReforgeResetComplete(Capture,Success);
++}
++static void MpInstallReforgeCompletionFix() {
++    if(!Globals::AmServer || !MpExeRelativeFlagPresent(L"NATIVE_REFORGE_SYNC.flag"))return;
++    auto* Target=reinterpret_cast<void*>(Globals::BaseAddress+0x1A43230);
++    static const uint8 Expected[]={0x40,0x55,0x53,0x57,0x48,0x8d,0xac,0x24,0x00,0xff,0xff,0xff,0x48,0x81,0xec,0x00,0x02,0x00};
++    if(!IsReadablePointer(Target,sizeof(Expected)) || std::memcmp(Target,Expected,sizeof(Expected))!=0) {
++        MpLog("[ReforgeSync] native fingerprint mismatch; capability stays disabled");return;
++    }
++    const auto Created=MH_CreateHook(Target,MpReforgeResetCompleteHook,reinterpret_cast<void**>(&MpOriginalReforgeResetComplete));
++    const auto Enabled=Created==MH_OK?MH_EnableHook(Target):Created;
++    MpNativeReforgeSyncReady=Enabled==MH_OK;
++    MpLog("[ReforgeSync] verified native completion hook ready="+std::to_string(MpNativeReforgeSyncReady));
++}
+diff --git a/ParadoxRuntime/StormclawRecovery.inl b/ParadoxRuntime/StormclawRecovery.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/StormclawRecovery.inl
+@@ -0,0 +1,80 @@
++// 2026-10-30: reflected Stormclaw balls lose actor AND movement ticks one
++// frame after reflection on the dedicated server. Keep only active reflected
++// balls updating; let native movement, hit filtering, damage and stagger run.
++struct MpStormclawRecoveryEntry {
++    Ashockmane_balllightning_proj_C* Ball=nullptr;
++    int32 Index=-1;
++    ULONGLONG Started=0;
++    int Repairs=0;
++};
++static MpStormclawRecoveryEntry MpStormclawRecovery[32]{};
++static bool MpStormclawRecoveryEnabled() {
++    static const bool Disabled=MpExeRelativeFlagPresent(L"DISABLE_STORMCLAW_REFLECT_FIX.flag");
++    return Globals::AmServer && !Disabled;
++}
++static bool MpStormclawCanRecover(Ashockmane_balllightning_proj_C* Ball) {
++    if(!Ball || !IsRegisteredLiveObject(Ball) || !Ball->IsA(Ashockmane_balllightning_proj_C::StaticClass())
++        || !Ball->WasReflected || Ball->IsActorBeingDestroyed() || !Ball->GetActorEnableCollision()
++        || !(Ball->GetLifeSpan()>0.f)) return false;
++    auto* Movement=Ball->ProjectileMovement;
++    if(!Movement || !IsRegisteredLiveObject(Movement) || !Movement->UpdatedComponent
++        || !IsRegisteredLiveObject(Movement->UpdatedComponent)) return false;
++    auto* Pool=Ball->GetPoolableComponent();
++    if(Pool && IsRegisteredLiveObject(Pool) && Pool->ActorPool && !Pool->bAllocatedFromPool) return false;
++    return true;
++}
++static void MpForgetStormclawRecovery(UObject* Object) {
++    for(auto& Entry:MpStormclawRecovery) if(Entry.Ball==Object) Entry.Ball=nullptr;
++}
++static void MpTrackStormclawRecovery(Ashockmane_balllightning_proj_C* Ball) {
++    if(!MpStormclawRecoveryEnabled() || !MpStormclawCanRecover(Ball))return;
++    for(auto& Entry:MpStormclawRecovery) if(Entry.Ball==Ball) return;
++    for(auto& Entry:MpStormclawRecovery) if(!Entry.Ball) {
++        Entry={Ball,Ball->Index,GetTickCount64(),0};
++        MpLog("[StormclawRecovery] tracking reflected ball="+MpPtr(Ball));return;
++    }
++}
++static void MpTickStormclawRecoveryInner() {
++    if(!MpStormclawRecoveryEnabled())return;
++    const auto Now=GetTickCount64();
++    for(auto& Entry:MpStormclawRecovery) {
++        auto* Ball=Entry.Ball;if(!Ball)continue;
++        if(!IsRegisteredLiveObject(Ball) || Ball->Index!=Entry.Index || Now-Entry.Started>30000
++            || !MpStormclawCanRecover(Ball)) {Entry.Ball=nullptr;continue;}
++        auto* Movement=Ball->ProjectileMovement;
++        // The instigator-driven significance update can disable both ticks again
++        // after BeginPlay. A reflected projectile must still simulate on server.
++        const auto SigAddress=SafeReadPtr(reinterpret_cast<uintptr_t>(Ball),0x3D8);
++        auto* Sig=reinterpret_cast<UInstigatorDrivenSigComp*>(SigAddress);
++        if(Sig && IsRegisteredLiveObject(Sig) && Sig->IsA(UInstigatorDrivenSigComp::StaticClass()))
++            Sig->SetComponentTickEnabled(false);
++        const bool ActorTick=Ball->IsActorTickEnabled(),MovementTick=Movement->IsComponentTickEnabled();
++        if(!ActorTick) {Ball->SetActorTickInterval(0.f);Ball->SetActorTickEnabled(true);}
++        if(!MovementTick) {Movement->SetComponentTickInterval(0.f);Movement->SetComponentTickEnabled(true);}
++        if((!ActorTick || !MovementTick) && Entry.Repairs++<4)
++            MpLog("[StormclawRecovery] resumed native simulation ball="+MpPtr(Ball)
++                +" actorWasTicking="+std::to_string(ActorTick)+" movementWasTicking="+std::to_string(MovementTick));
++    }
++}
++static void MpTickStormclawRecovery() {
++    __try {MpTickStormclawRecoveryInner();} __except(EXCEPTION_EXECUTE_HANDLER) {
++        for(auto& Entry:MpStormclawRecovery)Entry.Ball=nullptr;
++    }
++}
++struct MpStormclawRecoveryScope {
++    Ashockmane_balllightning_proj_C* Ball=nullptr;
++    bool Before=false;
++    MpStormclawRecoveryScope(UObject* Object,const std::string& Name) {
++        if(!MpStormclawRecoveryEnabled() || !Object)return;
++        const bool Reflect=Name.ends_with(".ReceiveArchonPointDamage");
++        const bool End=Name.ends_with(".EndPlayFromPool") || Name.ends_with(".ProjectileExploded")
++            || Name.ends_with(".Explode On Hit") || Name.ends_with(".OnProjectileStopped") || Name.ends_with(".ReceiveEndPlay");
++        if(!Reflect && !End)return;
++        if(!IsRegisteredLiveObject(Object) || !Object->IsA(Ashockmane_balllightning_proj_C::StaticClass()))return;
++        if(End){MpForgetStormclawRecovery(Object);return;}
++        Ball=static_cast<Ashockmane_balllightning_proj_C*>(Object);Before=Ball->WasReflected;
++    }
++    ~MpStormclawRecoveryScope() {
++        if(Ball && !Before && IsRegisteredLiveObject(Ball) && Ball->WasReflected)MpTrackStormclawRecovery(Ball);
++    }
++};
+diff --git a/ParadoxRuntime/StormclawTrace.inl b/ParadoxRuntime/StormclawTrace.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/StormclawTrace.inl
+@@ -0,0 +1,99 @@
++// Read-only trajectory sampling for up to four reflected balls per world.
++struct MpStormclawTrackedBall { Ashockmane_balllightning_proj_C* Ball=nullptr; int32 Index=-1; ULONGLONG Start=0,Last=0; };
++static MpStormclawTrackedBall MpStormclawTracked[4]{};
++static int MpStormclawTrackedTotal=0;
++static std::string MpStormclawPhysicalState(Ashockmane_balllightning_proj_C* Ball) {
++    auto Vec=[](const FVector& V){return std::to_string(V.X)+","+std::to_string(V.Y)+","+std::to_string(V.Z);};
++    std::string S=" tick="+std::to_string(Ball->IsActorTickEnabled())+" actorCollision="+std::to_string(Ball->GetActorEnableCollision());
++    auto Position=Ball->K2_GetActorLocation();S+=" position="+Vec(Position)+" previousSweep="+Vec(Ball->PreviousFramePosition);
++    if(Ball->HomingTarget && IsRegisteredLiveObject(Ball->HomingTarget)) S+=" targetPosition="+Vec(Ball->HomingTarget->K2_GetActorLocation());
++    auto* Movement=Ball->ProjectileMovement;
++    if(Movement && IsRegisteredLiveObject(Movement)) {
++        S+=" movementTick="+std::to_string(Movement->IsComponentTickEnabled())+" velocity="+Vec(Movement->Velocity)
++            +" updated="+MpPtr(Movement->UpdatedComponent);
++    }
++    auto* Volume=Ball->Damage_Volume;
++    if(Volume && IsRegisteredLiveObject(Volume)) S+=" volumeCollision="+std::to_string(static_cast<int>(Volume->GetCollisionEnabled()))
++        +" volumeOverlap="+std::to_string((*reinterpret_cast<uint8*>(reinterpret_cast<uintptr_t>(Volume)+0x211)&1)!=0)
++        +" volumePosition="+Vec(Volume->K2_GetComponentLocation());
++    const uintptr_t Sig=SafeReadPtr(reinterpret_cast<uintptr_t>(Ball),0x3D8);
++    if(Sig && IsRegisteredLiveObject(reinterpret_cast<UObject*>(Sig))) S+=" significanceDisabled="+std::to_string(SafeReadU8At(Sig,0xB0));
++    S+=" owningPawnNative="+MpPtr(Ball->OwningPawn_Native)+" owningPawnBP="+MpPtr(Ball->OwningPawn);
++    return S;
++}
++static void MpTickStormclawTraceInner() {
++    if(!Globals::AmServer || !MpStormclawTrackedTotal)return;
++    const auto Now=GetTickCount64();static int Samples=0;
++    for(auto& Entry:MpStormclawTracked) {
++        auto* Ball=Entry.Ball;if(!Ball)continue;
++        if(!IsRegisteredLiveObject(Ball) || Ball->Index!=Entry.Index || !Ball->IsA(Ashockmane_balllightning_proj_C::StaticClass()) || !Ball->WasReflected || Now-Entry.Start>10000 || Samples>=180) {Entry.Ball=nullptr;continue;}
++        if(Now-Entry.Last<250)continue;Entry.Last=Now;++Samples;
++        MpLog("[StormclawTrajectory] ball="+MpPtr(Ball)+" ageMs="+std::to_string(Now-Entry.Start)+MpStormclawPhysicalState(Ball));
++    }
++}
++static void MpTickStormclawTrace() {
++    __try {MpTickStormclawTraceInner();} __except(EXCEPTION_EXECUTE_HANDLER) {for(auto& Entry:MpStormclawTracked)Entry.Ball=nullptr;}
++}
++// Bounded, read-only diagnostics for the reflected Stormclaw ball. Enabled only
++// by STORMCLAW_REFLECT_TRACE.flag; no damage/collision/filter result is changed.
++struct MpStormclawTraceScope {
++    Ashockmane_balllightning_proj_C* Ball = nullptr;
++    void* Parms = nullptr;
++    std::string Event;
++    bool Before = false;
++    MpStormclawTraceScope(UObject* Object,const std::string& Name,void* Parameters) {
++        static const bool Enabled = MpExeRelativeFlagPresent(L"STORMCLAW_REFLECT_TRACE.flag");
++        if (!Enabled || !Globals::AmServer || !Object) return;
++        if (Name.find("shockmane_balllightning_proj") == std::string::npos) return;
++        if (!(Name.ends_with(".ReceiveArchonPointDamage") || Name.ends_with(".AuthOnReflected")
++            || Name.ends_with(".CanHitThisTarget") || Name.ends_with(".AuthOnProjectileDamageOverlap")
++            || Name.ends_with(".AuthSweepHitEvent") || Name.ends_with(".Explode On Hit"))) return;
++        if (!IsRegisteredLiveObject(Object) || !Object->IsA(Ashockmane_balllightning_proj_C::StaticClass())) return;
++        Ball = static_cast<Ashockmane_balllightning_proj_C*>(Object);
++        Before = Ball->WasReflected;
++        if (!Before && !Name.ends_with(".ReceiveArchonPointDamage") && !Name.ends_with(".AuthOnReflected")) { Ball=nullptr;return; }
++        Event=Name;Parms=Parameters;
++    }
++    ~MpStormclawTraceScope() {
++        if (!Ball || !IsRegisteredLiveObject(Ball)) return;
++        static int Logged = 0;
++        if (Logged++ >= 100) return;
++        auto SafeName=[](UObject* Value){return Value && IsRegisteredLiveObject(Value)?Value->GetName():std::string("null");};
++        auto& Ignored=*reinterpret_cast<TMap<AActor*,float>*>(reinterpret_cast<uint8*>(Ball)+0x400);
++        std::string Entries;
++        if (Ignored.Num()>=0 && Ignored.Num()<32) for(auto& Pair:Ignored) Entries+=SafeName(Pair.Key())+":"+std::to_string(Pair.Value())+",";
++        int Result=-1;AActor* Target=nullptr;
++        if (Parms && Event.ends_with(".CanHitThisTarget") && IsReadablePointer(Parms,16)) {
++            Target=*reinterpret_cast<AActor**>(Parms);Result=*(reinterpret_cast<uint8*>(Parms)+8);
++        }
++        std::string Detail;
++        if(Event.ends_with(".ReceiveArchonPointDamage") && !Before && Ball->WasReflected) {
++            Detail+=MpStormclawPhysicalState(Ball);
++            if(MpStormclawTrackedTotal<4) for(auto& Entry:MpStormclawTracked) if(!Entry.Ball) {Entry={Ball,Ball->Index,GetTickCount64(),0};++MpStormclawTrackedTotal;break;}
++        }
++        if (Parms && Event.ends_with(".AuthOnProjectileDamageOverlap") && IsReadablePointer(Parms,sizeof(Params::shockmane_balllightning_proj_C_AuthOnProjectileDamageOverlap))) {
++            auto* Hit=static_cast<Params::shockmane_balllightning_proj_C_AuthOnProjectileDamageOverlap*>(Parms);
++            Target=Hit->OtherActor;
++            Detail+=" component="+SafeName(Hit->OtherComponent);
++            if (Hit->OtherComponent && IsRegisteredLiveObject(Hit->OtherComponent)) Detail+=" componentOuter="+SafeName(Hit->OtherComponent->Outer);
++            auto* Frame=*reinterpret_cast<Params::shockmane_balllightning_proj_C_ExecuteUbergraph_shockmane_balllightning_proj**>(reinterpret_cast<uint8*>(Ball)+0x6A0);
++            if(Frame && IsReadablePointer(Frame,sizeof(*Frame))) {
++                Detail+=" frameTarget="+SafeName(Frame->K2Node_Event_OtherActor)
++                    +" frameComponent="+SafeName(Frame->K2Node_Event_OtherComponent)
++                    +" componentCast="+std::to_string(Frame->K2Node_DynamicCast_bSuccess)
++                    +" interface="+std::to_string(Frame->CallFunc_DoesImplementInterface_ReturnValue)
++                    +" interface1="+std::to_string(Frame->CallFunc_DoesImplementInterface_ReturnValue_1)
++                    +" thresholdPass="+std::to_string(Frame->CallFunc_GreaterEqual_FloatFloat_ReturnValue)
++                    +" requirement="+std::to_string(Frame->CallFunc_BehemothStateMeetsRequirements_PassesRequirements)
++                    +" requirement1="+std::to_string(Frame->CallFunc_BehemothStateMeetsRequirements_PassesRequirements_1)
++                    +" controller="+SafeName(Frame->CallFunc_GetController_ReturnValue_1)
++                    +" authority="+std::to_string(Frame->CallFunc_HasAuthority_ReturnValue);
++            }
++        }
++        MpLog("[StormclawReflect] event="+Event+" ball="+MpPtr(Ball)+" reflected="+std::to_string(Before)+"->"+std::to_string(Ball->WasReflected)
++            +" target="+SafeName(Target)+" result="+std::to_string(Result)+" instigator="+SafeName(Ball->Instigator)
++            +" source="+SafeName(Ball->SpawnedFromActor)+" homing="+SafeName(Ball->HomingTarget)
++            +" ownerHit="+std::to_string(Ball->CanHitOwnerObjects)+" nativeSweep="+std::to_string(Ball->bProjectileReworkIsOn)
++            +" reflectDamage="+std::to_string(Ball->ReflectDamage)+" ignored=["+Entries+"]"+Detail);
++    }
++};
+diff --git a/ParadoxRuntime/ThraxTrailTrace.inl b/ParadoxRuntime/ThraxTrailTrace.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/ThraxTrailTrace.inl
+@@ -0,0 +1,81 @@
++static FProperty* MpThraxFindArrayProperty(UStruct* Type,const char* Name) {
++    for (int Depth=0;Type && Depth<16;++Depth,Type=Type->SuperStruct) {
++        if (!IsReadablePointer(Type,sizeof(UStruct))) break;
++        FField* Field=Type->ChildProperties;
++        for (int I=0;Field && I<512;++I,Field=Field->Next) {
++            if (!IsReadablePointer(Field,sizeof(FProperty))) break;
++            if (Field->Name.GetRawString()==Name) return reinterpret_cast<FProperty*>(Field);
++        }
++    }
++    return nullptr;
++}
++static void MpInstallThraxExecTrace(UClass* Class);
++// Bounded read-only comparison of Thrax trail construction on client/server.
++static void MpThraxTrailSnapshotInner(UObject* Object,std::string* Out) {
++    if (!Object || !IsRegisteredLiveObject(Object)) return;
++    *Out=" object="+Object->GetName();
++    for (const char* Name:{"SplinePoints","DecalPointsDistances","SpawnedDecals","SpawnedParticles","UmbralZones"}) {
++        FProperty* Field=MpThraxFindArrayProperty(Object->Class,Name);
++        if (!Field || Field->Offset<0x28 || Field->Offset>0x10000 || !IsReadablePointer(Field,sizeof(FProperty))) continue;
++        if (!IsReadablePointer(Field->ClassPrivate,sizeof(FFieldClass)) || Field->ClassPrivate->Name.ToString()!="ArrayProperty") continue;
++        const auto* Raw=reinterpret_cast<const uint8_t*>(Object)+Field->Offset;
++        if (!IsReadablePointer(Raw,16)) continue;
++        const int32_t Num=*reinterpret_cast<const int32_t*>(Raw+8);
++        const int32_t Max=*reinterpret_cast<const int32_t*>(Raw+12);
++        *Out+=" "+std::string(Name)+"="+std::to_string(Num)+"/"+std::to_string(Max)
++            +"[net="+std::to_string((Field->PropertyFlags & 0x20)!=0)+"]";
++        if ((std::string(Name)=="SpawnedDecals" || std::string(Name)=="SpawnedParticles") && Num>0 && Num<=256 && Max>=Num) {
++            auto* Data=*reinterpret_cast<UObject* const* const*>(Raw);
++            if (!IsReadablePointer(Data,static_cast<size_t>(Num)*8)) continue;
++            for (int I=0;I<Num && I<2;++I) {
++                auto* Obj=Data[I];
++                if (!Obj || !IsRegisteredLiveObject(Obj) || !Obj->IsA(USceneComponent::StaticClass())) continue;
++                auto* C=static_cast<USceneComponent*>(Obj);
++                *Out+=" component="+C->GetName()+" visible="+std::to_string(C->bVisible)
++                    +" hidden="+std::to_string(C->bHiddenInGame)+" active="+std::to_string(C->IsActive());
++            }
++        }
++    }
++}
++static void MpThraxTrailSnapshot(UObject* Object,std::string* Out) {
++    __try {MpThraxTrailSnapshotInner(Object,Out);} __except(EXCEPTION_EXECUTE_HANDLER) {}
++}
++struct MpThraxTrailTraceScope {
++    UObject* Actor=nullptr;std::string Event;
++    MpThraxTrailTraceScope(UObject* Object,const std::string& Name) {
++        if (Name.find("randall_portaltrain_spline_bp.")==std::string::npos) return;
++        if (!Name.ends_with(".Multidraw") && !Name.ends_with(".InitializeActorMovement")
++            && !Name.ends_with(".ReceiveBeginPlay") && !Name.ends_with(".SetupFadeOut")) return;
++        if (!Object || !IsRegisteredLiveObject(Object) || Object->Class->GetName()!="randall_portaltrain_spline_bp_C") return;
++        MpInstallThraxExecTrace(Object->Class);
++        static unsigned Count=0;if (Count++>=72) return;
++        Actor=Object;Event=Name;
++        std::string State;MpThraxTrailSnapshot(Actor,&State);
++        MpLog(std::string("[ThraxTrail] ")+(Globals::AmServer?"server":"client")+" before "+Event+State);
++    }
++    ~MpThraxTrailTraceScope() {
++        if (!Actor) return;
++        std::string State;MpThraxTrailSnapshot(Actor,&State);
++        MpLog(std::string("[ThraxTrail] ")+(Globals::AmServer?"server":"client")+" after "+Event+State);
++    }
++};
++
++struct MpThraxExecSlot {const char* Name;UFunction* Function=nullptr;UFunction::FNativeFuncPtr Original=nullptr;};
++static MpThraxExecSlot MpThraxExecSlots[]={{"Multidraw"},{"InitializeActorMovement"},{"SetupFadeOut"},{"ReceiveBeginPlay"}};
++template<int I> static void MpThraxExec(void* Context,void* Stack,void* Result) {
++    auto& Slot=MpThraxExecSlots[I];
++    std::string Name="Function randall_portaltrain_spline_bp.randall_portaltrain_spline_bp_C."+std::string(Slot.Name);
++    MpThraxTrailTraceScope Scope(static_cast<UObject*>(Context),Name);
++    Slot.Original(Context,Stack,Result);
++}
++static void MpInstallThraxExecTrace(UClass* Class) {
++    UFunction::FNativeFuncPtr Wrappers[]={MpThraxExec<0>,MpThraxExec<1>,MpThraxExec<2>,MpThraxExec<3>};
++    for (int I=0;I<4;++I) {
++        auto& Slot=MpThraxExecSlots[I];
++        auto* Fn=Class->GetFunction("randall_portaltrain_spline_bp_C",Slot.Name);
++        if (!Fn || !IsRegisteredLiveObject(Fn) || !IsReadablePointer(Fn,sizeof(UFunction))) continue;
++        if (Fn->ExecFunction==Wrappers[I]) continue;
++        if (reinterpret_cast<uintptr_t>(Fn->ExecFunction)!=Globals::BaseAddress+0x2861C20) continue;
++        Slot.Function=Fn;Slot.Original=Fn->ExecFunction;Fn->ExecFunction=Wrappers[I];
++    }
++}
+diff --git a/ParadoxRuntime/TrialsFirstHit.inl b/ParadoxRuntime/TrialsFirstHit.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/TrialsFirstHit.inl
+@@ -0,0 +1,127 @@
++// Trials first-hit recovery. The shipped IslandArena Blueprint listens only to
++// OnTakeAbilityDamage; hits reported through the monster-part damage event can
++// leave ArenaReadyToStart unchanged. Use the existing native AuthStartArena,
++// restricted to this game mode and a positive authoritative damage callback.
++static bool MpTrialsShouldStart(int State,float Damage,bool ValidInstigator) {
++    return State==2 && ValidInstigator && std::isfinite(Damage) && Damage>0.0f;
++}
++static bool MpTrialsIsAbilityDamageEvent(const std::string& Name) {
++    return Name.ends_with(".ReceivedArchonAbilityDamage") || Name.ends_with(".ReceivedArchonAbilityDamageOnMonsterPart");
++}
++#ifndef MP_TRIALS_POLICY_TEST
++static bool MpTrialsRosterHooksReady=false;
++#ifndef MP_TRIALS_ROSTER_TEST
++static void MpTrialsObserveDamage(UObject* Object,const std::string& FunctionName,void* Parms) {
++    if (!Globals::AmServer || !Object || !Parms) return;
++    const bool Ability=MpTrialsIsAbilityDamageEvent(FunctionName);
++    const bool Health=FunctionName.find("ArchonBehemoth.InternalOnBehemothDamaged")!=std::string::npos;
++    if (!Ability && !Health) return;
++    static const bool Disabled=MpExeRelativeFlagPresent(L"DISABLE_TRIALS_FIRST_HIT_FIX.flag");
++    if (Disabled || !IsRegisteredLiveObject(Object) || !Object->IsA(AArchonBehemoth::StaticClass())) return;
++    static thread_local bool Busy=false;
++    if (Busy) return;
++    struct Guard {bool& Flag;Guard(bool& F):Flag(F){Flag=true;}~Guard(){Flag=false;}} GuardScope(Busy);
++    float Damage=0;UObject* Instigator=nullptr;
++    if (Ability && IsReadablePointer(Parms,sizeof(Params::ArchonBehemoth_ReceivedArchonAbilityDamage))) {
++        auto* P=static_cast<Params::ArchonBehemoth_ReceivedArchonAbilityDamage*>(Parms);
++        Damage=P->DamageReceived;Instigator=P->InstigatedBy;
++    } else if (Health && IsReadablePointer(Parms,sizeof(Params::ArchonBehemoth_InternalOnBehemothDamaged))) {
++        auto* P=static_cast<Params::ArchonBehemoth_InternalOnBehemothDamaged*>(Parms);
++        Damage=P->DamageAmount;Instigator=P->DamageInstigator;
++    }
++    if (Globals::MatchmakerHuntId && std::wstring(Globals::MatchmakerHuntId).starts_with(L"Arena_MatchmakerHunt_")) {
++        static unsigned Seen=0;
++        if (Seen++<12) MpLog("[TrialsFirstHit] observed event="+FunctionName+" damage="+std::to_string(Damage)
++            +" instigatorValid="+std::to_string(Instigator && IsRegisteredLiveObject(Instigator))+" rosterHooks="+std::to_string(MpTrialsRosterHooksReady));
++    }
++    if (!MpTrialsShouldStart(2,Damage,Instigator && IsRegisteredLiveObject(Instigator))) return;
++    auto* Mode=UGameplayStatics::GetGameMode(Object);
++    if (!Mode || !IsRegisteredLiveObject(Mode) || Mode->Class->GetName()!="BPGM_ArchonIslandArena_C") return;
++    auto* Base=Mode->GetComponentByClass(UArenaGameModeComponent::StaticClass());
++    if (!Base || !IsRegisteredLiveObject(Base) || !IsReadablePointer(Base,sizeof(UArenaGameModeComponent))) return;
++    auto* Arena=static_cast<UArenaGameModeComponent*>(Base);
++    auto* State=Arena->ArenaGameStateComponent;
++    if (!State || !IsRegisteredLiveObject(State) || !IsReadablePointer(State,sizeof(UArenaGameStateComponent))) return;
++    const auto Before=State->GetCurrentArenaState();
++    if (!MpTrialsShouldStart(static_cast<int>(Before),Damage,true)) return;
++    Arena->AuthStartArena();
++    MpLog("[TrialsFirstHit] native start recovery before="+std::to_string(static_cast<int>(Before))
++        +" after="+std::to_string(static_cast<int>(State->GetCurrentArenaState()))
++        +" elapsed="+std::to_string(State->GetElapsedArenaTime())+" event="+FunctionName);
++}
++
++#endif
++
++// AuthStartArena assembles the native leaderboard roster by iterating every
++// UWorld controller. WindowsClient headless worlds also contain local phantoms
++// without a weapon/loadout; native code returns early on such an entry. Supply
++// a private iterator view for this call only. Never mutate UWorld's array.
++struct MpTrialsWeakArray {FWeakObjectPtr* Data;int32_t Num;int32_t Max;};
++struct MpTrialsIterator {MpTrialsWeakArray* Array;int32_t Index;int32_t Pad;};
++struct MpTrialsRosterScope {
++    MpTrialsRosterScope* Previous=nullptr;void* World=nullptr;
++    FWeakObjectPtr Entries[4]{};MpTrialsWeakArray Array{Entries,0,4};bool Built=false;
++};
++static thread_local MpTrialsRosterScope* MpTrialsRoster=nullptr;
++static void* (*MpOriginalTrialsIterator)(void*,void*)=nullptr;
++static void (*MpOriginalTrialsStart)(void*)=nullptr;
++static void* MpTrialsControllerIterator(void* World,void* Out) {
++    void* Result=MpOriginalTrialsIterator(World,Out);
++    auto* Scope=MpTrialsRoster;
++    if (!Scope || !IsReadablePointer(Out,sizeof(MpTrialsIterator))) return Result;
++    if (Scope->World && Scope->World!=World) return Result;
++    Scope->World=World;
++    auto* Iterator=static_cast<MpTrialsIterator*>(Out);
++    if (!Scope->Built) {
++        Scope->Built=true;
++        const auto* List=Iterator->Array;
++        if (!IsReadablePointer(List,16) || List->Num<0 || List->Num>64 || List->Max<List->Num
++            || (List->Num && !IsReadablePointer(List->Data,static_cast<size_t>(List->Num)*8))) return Result;
++        for (int I=0;I<List->Num;++I) {
++            auto* Obj=List->Data[I].Get();
++            if (!Obj || !IsRegisteredLiveObject(Obj) || !Obj->IsA(APlayerController::StaticClass())) continue;
++            auto* Player=static_cast<APlayerController*>(Obj)->Player;
++            if (!Player || !IsRegisteredLiveObject(Player) || !Player->IsA(UNetConnection::StaticClass())) continue;
++            if (Scope->Array.Num==4) {Scope->Array.Num=0;return Result;}
++            Scope->Entries[Scope->Array.Num++]=List->Data[I];
++        }
++    }
++    if (Scope->Array.Num>0) {Iterator->Array=&Scope->Array;Iterator->Index=0;}
++    return Result;
++}
++#ifndef MP_TRIALS_ROSTER_TEST
++static void MpTrialsStartWithRoster(void* Component) {
++    auto* Mode=reinterpret_cast<UObject*>(SafeReadPtr(reinterpret_cast<uintptr_t>(Component),0xA0));
++    if (!Mode || !IsRegisteredLiveObject(Mode) || Mode->Class->GetName()!="BPGM_ArchonIslandArena_C") {
++        MpOriginalTrialsStart(Component);return;
++    }
++    MpTrialsRosterScope Scope;Scope.Previous=MpTrialsRoster;
++    struct Restore {MpTrialsRosterScope* Old;~Restore(){MpTrialsRoster=Old;}} RestoreScope{MpTrialsRoster};
++    MpTrialsRoster=&Scope;
++    MpOriginalTrialsStart(Component);
++    auto* State=reinterpret_cast<UArenaGameStateComponent*>(SafeReadPtr(reinterpret_cast<uintptr_t>(Component),0xB0));
++    MpLog("[TrialsStartRoster] connected="+std::to_string(Scope.Array.Num)
++        +" nativeMembers="+std::to_string(*reinterpret_cast<int32_t*>(static_cast<uint8_t*>(Component)+0xC8))
++        +" state="+std::to_string(State && IsRegisteredLiveObject(State)?static_cast<int>(State->GetCurrentArenaState()):-1));
++}
++static void MpInstallTrialsStartRoster() {
++    if (!Globals::AmServer || MpExeRelativeFlagPresent(L"DISABLE_TRIALS_FIRST_HIT_FIX.flag")) return;
++    struct Site {uintptr_t Rva;void* Hook;void** Original;uint8_t Bytes[16];};
++    Site Sites[]={
++        {0x1A9F530,reinterpret_cast<void*>(MpTrialsStartWithRoster),reinterpret_cast<void**>(&MpOriginalTrialsStart),{0x4c,0x8b,0xdc,0x55,0x41,0x57,0x49,0x8d,0xab,0xe8,0xfe,0xff,0xff,0x48,0x81,0xec}},
++        {0x42C7E60,reinterpret_cast<void*>(MpTrialsControllerIterator),reinterpret_cast<void**>(&MpOriginalTrialsIterator),{0x48,0x8d,0x81,0xc0,0x1,0x0,0x0,0xc7,0x42,0x8,0x0,0x0,0x0,0x0,0x48,0x89}}
++    };
++    for (const auto& S:Sites) if (memcmp(reinterpret_cast<void*>(Globals::BaseAddress+S.Rva),S.Bytes,16)
++        || (S.Rva!=0x42C7E60 && MpFunctionStartForAddress(Globals::BaseAddress+S.Rva)!=Globals::BaseAddress+S.Rva)) return;
++    for (const auto& S:Sites) {
++        auto Status=MH_CreateHook(reinterpret_cast<void*>(Globals::BaseAddress+S.Rva),S.Hook,S.Original);
++        if (Status!=MH_OK) {for(const auto& X:Sites) MH_RemoveHook(reinterpret_cast<void*>(Globals::BaseAddress+X.Rva));return;}
++    }
++    for (const auto& S:Sites) if (MH_EnableHook(reinterpret_cast<void*>(Globals::BaseAddress+S.Rva))!=MH_OK) {
++        for(const auto& X:Sites) {MH_DisableHook(reinterpret_cast<void*>(Globals::BaseAddress+X.Rva));MH_RemoveHook(reinterpret_cast<void*>(Globals::BaseAddress+X.Rva));}return;
++    }
++    MpTrialsRosterHooksReady=true;
++}
++
++#endif
++#endif
+diff --git a/ParadoxRuntime/TrialsRotation.inl b/ParadoxRuntime/TrialsRotation.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/TrialsRotation.inl
+@@ -0,0 +1,15 @@
++// The Director's trialsRotation.ts uses these same deployment-policy values.
++// Sunday 2026-10-25 23:59 Brasilia = Monday 02:59 UTC.  Row085 keeps the
++// Sunday 23:59 cadence while advancing the active rotation to row087.
++static constexpr int64_t MpTrialsAnchorUnix=1792983540LL;
++static constexpr int MpTrialsAnchorRow=85;
++struct MpTrialsRotationSlot {int Week;int64_t StartUnix;};
++static MpTrialsRotationSlot MpTrialsRotationAt(int64_t UnixSeconds,int IntervalMinutes) {
++    const int64_t Period=static_cast<int64_t>(IntervalMinutes)*60;
++    const int64_t Elapsed=UnixSeconds-MpTrialsAnchorUnix;
++    int64_t Bucket=Elapsed/Period;
++    if(Elapsed%Period<0)--Bucket; // C++ truncates; the Director uses mathematical floor.
++    const int64_t Number=MpTrialsAnchorRow-1+Bucket;
++    const int Week=static_cast<int>((Number%181+181)%181)+1;
++    return {Week,MpTrialsAnchorUnix+Bucket*Period};
++}
+diff --git a/ParadoxRuntime/VentFallGuard.inl b/ParadoxRuntime/VentFallGuard.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/VentFallGuard.inl
+@@ -0,0 +1,65 @@
++#include "VentFallPolicy.h"
++// Client-only mitigation: do not send a fall-recovery request while the game's
++// own current rider record still puts this player on a nearby authored spline.
++// The server keeps its recovery path unchanged for old clients and real falls.
++static bool MpShouldKeepVentTransitInner(UObject* Object) {
++    if (Globals::AmServer || !Object || !IsRegisteredLiveObject(Object)
++        || !Object->IsA(AArchonCharacter::StaticClass())
++        || MpExeRelativeFlagPresent(L"DISABLE_VENT_FALL_GUARD.flag")) return false;
++    UWorld* World=UWorld::GetWorld();
++    if (!World || !IsRegisteredLiveObject(World)
++        || World->GetName().find("escalation_island_")!=0) return false;
++    auto* Character=static_cast<AArchonCharacter*>(Object);
++    if (Character->IsActorBeingDestroyed()) return false;
++    const FVector Location=Character->K2_GetActorLocation();
++    if (!std::isfinite(Location.X) || !std::isfinite(Location.Y) || !std::isfinite(Location.Z)) return false;
++    static TArray<AActor*> Vents;
++    UGameplayStatics::GetAllActorsOfClass(World,Atraversal_vent_01_splined_bp_C::StaticClass(),&Vents);
++    if (Vents.Num()<0 || Vents.Num()>64) return false;
++    for (auto* Actor:Vents) {
++        if (!Actor || !IsRegisteredLiveObject(Actor) || Actor->IsActorBeingDestroyed()) continue;
++        auto* Vent=static_cast<Atraversal_vent_01_splined_bp_C*>(Actor);
++        if (Vent->CharacterData.Num()<0 || Vent->CharacterData.Num()>16) continue;
++        auto* Spline=Vent->Spline;
++        if (!Spline || !IsRegisteredLiveObject(Spline)) continue;
++        for (const auto& Rider:Vent->CharacterData) {
++            if (Rider.Character_2_1415165249D8AC20E267F4A92F910D9F!=Character) continue;
++            const FVector Near=Spline->FindLocationClosestToWorldLocation(Location,ESplineCoordinateSpace::World);
++            const float X=Location.X-Near.X,Y=Location.Y-Near.Y,Z=Location.Z-Near.Z;
++            if (MpVentFallProtected(true,true,Rider.IsOnSpline_11_180FB4554CC2A707C2E7CFB963F39179,
++                Rider.LastTimeTicked_5_0C7882BD4919A05006B0F68214E438D5,Vent->TotalSplineTime,X*X+Y*Y+Z*Z)) {
++                static unsigned Logs=0;
++                if (Logs++<16) MpLog("[VentFallGuard] kept active authored transit player="+Character->GetName()
++                    +" vent="+Vent->GetName()+" elapsed="+std::to_string(Rider.LastTimeTicked_5_0C7882BD4919A05006B0F68214E438D5)
++                    +" duration="+std::to_string(Vent->TotalSplineTime)+" distanceSq="+std::to_string(X*X+Y*Y+Z*Z));
++                return true;
++            }
++        }
++    }
++    return false;
++}
++static bool MpShouldKeepVentTransit(UObject* Object) {
++    __try {return MpShouldKeepVentTransitInner(Object);} __except(EXCEPTION_EXECUTE_HANDLER) {return false;}
++}
++struct MpVentFallSlot {const char* Name;UFunction::FNativeFuncPtr Original=nullptr;};
++static MpVentFallSlot MpVentFallSlots[]={{"RecoverFromFall"},{"ServerRecoverFromFall"}};
++template<int I> static void MpVentFallExec(void* Context,void* Stack,void* Result) {
++    if (MpShouldKeepVentTransit(static_cast<UObject*>(Context))) return;
++    MpVentFallSlots[I].Original(Context,Stack,Result);
++}
++static void MpInstallVentFallGuard(UObject* Object) {
++    static bool Attempted=false;
++    if (Attempted || Globals::AmServer || !Object || !IsRegisteredLiveObject(Object) || !Object->Class
++        || Object->Class->GetName()!="BP_PlayerCharacter_C"
++        || MpExeRelativeFlagPresent(L"DISABLE_VENT_FALL_GUARD.flag")) return;
++    Attempted=true;
++    UFunction::FNativeFuncPtr Wrappers[]={MpVentFallExec<0>,MpVentFallExec<1>};
++    for (int I=0;I<2;++I) {
++        auto& Slot=MpVentFallSlots[I];if (Slot.Original) continue;
++        auto* Fn=Object->Class->GetFunction("BP_PlayerCharacter_C",Slot.Name);
++        if (!Fn || !IsRegisteredLiveObject(Fn)
++            || reinterpret_cast<uintptr_t>(Fn->ExecFunction)!=Globals::BaseAddress+0x2861C20) continue;
++        Slot.Original=Fn->ExecFunction;Fn->ExecFunction=Wrappers[I];
++        MpLog("[VentFallGuard] client guard installed for "+std::string(Slot.Name));
++    }
++}
+diff --git a/ParadoxRuntime/VentFallPolicy.h b/ParadoxRuntime/VentFallPolicy.h
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/VentFallPolicy.h
+@@ -0,0 +1,11 @@
++#pragma once
++#include <cmath>
++// A fall recovery may be deferred only while a local player is still on an
++// authored, finite escalation spline. No grace window or world-wide fall immunity.
++static bool MpVentFallProtected(bool LocalClient,bool Escalation,bool OnSpline,
++    float Elapsed,float Duration,float DistanceSquared) {
++    return LocalClient && Escalation && OnSpline && std::isfinite(Elapsed)
++        && std::isfinite(Duration) && Duration>0.f && Duration<=30.f
++        && Elapsed>=0.f && Elapsed<Duration && std::isfinite(DistanceSquared)
++        && DistanceSquared>=0.f && DistanceSquared<=1000.f*1000.f;
++}
+diff --git a/ParadoxRuntime/VentTrajectoryTrace.inl b/ParadoxRuntime/VentTrajectoryTrace.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/VentTrajectoryTrace.inl
+@@ -0,0 +1,47 @@
++// Read-only, bounded trace for rare escalation-vent returns to the map entrance.
++static UFunction::FNativeFuncPtr MpVentOverlapOriginal=nullptr;
++static unsigned MpVentTraceCount=0;
++static std::string MpVentVector(const FVector& V) {
++    return std::to_string(V.X)+","+std::to_string(V.Y)+","+std::to_string(V.Z);
++}
++static bool MpIsEscalationVentTrace(UObject* Object) {
++    return Globals::AmServer && Globals::MatchmakerHuntId
++        && std::wstring(Globals::MatchmakerHuntId).find(L"Escalation_")!=std::wstring::npos
++        && Object && IsRegisteredLiveObject(Object)
++        && Object->IsA(Atraversal_vent_01_splined_bp_C::StaticClass());
++}
++static void MpVentSnapshotInner(UObject* Object,const char* Stage) {
++    if (!MpIsEscalationVentTrace(Object) || MpVentTraceCount>=32) return;
++    ++MpVentTraceCount;
++    auto* Vent=static_cast<Atraversal_vent_01_splined_bp_C*>(Object);
++    std::string Text=std::string("[VentTrajectory] ")+Stage+" vent="+Vent->GetName()
++        +" actor="+MpVentVector(Vent->K2_GetActorLocation())
++        +" cachedStart="+MpVentVector(Vent->SplineStart)+" cachedEnd="+MpVentVector(Vent->SplineEnd)
++        +" duration="+std::to_string(Vent->TotalSplineTime)
++        +" cachedLength="+std::to_string(Vent->SplineDistance)
++        +" riders="+std::to_string(Vent->CharacterData.Num());
++    auto* Spline=Vent->Spline;
++    if (Spline && IsRegisteredLiveObject(Spline)) {
++        const float Length=Spline->GetSplineLength();
++        Text+=" liveLength="+std::to_string(Length)
++            +" liveStart="+MpVentVector(Spline->GetLocationAtDistanceAlongSpline(0,ESplineCoordinateSpace::World))
++            +" liveEnd="+MpVentVector(Spline->GetLocationAtDistanceAlongSpline(Length,ESplineCoordinateSpace::World));
++    }
++    MpLog(Text);
++}
++static void MpVentSnapshot(UObject* Object,const char* Stage) {
++    __try {MpVentSnapshotInner(Object,Stage);} __except(EXCEPTION_EXECUTE_HANDLER) {}
++}
++static void MpVentOverlapExec(void* Context,void* Stack,void* Result) {
++    MpVentSnapshot(static_cast<UObject*>(Context),"beforeOverlap");
++    MpVentOverlapOriginal(Context,Stack,Result);
++    MpVentSnapshot(static_cast<UObject*>(Context),"afterOverlap");
++}
++static void MpInstallVentTrace(UObject* Object) {
++    if (MpVentOverlapOriginal || !MpIsEscalationVentTrace(Object)) return;
++    auto* Fn=Object->Class->GetFunction("traversal_vent_01_splined_bp_C","ReceiveActorBeginOverlap");
++    if (!Fn || !IsRegisteredLiveObject(Fn)
++        || reinterpret_cast<uintptr_t>(Fn->ExecFunction)!=Globals::BaseAddress+0x2861C20) return;
++    MpVentOverlapOriginal=Fn->ExecFunction;Fn->ExecFunction=MpVentOverlapExec;
++    MpLog("[VentTrajectory] bounded read-only overlap trace installed");
++}
+diff --git a/ParadoxRuntime/WeaponBondFilter.inl b/ParadoxRuntime/WeaponBondFilter.inl
+new file mode 100644
+--- /dev/null
++++ b/ParadoxRuntime/WeaponBondFilter.inl
+@@ -0,0 +1,92 @@
++// 1.14.7: soul compatibility must use the weapon's intrinsic element, not an
++// uninitialized out parameter or the element of an already attached part.
++// Keep every native ownership, weapon-type, slot and legendary exclusion check.
++struct MpBondValidationScope {
++    MpBondValidationScope* Previous=nullptr;
++    void* Candidate=nullptr;
++    uint8_t* CandidateElement=nullptr;
++    unsigned Queries=0;
++    bool Unavailable=false;
++};
++static thread_local MpBondValidationScope* MpBondScope=nullptr;
++using MpBondValidationFn = bool(*)(void*,const void*,int,const void*);
++using MpWeaponElementFn = void(*)(void*,uint8_t*,float*);
++static MpBondValidationFn MpOriginalBondValidation = nullptr;
++static MpWeaponElementFn MpOriginalWeaponElement = nullptr;
++
++static bool MpIsAgarusBondId(const std::string& Id) {
++    static const char* Ids[]={"WP_AC_FUNGUY","WP_CB_FUNGUY","WP_DP_FUNGUY","WP_EB_FUNGUY","WP_GA_FUNGUY","WP_IH_FUNGUY","WP_MS_FUNGUY"};
++    for (const char* Allowed:Ids) if (Id==Allowed) return true;
++    return false;
++}
++#ifndef MP_BOND_FILTER_TEST
++static bool MpIsAgarusWeaponBond(void* Item) {
++    return Item && IsReadablePointer(Item,0x80)
++        && MpIsAgarusBondId(CoreCapFString(reinterpret_cast<uint8_t*>(Item)+0x70));
++}
++static bool MpIntrinsicBondElement(void* Item,uint8_t& Element) {
++    if (!Item || !IsReadablePointer(Item,0x80)) return false;
++    const std::string Id = CoreCapFString(reinterpret_cast<uint8_t*>(Item)+0x70);
++    if (Id.rfind("WP_",0)!=0 || Id.size()>128) return false;
++    // Native helper resolves the game instance from a UObject world context.
++    // The game's own GetWeaponStats passes this inventory item in RCX.
++    auto* Tuning=reinterpret_cast<void*(*)(void*)>(Globals::BaseAddress+0x192D2A0)(Item);
++    if (!Tuning || !OrigGetWeaponPowerTable) return false;
++    auto* Table=static_cast<SDK::UDataTable*>(GetWeaponPowerTableFallbackHook(Tuning,0));
++    if (!Table || !IsRegisteredLiveObject(Table)) return false;
++    // The RowMap layout and +0x11 element are verified against the running
++    // process and the shipped FWeaponPowerTableData, not guessed SDK offsets.
++    for (auto& Pair:Table->RowMap) {
++        if (Pair.Key().GetRawString()!=Id) continue;
++        const auto* Row=Pair.Value();
++        if (!Row || !IsReadablePointer(Row,0x12)) return false;
++        Element=Row[0x11];
++        return Element<=6;
++    }
++    return false;
++}
++#endif
++
++static void MpWeaponElementForBondHook(void* Item,uint8_t* Element,float* Power) {
++    MpOriginalWeaponElement(Item,Element,Power);
++    auto* Scope=MpBondScope;
++    if (!Scope) return;
++    // Verified native order: candidate, then the equipped root weapon. Limit
++    // the repair to the seven Agarus weapons: other legendaries retain native results.
++    if (++Scope->Queries==1) {Scope->Candidate=Item;Scope->CandidateElement=Element;return;}
++    if (Scope->Queries!=2 || !MpIsAgarusWeaponBond(Item)) return;
++    uint8_t Candidate=0,Root=0;
++    const bool Known=MpIntrinsicBondElement(Scope->Candidate,Candidate)
++        && MpIntrinsicBondElement(Item,Root) && Root==6;
++    Scope->Unavailable=!Known;
++    if (Scope->CandidateElement) *Scope->CandidateElement=Known?Candidate:0xff;
++    if (Element) *Element=Known?Root:0xfe;
++}
++
++static bool MpBondValidationHook(void* Owner,const void* Part,int Slot,const void* Override) {
++    MpBondValidationScope Scope;Scope.Previous=MpBondScope;MpBondScope=&Scope;
++    const bool Result=MpOriginalBondValidation(Owner,Part,Slot,Override);
++    MpBondScope=Scope.Previous;
++    return Result && !Scope.Unavailable;
++}
++
++#if !defined(MP_BOND_FILTER_TEST) && !defined(MP_BOND_FILTER_ADAPTER_TEST)
++static void MpInstallWeaponBondFilter() {
++    if (MpExeRelativeFlagPresent(L"DISABLE_WEAPON_BOND_FILTER_FIX.flag")) return;
++    const uintptr_t Validation=Globals::BaseAddress+0x1B943E0;
++    const uintptr_t Primary=Globals::BaseAddress+0x1BA4DE0;
++    static const uint8_t ValidationBytes[]={0x40,0x55,0x53,0x56,0x57,0x41,0x54,0x41,0x56,0x41,0x57,0x48,0x8d,0xac,0x24,0x50,0xff,0xff};
++    static const uint8_t PrimaryBytes[]={0x40,0x55,0x53,0x56,0x57,0x41,0x56,0x48,0x8d,0x6c,0x24,0xc9,0x48,0x81,0xec,0xb0,0x0,0x0};
++    if (memcmp(reinterpret_cast<void*>(Validation),ValidationBytes,sizeof(ValidationBytes)) ||
++        memcmp(reinterpret_cast<void*>(Primary),PrimaryBytes,sizeof(PrimaryBytes))) {
++        MpLog("[WeaponBond] fingerprint mismatch; native behavior retained");return;
++    }
++    auto A=MH_CreateHook(reinterpret_cast<void*>(Primary),MpWeaponElementForBondHook,reinterpret_cast<void**>(&MpOriginalWeaponElement));
++    auto B=MH_CreateHook(reinterpret_cast<void*>(Validation),MpBondValidationHook,reinterpret_cast<void**>(&MpOriginalBondValidation));
++    if (A!=MH_OK || B!=MH_OK) {MpLog("[WeaponBond] hook creation failed; native behavior retained");return;}
++    auto E=MH_EnableHook(reinterpret_cast<void*>(Primary));
++    auto F=E==MH_OK?MH_EnableHook(reinterpret_cast<void*>(Validation)):E;
++    if (F!=MH_OK) MH_DisableHook(reinterpret_cast<void*>(Primary));
++    MpLog("[WeaponBond] intrinsic-element compatibility ready="+std::to_string(F==MH_OK));
++}
++#endif
+diff --git a/ParadoxRuntime/dllmain.cpp b/ParadoxRuntime/dllmain.cpp
+--- a/ParadoxRuntime/dllmain.cpp
++++ b/ParadoxRuntime/dllmain.cpp
+@@ -5160,6 +5160,17 @@ static void MpInstallServerViewportSizeFix() {
+     MpLog("[ServerViewportSize] WidgetLayoutLibrary.GetViewportSize answers 1920x1080 instead of 0 on the server");
+ }
+ 
++#include "FrostRelicPawnFix.inl"
++#include "BankedQuestXP.inl"
++#include "ReforgeSync.inl"
++#include "SDK/shockmane_balllightning_proj_parameters.hpp"
++#include "StormclawTrace.inl"
++#include "ThraxTrailTrace.inl"
++#include "GatherableStreamGate.inl"
++#include "VentTrajectoryTrace.inl"
++#include "VentFallGuard.inl"
++#include "StormclawRecovery.inl"
++
+ void GameEngineTickHook(UGameEngine* GameEngine, float DeltaTime, char CanRender) {
+     if (GameEngine != nullptr && g_GameEnginePtr == nullptr) {
+         g_GameEnginePtr = GameEngine;
+@@ -5190,6 +5201,7 @@ void GameEngineTickHook(UGameEngine* GameEngine, float DeltaTime, char CanRender
+     if (Globals::AmServer) {
+         MpPaceServerFrame();
+         MpInstallServerViewportSizeFix();   // [Reforged 0038]
++        MpInstallFrostRelicPawnFix();
+     }
+ 
+     // [1.14.7 client replication membership 2026-10-05] Bounded, read-only server probe: does the
+@@ -5271,6 +5283,10 @@ void GameEngineTickHook(UGameEngine* GameEngine, float DeltaTime, char CanRender
+         }
+     }
+ 
++    MpTickGatherableStreamGate();
++    MpTickStormclawRecovery(); // active reflected Stormclaw projectiles only
++    MpTickStormclawTrace(); // bounded read-only sampling after reflection
++
+     // [2026-07-21] Server-side timeout-retry for ApplyPlayerRole (Omnicell/PlayerRole HUD gap).
+     // See ApplyPlayerRoleHook + TickPlayerRoleRetries below for the full writeup. Throttled the
+     // same way as the grace sampler above; the retry itself is further throttled per-entry inside
+@@ -6134,6 +6150,10 @@ char ProcessRequest(void* Request) {
+         using SetHeaderFn = void(*)(void*, FString*, FString*);
+         void* setHeader = (*reinterpret_cast<void***>(Request))[16];
+         reinterpret_cast<SetHeaderFn>(setHeader)(Request, &APIHeader, &APIKey);
++        if(MpNativeReforgeSyncReady) {
++            FString Header(L"x-reforged-native-reforge-sync"),Value(L"1");
++            reinterpret_cast<SetHeaderFn>(setHeader)(Request,&Header,&Value);
++        }
+     }
+     else if (Globals::AuthMode == Globals::ServerAuthMode::HuntCapability) {
+         std::wstring HeaderName;
+@@ -12941,6 +12961,12 @@ void ProcessEventClientHook(UObject* Object, UFunction* Function, void* Parms) {
+     */
+ 
+     const std::string& FunctionName = CachedFunctionFullName(Function);
++    MpInstallVentFallGuard(Object);
++    MpInstallVentTrace(Object);
++    MpInstallGatherableGate(Object);
++    if ((FunctionName.ends_with(".RecoverFromFall") || FunctionName.ends_with(".ServerRecoverFromFall"))
++        && MpShouldKeepVentTransit(Object)) return;
++    MpThraxTrailTraceScope ThraxTrailTraceScope(Object,FunctionName);
+ 
+     // Player-host joins can complete the UE handshake and PostLogin, then be rejected by
+     // the client during its first travel/replication frame.  The normal UE diagnostics are
+@@ -15452,6 +15478,8 @@ static void MpEnableServerProjectileTick(UObject* Object, UFunction* Function) {
+     }
+ }
+ 
++#include "TrialsFirstHit.inl"
++
+ void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
+     MpEnableServerProjectileTick(Object, Function);   // [Reforged 0040]
+     // [1.12.0 REENTRANCY GUARD 2026-07-10] Safety-net against runaway ProcessEvent
+@@ -15532,6 +15560,16 @@ void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
+         PeMask = PeNameEntry->PeMask;
+     }
+     auto PeMay = [PeMask](int Bit) { return ((PeMask >> Bit) & 1ull) != 0; };
++    MpInstallVentFallGuard(Object);
++    MpInstallVentTrace(Object);
++    MpInstallGatherableGate(Object);
++    if ((FunctionName.ends_with(".RecoverFromFall") || FunctionName.ends_with(".ServerRecoverFromFall"))
++        && MpShouldKeepVentTransit(Object)) return;
++    MpThraxTrailTraceScope ThraxTrailTraceScope(Object,FunctionName);
++    MpTrialsObserveDamage(Object, FunctionName, Parms);
++    MpFrostRelicPawnScope FrostRelicPawnScope(Object, FunctionName, Parms);
++    MpStormclawTraceScope StormclawTraceScope(Object, FunctionName, Parms);
++    MpStormclawRecoveryScope StormclawRecoveryScope(Object, FunctionName);
+ 
+     // [1.14.7 HEADLESS AUDIO 2026-10-03] A dedicated hub must not play sound. Removing the Wwise
+     // output device crashes the process (measured: EXCEPTION_ACCESS_VIOLATION writing 0x...a4, round
+@@ -16840,11 +16878,15 @@ static void MpInstallWeaponPowerTableFallback(const char* Role) {
+         + (MpExeRelativeFlagPresent(L"DISABLE_WEAPON_POWER_TABLE_FALLBACK.flag") ? " (DISABLE flag present)" : ""));
+ }
+ 
++#include "WeaponBondFilter.inl"
++#include "HuntRewardAudit.inl"
++
+ void InitClientHooks() {
+     MH_STATUS InitStatus = MH_Initialize();
+     MpLog(std::string("[InitClientHooks] MH_Initialize=") + MH_StatusToString(InitStatus));
+     StartClientHitchSampler();   // HITCH_SAMPLER.flag only
+     MpInstallWeaponPowerTableFallback("InitClientHooks");   // [Reforged 0041]
++    MpInstallWeaponBondFilter();
+ 
+     // Observe the same verified UNetConnection::Close entry used by the server.
+     // This records a bounded caller stack on the client that presses Go Now, where
+@@ -17625,8 +17667,20 @@ static void TickTerraAgarusSpawnRecovery() {
+     if (!Anchor) return;
+     UGameplayStatics::GetAllActorsOfClass(World, AArchonBehemoth::StaticClass(), &Bosses);
+     for (AActor* Actor : Bosses) {
+-        if (!Actor || Actor == Handled || !IsRegisteredLiveObject(Actor) || !Actor->Class
++        if (!Actor || !IsRegisteredLiveObject(Actor) || !Actor->Class
+             || Actor->Class->GetName() != "funguy_normal_bp_C" || Actor->IsActorBeingDestroyed()) continue;
++        if (Actor == Handled) {
++            static unsigned BoundarySamples=0;
++            const FVector P=Actor->K2_GetActorLocation();
++            if (BoundarySamples<12 && (!std::isfinite(P.X) || !std::isfinite(P.Y) || !std::isfinite(P.Z)
++                || std::abs(P.X+138925.9375f)>15000.f || std::abs(P.Y-1258.1826f)>15000.f
++                || std::abs(P.Z-35405.0586f)>10000.f)) {
++                ++BoundarySamples;
++                MpLog("[AgarusBoundary] boss="+Actor->GetName()+" position="+MpVentVector(P)
++                    +" health="+std::to_string(static_cast<AArchonBehemoth*>(Actor)->GetCurrentHealth()));
++            }
++            continue;
++        }
+         auto* Boss = static_cast<AArchonBehemoth*>(Actor);
+         const FVector Before = Boss->K2_GetActorLocation();
+         const float Health = Boss->GetCurrentHealth();
+@@ -19655,10 +19709,11 @@ static std::wstring ServerSharedPlayerHuntId() {
+ //
+ // Production behavior is always enabled. All 181 numbered rows are rewritten as contiguous UTC windows.
+ // TRIALS_ROTATION_MINUTES controls the interval (default 10080 = seven days; 30 is useful for testing).
+-// DeployServer uses the same Unix-epoch bucket formula. A spawned arena process receives
++// DeployServer uses the same Sunday 23:59 Brasilia anchor (TrialsRotation.inl). A spawned arena process receives
+ // MYSTICPARADOX_TRIALS_WEEK so an in-progress trial stays pinned to the exact matchmaker row it launched with.
+ void* OrigSchedulerInitialize = nullptr;
+ 
++#include "TrialsRotation.inl"
+ static constexpr int kTrialsRotationRowCount = 181;
+ static constexpr int kDefaultTrialsRotationMinutes = 7 * 24 * 60;
+ 
+@@ -19722,9 +19777,9 @@ static void PatchArenaScheduleForCurrentTime(void* tablesArr) {
+     constexpr int64_t kUnixEpochDotNetTicks = 621355968000000000LL;
+     const int RotationMinutes = TrialsRotationMinutes();
+     const int64_t RotationTicks = static_cast<int64_t>(RotationMinutes) * kTicksPerMinute;
+-    const int64_t Bucket = (realNow - kUnixEpochDotNetTicks) / RotationTicks;
+-    const int CurrentWeek = static_cast<int>(Bucket % kTrialsRotationRowCount) + 1;
+-    const int64_t BucketStart = kUnixEpochDotNetTicks + Bucket * RotationTicks;
++    const auto Slot = MpTrialsRotationAt((realNow-kUnixEpochDotNetTicks)/10000000LL, RotationMinutes);
++    const int CurrentWeek = Slot.Week;
++    const int64_t BucketStart = kUnixEpochDotNetTicks + Slot.StartUnix*10000000LL;
+     const int LaunchWeek = TrialsLaunchWeekOverride();
+ 
+     for (int t = 0; t < num; ++t) {
+@@ -19751,9 +19806,13 @@ static void PatchArenaScheduleForCurrentTime(void* tablesArr) {
+                 // A launched Trial retains its selected row for a native week. This avoids a UTC bucket
+                 // boundary changing modifiers during an in-progress fight, without reintroducing the old
+                 // multi-year interval that corrupted unrelated HUD presentation.
+-                const int64_t NewStart = realNow - kTicksPerHour;
++                // Reward cooldowns compare against this start. A per-process start
++                // made an already claimed star appear new in later hunts.
++                // Normal difficulty may map to a different native row for the
++                // same featured Behemoth; its cooldown still uses the current week.
++                const int64_t NewStart = BucketStart;
+                 *reinterpret_cast<int64_t*>(target + 0x20) = NewStart;
+-                *reinterpret_cast<int64_t*>(target + 0x28) = NewStart + kNativeArenaWeek;
++                *reinterpret_cast<int64_t*>(target + 0x28) = NewStart + RotationTicks;
+             }
+             MpLog(target
+                 ? "[TrialsSchedule] Initialize: launch-pinned row='" + TrialsScheduleRowName(LaunchWeek)
+@@ -22147,6 +22206,9 @@ void InitServerHooks() {
+     MH_Initialize();
+     InitLog("[InitServerHooks] MH_Initialize OK");
+     MpInstallWeaponPowerTableFallback("InitServerHooks");   // [Reforged 0041]
++    MpInstallWeaponBondFilter();
++    MpInstallHuntRewardAudit();
++    MpInstallTrialsStartRoster();
+ 
+     // [1.14.7 NULLRHI ROOT FIX 2026-10-04] Installed before the RHI selector reads the engine command
+     // line: without it the engine's own FCommandLine never carries -nullrhi (see HookFCommandLineGet),
+@@ -22180,6 +22242,17 @@ void InitServerHooks() {
+ 
+     // [1.12.0] Only enable CONFIRMED hooks from HOOK_TARGETS_1.12.0.md
+ 
++    MpInstallReforgeCompletionFix();
++
++    // Native OnlyBankedXP objective reducer, verified against the 1.14.7 executable.
++    if (!MpExeRelativeFlagPresent(L"DISABLE_BANKED_QUEST_XP_FIX.flag")) {
++        auto* Target = reinterpret_cast<void*>(Globals::BaseAddress + 0x1D65010);
++        if (MH_CreateHook(Target, MpBankedQuestXPHook, reinterpret_cast<void**>(&MpOriginalBankedQuestXP)) == MH_OK) {
++            const auto Status = MH_EnableHook(Target);
++            MpLog("[BankedQuestXP] native reducer hook status="+std::to_string(static_cast<int>(Status)));
++        }
++    }
++
+     // ProcessEvent - CONFIRMED RVA 0x02861880
+     MH_CreateHook((void*)(Globals::BaseAddress + 0x02861880), ProcessEventHook, &OrigProcessEvent);
+     MH_EnableHook((void*)(Globals::BaseAddress + 0x02861880));

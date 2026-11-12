@@ -1,5 +1,5 @@
 {
-  "generated_by": "Dauntless Reforged Revival host kit, from the CatalogExporter progression export",
+  "generated_by": "operator-supplied: 1.14.7 progression export plus captured standard Slayer Commission rewards (2026-10-29)",
   "code": null,
   "message": "OK",
   "payload": {
@@ -6953,724 +6953,1237 @@
         ],
         "free_rewards": [
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 0,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
             "rank_id": 1,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
+            "ordered_instanced_items": [],
             "rank_id": 2,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 3,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 4,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 5,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 6,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 7,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 8,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 9,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 10,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 11,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 12,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 13,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 14,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
             "rank_id": 15,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 16,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 17,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 18,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 19,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_free_20"
+              }
+            ],
+            "instanced_items": [],
             "rank_id": 20,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 21,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 22,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 23,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 24,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 25,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 26,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 27,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 28,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 29,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_free_30"
+              }
+            ],
             "rank_id": 30,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 31,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 32,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 33,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 34,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 35,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 36,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 37,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 38,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 39,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_free_40"
+              }
+            ],
+            "instanced_items": [],
             "rank_id": 40,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 41,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 42,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 43,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 44,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
             "rank_id": 45,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 46,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 47,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 48,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 49,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
-            "rank_id": 50,
-            "stacked_items": [],
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_free_50"
+              }
+            ],
             "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "rank_id": 50,
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           }
         ],
         "premium_rewards": [
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 0,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": []
           },
           {
+            "entitlements": [],
             "rank_id": 1,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
+            "ordered_instanced_items": [],
             "rank_id": 2,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 10000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 3,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 4,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 5,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 6,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 7,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 8,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 9,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_CELLDUST",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 100
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 10,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 11,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_TOKEN_TRANSMOG",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 12,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 13,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 10000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 14,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
             "rank_id": 15,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_PRESTIGE_EMPTY",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 200
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 16,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 17,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 18,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 19,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_CELLDUST",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 100
+              }
+            ]
           },
           {
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_elite_20"
+              }
+            ],
+            "instanced_items": [],
             "rank_id": 20,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 21,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 22,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 23,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 10000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 24,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 25,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 26,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 27,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 28,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 10000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 29,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_CELLDUST",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 100
+              }
+            ]
           },
           {
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_elite_30"
+              }
+            ],
             "rank_id": 30,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 31,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_TOKEN_TRANSMOG",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 1
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 32,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 33,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_NOTES",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 10000
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 34,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 35,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 36,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 37,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 38,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 39,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_CELLDUST",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 100
+              }
+            ]
           },
           {
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_elite_40"
+              }
+            ],
+            "instanced_items": [],
             "rank_id": 40,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 41,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_PRESTIGE_EMPTY",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 200
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 42,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 43,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 44,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
             "rank_id": 45,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 46,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_BOUNTY_DRAFT_PREMIUM",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 2
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 47,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "TOKEN_DAILY_PATROL_BONUS_PURCHASED",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 5
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 48,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PJM_WEAPON",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 125
+              }
+            ]
           },
           {
+            "entitlements": [],
+            "instanced_items": [],
             "rank_id": 49,
-            "stacked_items": [],
-            "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_CELLDUST",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 100
+              }
+            ]
           },
           {
-            "rank_id": 50,
-            "stacked_items": [],
+            "entitlements": [
+              {
+                "duration": 0,
+                "entitlement": "ent_hp17a_elite_50"
+              }
+            ],
             "instanced_items": [],
-            "ordered_instanced_items": [],
-            "entitlements": []
+            "rank_id": 50,
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_PLATINUM_UNIV",
+                "hidden": false,
+                "priority": 0,
+                "quantity": 50
+              }
+            ]
           }
         ],
-        "prestige": null
+        "prestige": {
+          "free_rewards": {
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_SEASONAL_COIN",
+                "hidden": false,
+                "quantity": 5
+              }
+            ]
+          },
+          "premium_rewards": {
+            "stacked_items": [
+              {
+                "catalog_id": "CURRENCY_SEASONAL_COIN",
+                "hidden": false,
+                "quantity": 20
+              }
+            ]
+          },
+          "xp_per_level": 100
+        }
       }
     ]
-  }
+  },
+  "reward_repair_provenance": "game-data/slayer_commission_rewards.json"
 }

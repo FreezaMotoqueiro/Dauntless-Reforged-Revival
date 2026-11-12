@@ -1,0 +1,242 @@
+diff --git a/ParadoxBackend/src/gauntletProgress.ts b/ParadoxBackend/src/gauntletProgress.ts
+--- a/ParadoxBackend/src/gauntletProgress.ts
++++ b/ParadoxBackend/src/gauntletProgress.ts
+@@ -1,3 +1,4 @@
++import { GetUnitOfWork, GetRepositories } from "./persistence";
+ import { GetMongoDb } from "./persistence/mongo/client";
+ 
+ export const GAUNTLET_COLLECTION = "gauntletProgress";
+@@ -41,9 +42,35 @@ export function RequestedGauntletLevel(value: unknown): number | undefined {
+     // Native FGauntletLevel numbers include the season: Season01 level 1 = 10000001.
+     if (parsed >= 10000000) return parsed > 10000000 && parsed < 20000000 ? parsed - 10000000 : undefined;
+     return parsed;
++
+ }
+ 
+ export function GauntletNativeLevel(level: number): number {
+     if (!Number.isSafeInteger(level) || level < 1 || level >= 10000000) throw new Error("Invalid Gauntlet level");
+     return 10000000 + level;
+ }
++
++// Native 1.14.7 DefaultGame.ini names POST /process_run. Its success serializer
++// (FGauntletLevelSuccessData) sends gauntlet_id, players, level, remaining_sec.
++export async function RecordGauntletSuccess(body: any): Promise<number> {
++    const Level=RequestedGauntletLevel(body?.level);
++    const Players=Array.isArray(body?.players)?[...new Set<string>(body.players.filter((Id:unknown)=>typeof Id==="string" && Id!=="INVALID" && Id!==""))]:[];
++    if(body?.gauntlet_id!==GAUNTLET_SEASON_ID || !Level || Level>100000 || !Players.length || Players.length>4
++        || !Number.isSafeInteger(body?.remaining_sec) || body.remaining_sec<0 || body.remaining_sec>86400)
++        throw new Error("INVALID_GAUNTLET_RESULT");
++    for(const Player of Players) if(!await GetRepositories().accounts.findByUserId(Player)) throw new Error("INVALID_GAUNTLET_PLAYER");
++    return GetUnitOfWork().withTransaction(async(_Repos,Session)=>{
++        const Db=await GetMongoDb();let Changed=0;
++        for(const Player of Players) {
++            const Id=`${GAUNTLET_SEASON_ID}:${Player}`;
++            const Row=await Db.collection(GAUNTLET_COLLECTION).findOne({_id:Id as any},{session:Session});
++            const Completed=CompletedGauntletLevel(Row?.completedLevel);
++            if(Level>Completed+1) throw new Error("GAUNTLET_LEVEL_LOCKED");
++            if(Level<=Completed) continue;
++            await Db.collection(GAUNTLET_COLLECTION).updateOne({_id:Id as any},
++                {$max:{completedLevel:Level},$set:{userId:Player,season:GAUNTLET_SEASON_ID,updatedAt:new Date().toISOString()},
++                 $setOnInsert:{createdAt:new Date().toISOString()}},{upsert:true,session:Session});Changed++;
++        }
++        return Changed;
++    });
++}
+diff --git a/ParadoxBackend/src/routes/matchmaking.ts b/ParadoxBackend/src/routes/matchmaking.ts
+--- a/ParadoxBackend/src/routes/matchmaking.ts
++++ b/ParadoxBackend/src/routes/matchmaking.ts
+@@ -307,13 +307,16 @@ matchmakingRouter.get("/candidate/status", HasParadoxBackendAuth, async (req: an
+ matchmakingRouter.post("/candidate/join", HasParadoxBackendAuth, async (req: any, res) => {
+     const UserId = req.AuthData.userId;
+     const GameMode = req.body.gameMode;
+-    const GameArgs = req.body.gameArgs;
++    let GameArgs = req.body.gameArgs;
++    let GauntletLevel: number | undefined;
+     const HuntId = req.body.playerHuntId;
+ 
+     if (HuntId === "CR19_PlayerHunt_Gauntlet") {
+         const rawGauntlet = req.body.gauntletLevel ?? req.body.gauntlet_level ?? 1;
+         const requested = RequestedGauntletLevel(rawGauntlet);
+         const completed = await ReadGauntletCompletedLevel("Season01", UserId);
++        GauntletLevel = requested;
++        if (requested) GameArgs = `GauntletLevel=${requested}`;
+         if (!IsGauntletLevelAllowed(completed, requested)) {
+             logger.warn(`[Gauntlet] refused selected level: shape=${typeof rawGauntlet} keys=${rawGauntlet && typeof rawGauntlet === "object" ? Object.keys(rawGauntlet).join(",") : ""} requested=${requested} allowed=${completed + 1}`);
+             res.status(403).json({ code: "GAUNTLET_LEVEL_LOCKED", message: "Complete the preceding level first", payload: null });
+@@ -321,6 +324,7 @@ matchmakingRouter.post("/candidate/join", HasParadoxBackendAuth, async (req: any
+         }
+     }
+ 
++
+     // [1.12 matchmaking pass-through — 2026-07-10]
+     // Every account is force-normalized to "returning player" state in
+     // NormalizeCharacterData (character.ts). So the client's LoginScreen always
+@@ -368,6 +372,15 @@ matchmakingRouter.post("/candidate/join", HasParadoxBackendAuth, async (req: any
+         );
+     }
+ 
++    if (GauntletLevel !== undefined) {
++        for (const Member of Party.partyMembers ?? [UserId]) {
++            const Completed = await ReadGauntletCompletedLevel("Season01", Member);
++            if (!IsGauntletLevelAllowed(Completed, GauntletLevel)) {
++                res.status(403).json({code:"GAUNTLET_LEVEL_LOCKED",message:"All party members must unlock the requested level",payload:null});return;
++            }
++        }
++    }
++
+     const MatchmakingResult = await HandlePlayerMatchmaking(
+         GameMode,
+         GameArgs,
+diff --git a/ParadoxBackend/src/routes/system.ts b/ParadoxBackend/src/routes/system.ts
+--- a/ParadoxBackend/src/routes/system.ts
++++ b/ParadoxBackend/src/routes/system.ts
+@@ -1,3 +1,5 @@
++import { RecordGauntletSuccess } from "../gauntletProgress";
++import { GetPartyForPlayer } from "../controllers/party";
+ /*
+  * Original work Copyright (C) 2026 gwog :3 (SyST3MDeV/Undaunted)
+  * Modified work Copyright (C) 2026 MysticFox / Pranav Karande (pranav158/Mystic-Paradox)
+@@ -23,6 +25,7 @@ import { GetCooldownState, SaveCooldowns } from "../controllers/cooldowns";
+ import { BountyGroupCounts, BountySaveValidationError, BountyStatePayload, IsAuthorizedBountyReader, IsAuthorizedBountyWriter } from "../bountyState";
+ import { DeleteBountyState, GetBountyState, SaveBountyState } from "../controllers/bounty";
+ import { EscalationSeasonProgressUpdate, IsAuthorizedEscalationReader, IsAuthorizedEscalationWriter } from "../escalationProgress";
++
+ import { GauntletNativeLevel, GauntletAccountAllowed, GauntletLevelAccess, GauntletProgressPayload, GauntletSeasonConfig, ReadGauntletCompletedLevel } from "../gauntletProgress";
+ 
+ export const systemRouter = Router();
+@@ -487,20 +490,45 @@ systemRouter.get(/^\/progression\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, as
+     if (!IsGauntletOrigin(req)) { next(); return; }
+     const accessRequest = String(req.params[0]).toLowerCase() === "level_access";
+     const season = accessRequest ? String(req.params[1]) : String(req.params[0]);
+-    const userId = accessRequest ? req.query.account_id : req.params[1];
++    const RequestedIds = accessRequest ? (Array.isArray(req.query.account_id)?req.query.account_id:[req.query.account_id]) : [req.params[1]];
++    const userId=RequestedIds[0];
++    if (accessRequest && RequestedIds.length>1) {
++        const Party=await GetPartyForPlayer(req.AuthData?.userId);
++        if (RequestedIds.length>4 || !GauntletAccountAllowed(req.AuthData,userId)
++            || RequestedIds.some((Id:unknown)=>typeof Id!=="string" || !Party?.members.includes(Id))) {
++            res.status(403).json(GauntletEnvelope(null));return;
++        }
++        const Levels=await Promise.all(RequestedIds.map((Id:unknown)=>ReadGauntletCompletedLevel(season,Id as string)));
++        res.status(200).json(GauntletEnvelope(GauntletLevelAccess(Math.min(...Levels))));return;
++    }
+     if (!GauntletAccountAllowed(req.AuthData, userId)) {
+         res.status(403).json({ code: "FORBIDDEN", message: "Account mismatch", payload: null });
+         return;
+     }
+     const completed = await ReadGauntletCompletedLevel(season, userId);
+     logger.info(`[Gauntlet] ${accessRequest ? "level access" : "progression"} season=${season} completed=${completed}`);
+-    res.status(200).json(GauntletEnvelope(accessRequest ? GauntletNativeLevel(GauntletLevelAccess(completed)) : GauntletProgressPayload(completed)));
+-});
+-
+-systemRouter.get(/^\/rewards\/personal\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, (req: any, res, next) => {
+-    if (!IsGauntletOrigin(req)) { next(); return; }
+-    logger.info(`Gauntlet personal rewards requested season='${req.params[0]}' user='${req.params[1]}' (1.14.7 stub)`);
+-    res.status(200).json(GauntletEnvelope({}));
++    res.status(200).json(GauntletEnvelope(accessRequest ? GauntletLevelAccess(completed) : GauntletProgressPayload(completed)));
++});
++
++systemRouter.get(/^\/rewards\/personal\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, async (req: any, res, next) => {
++    if (!IsGauntletOrigin(req)) { next();return; }
++    const User=req.params[1];
++    if(!GauntletAccountAllowed(req.AuthData,User)){res.status(403).json(GauntletEnvelope(null));return;}
++    const Completed=await ReadGauntletCompletedLevel(req.params[0],User);
++    res.json(GauntletEnvelope({cleared:Array.from({length:Math.min(Completed,100000)},(_,Index)=>Index+1)}));
++});
++
++systemRouter.post("/process_run", HasParadoxBackendAuth, async (req:any,res,next)=>{
++    if(!IsGauntletOrigin(req)){next();return;}
++    if(req.AuthData?.IsGameserver!==true){res.status(403).json(GauntletEnvelope(null));return;}
++    try {
++        const Changed=await RecordGauntletSuccess(req.body);
++        logger.info(`[Gauntlet] completed level=${req.body.level} playersUpdated=${Changed}`);
++        res.json(GauntletEnvelope({}));
++    } catch(ErrorValue) {
++        logger.warn(`[Gauntlet] result rejected: ${(ErrorValue as Error).message}`);
++        res.status(400).json({code:null,message:(ErrorValue as Error).message,payload:null});
++    }
+ });
+ 
+ systemRouter.get(/^\/rewards\/guild\/([^/]*)\/([^/]+)$/i, HasParadoxBackendAuth, (req: any, res, next) => {
+diff --git a/ParadoxDirector/src/controllers/gameservers.ts b/ParadoxDirector/src/controllers/gameservers.ts
+--- a/ParadoxDirector/src/controllers/gameservers.ts
++++ b/ParadoxDirector/src/controllers/gameservers.ts
+@@ -1187,8 +1187,8 @@ function GetMapPathFromMatchmakerHuntId(MatchmakerHuntId: string): string{
+ }
+ 
+ 
+-export async function StartupGameserverWithHuntIdAndPlayers(HuntId: string, ExpectedPlayers: string[]){
+-    const Manifest = ResolveHuntLaunchManifest(HuntId, ExpectedPlayers);
++export async function StartupGameserverWithHuntIdAndPlayers(HuntId: string, ExpectedPlayers: string[], GauntletLevel = 1){
++    const Manifest = ResolveHuntLaunchManifest(HuntId, ExpectedPlayers, GauntletLevel);
+     const MatchmakerHuntId = Manifest.matchmakerHuntId;
+     const BehemothPath = Manifest.behemothPath === "NO_BEHEMOTH" ? undefined : Manifest.behemothPath;
+     const MapPath = Manifest.mapPath;
+@@ -1207,7 +1207,7 @@ export async function StartupGameserverWithHuntIdAndPlayers(HuntId: string, Expe
+ }
+ 
+ /** Resolve and freeze the exact server arguments without allocating a port or starting a process. */
+-export function ResolveHuntLaunchManifest(HuntId: string, ExpectedPlayers: string[]) {
++export function ResolveHuntLaunchManifest(HuntId: string, ExpectedPlayers: string[], GauntletLevel = 1) {
+     if (!Array.isArray(ExpectedPlayers) || ExpectedPlayers.length < 1 || ExpectedPlayers.length > 4 ||
+         ExpectedPlayers.some((accountId) => typeof accountId !== "string" || accountId.length === 0)) {
+         throw new Error("ExpectedPlayers must contain between one and four account IDs");
+@@ -1215,7 +1215,14 @@ export function ResolveHuntLaunchManifest(HuntId: string, ExpectedPlayers: strin
+     const matchmakerHuntId = GetMatchmakerHuntIdFromPlayerHuntId(HuntId);
+     const behemothPath = GetBehemothPathFromMatchmakerHuntId(matchmakerHuntId) ?? "NO_BEHEMOTH";
+     const nativeMapPath = GetMapPathFromMatchmakerHuntId(matchmakerHuntId);
+-    const mapPath = HuntId === "CR19_PlayerHunt_Gauntlet" ? GauntletMapPath(nativeMapPath) : nativeMapPath;
++    let mapPath = HuntId === "CR19_PlayerHunt_Gauntlet" ? GauntletMapPath(nativeMapPath, GauntletLevel) : nativeMapPath;
++    // Story missions share escalation maps, whose default mode does not run the
++    // story specification (NPCs, objectives and scripted encounters). Honour the
++    // native story-mode override rather than opening the map as an escalation.
++    const storyMode = "/Game/Blueprints/GameMode/BPGM_ArchonStoryMissions.BPGM_ArchonStoryMissions_C";
++    if (FindMatchmakerRow(matchmakerHuntId)?.GameModeOverride === storyMode) {
++        mapPath = `${nativeMapPath}?game=${storyMode}`;
++    }
+     const expectedPlayerString = TransformExpectedPlayerArgs(ExpectedPlayers.map((playerUid) => ({
+         playerUid,
+         playerHuntId: HuntId
+diff --git a/ParadoxDirector/src/controllers/gauntletLaunch.ts b/ParadoxDirector/src/controllers/gauntletLaunch.ts
+--- a/ParadoxDirector/src/controllers/gauntletLaunch.ts
++++ b/ParadoxDirector/src/controllers/gauntletLaunch.ts
+@@ -4,5 +4,5 @@ export function GauntletMapPath(map: string, level: number = 1): string {
+         throw new Error("Invalid Gauntlet launch parameters");
+     }
+     if (/\?GauntletLevel=/i.test(map)) throw new Error("Duplicate Gauntlet level option");
+-    return `${map}?GauntletLevel=${10000000 + level}`;
++    return `${map}?GauntletLevel=${10000000 + level}?game=/Game/Blueprints/GameMode/BPGM_ArchonGauntlet.BPGM_ArchonGauntlet_C`;
+ }
+diff --git a/ParadoxDirector/src/controllers/matchmaker.ts b/ParadoxDirector/src/controllers/matchmaker.ts
+--- a/ParadoxDirector/src/controllers/matchmaker.ts
++++ b/ParadoxDirector/src/controllers/matchmaker.ts
+@@ -15,6 +15,13 @@ import { GetRamsgateConnectionDetails, GetTrainingDojoConnectionDetails, Startup
+ export async function HandleMatchmakingRequest(GameMode: string, GameArgs: string, HuntId: string, ExpectedPlayers: string[] | undefined){
+     logger.info(`Handling matchmaking with GameMode: ${GameMode} HuntId: ${HuntId} and GameArgs: ${GameArgs}`);
+ 
++    if(HuntId === "CR19_PlayerHunt_Gauntlet") {
++        const Match = /^GauntletLevel=([1-9][0-9]{0,6})$/.exec(GameArgs??"");
++        const Level = Match ? Number(Match[1]) : 1;
++        if (!ExpectedPlayers?.length) throw new Error("Gauntlet requires a player roster");
++        return await StartupGameserverWithHuntIdAndPlayers(HuntId,ExpectedPlayers,Level);
++    }
++
+     if(GameMode === "CITY"){
+         return GetRamsgateConnectionDetails();
+     }
+diff --git a/ParadoxDirector/src/controllers/gauntletLaunch.test.ts b/ParadoxDirector/src/controllers/gauntletLaunch.test.ts
+--- a/ParadoxDirector/src/controllers/gauntletLaunch.test.ts
++++ b/ParadoxDirector/src/controllers/gauntletLaunch.test.ts
+@@ -1,9 +1,9 @@
+ import test from "node:test";
+ import assert from "node:assert/strict";
+ import { GauntletMapPath } from "./gauntletLaunch";
+-test("Gauntlet launches with the chosen native map option", () => {
+-    assert.equal(GauntletMapPath("/Game/Gauntlet"), "/Game/Gauntlet?GauntletLevel=10000001");
+-    assert.equal(GauntletMapPath("/Game/Gauntlet", 7), "/Game/Gauntlet?GauntletLevel=10000007");
++test("Gauntlet launches with the chosen native map option and the Gauntlet game mode", () => {
++    assert.equal(GauntletMapPath("/Game/Gauntlet"), "/Game/Gauntlet?GauntletLevel=10000001?game=/Game/Blueprints/GameMode/BPGM_ArchonGauntlet.BPGM_ArchonGauntlet_C");
++    assert.equal(GauntletMapPath("/Game/Gauntlet", 7), "/Game/Gauntlet?GauntletLevel=10000007?game=/Game/Blueprints/GameMode/BPGM_ArchonGauntlet.BPGM_ArchonGauntlet_C");
+ });
+ test("invalid or duplicate Gauntlet launch options are refused", () => {
+     for (const value of [0, -1, 1.5, NaN, Infinity]) assert.throws(() => GauntletMapPath("/Game/Gauntlet", value));

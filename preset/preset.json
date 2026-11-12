@@ -21,8 +21,8 @@
   "files": [
     {
       "path": "backend/progression_config.json",
-      "sha256": "1be495d7ad94ea390422ded5fb8884dace0e32d343cd466e88045bf90afd1fae",
-      "bytes": 200260
+      "sha256": "70ba48f3d091deeff67d38afee6dcb1700fa49c4553142988e4b57b0f12476d4",
+      "bytes": 212830
     },
     {
       "path": "backend/slayers_path.json",
@@ -41,8 +41,8 @@
     },
     {
       "path": "backend/inventory_storage_policy.json",
-      "sha256": "28cd97f70c1452125d72d07dacf146b9c28a7b3c339f75854c88ff9e97c8f528",
-      "bytes": 118436
+      "sha256": "43ff186deed3fce26af4440911125551897446c8c161be895f7d8f3a617ccd0a",
+      "bytes": 119049
     },
     {
       "path": "director/player_hunts_table.json",
@@ -81,8 +81,8 @@
     },
     {
       "path": "backend/raw/progression_config.source.json",
-      "sha256": "5b1cf68aa1a76a31b79beb0cd7ae79b397a8f3f305c69cbfc13e094eec941c63",
-      "bytes": 200363
+      "sha256": "d2965a3f4c625e5fb743dcdd271bf7cbb0f1948ee939736fe3d32517dfd5251b",
+      "bytes": 213032
     }
   ]
 }
