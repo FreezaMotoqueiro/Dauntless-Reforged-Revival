@@ -3,7 +3,7 @@
   "targetVersion": "1.14.7",
   "catalogSha256": "f83942c963291fed2a6099d1aba6f81dba6bed063052f25f7bf34f6cc9974a40",
   "generatedAt": "2026-10-08",
-  "referencedCatalogIds": 621,
+  "referencedCatalogIds": 625,
   "sourceScope": [
     "src/**/*.ts",
     "src/**/*.json",
@@ -6009,6 +6009,37 @@
         "owned",
         "WEAPON",
         "WeaponType_MSPEAR"
+      ]
+    },
+    "PR_DISCIPLINE": {
+      "storage": "instanced",
+      "maxQuantity": 1,
+      "tags": [
+        "PlayerRole",
+        "PLAYER_ROLE"
+      ]
+    },
+    "TOKEN_STORE_TUTORIAL_DYE_BUNDLE": {
+      "storage": "stacked",
+      "maxQuantity": 0,
+      "tags": [
+        "token",
+        "hidden"
+      ]
+    },
+    "TOKEN_DAILY_PATROL_BONUS_PURCHASED": {
+      "storage": "stacked",
+      "maxQuantity": 0,
+      "tags": [
+        "token"
+      ]
+    },
+    "CURRENCY_TOKEN_TRANSMOG": {
+      "storage": "stacked",
+      "maxQuantity": 0,
+      "tags": [
+        "currency",
+        "TransmogToken"
       ]
     }
   }

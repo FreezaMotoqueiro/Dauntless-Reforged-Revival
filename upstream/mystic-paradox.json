@@ -52,6 +52,12 @@
     "patches/0044-backend-crit-potion-seasonal-event.patch",
     "patches/0045-backend-discipline-in-lady-luck-store.patch",
     "patches/0046-backend-director-gauntlet-level-access.patch",
-    "patches/0047-runtime-terra-agarus-spawn-recovery.patch"
+    "patches/0047-runtime-terra-agarus-spawn-recovery.patch",
+    "patches/0048-backend-hunt-pass-elite-claims-and-store-ownership.patch",
+    "patches/0049-backend-twelve-loadout-slots.patch",
+    "patches/0050-backend-native-weapon-reforge-sync.patch",
+    "patches/0051-backend-director-gauntlet-levels-and-story-missions.patch",
+    "patches/0052-backend-director-trials-rotation-and-run-capture.patch",
+    "patches/0053-runtime-vps-hunt-trials-and-reforge-fixes.patch"
   ]
 }

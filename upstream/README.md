@@ -711,3 +711,100 @@ to (0,0,200), so the Agarus that spawns there is left at the world origin. The t
 within 2000 units of the origin to 200 units above that point. It never changes health, revives or rewards;
 each step is logged under `[AgarusSpawnRecovery]`. `DISABLE_AGARUS_SPAWN_RECOVERY.flag` beside the game
 executable turns it off.
+
+### 0048: Hunt Pass Elite for everyone, server-side pass claims and store ownership
+
+Brought over from the hand edits on the VPS (November 2026).
+
+- `ParadoxBackend/src/controllers/entitlements.ts`: every existing and new account is granted the active
+  Slayer Commission Elite pass (`season43_premium`) and the native escalation XP boost
+  (`escalation_xp_boost_entitlement`, always reported as permanent) the first time its entitlements are read.
+  Each grant is logged under `[EntitlementPolicy]`.
+- `src/controllers/huntPassClaims.ts` with `inventory.ts` and `routes/inventory.ts`: a game-server inventory
+  transaction whose `source` is `Progression Track season43 Claim Rewards` is a Hunt Pass claim. The backend
+  ignores the items the game sent and works out the free (and, with Elite, premium) rewards from the
+  account's own `season43` XP, including prestige ranks past 50, inside the same transaction, then records
+  the claimed ranks (`confirmRewardRanks`) so a new transaction id cannot pay the same ranks twice. A claim
+  that removes or edits items is refused (400). A one-time `legacyHuntPassCredit` on the track is subtracted
+  and cleared.
+- Currency is no longer mirrored as an inventory stack: wallet balances are the only source, so a reward
+  no longer shows the old balance as the amount received.
+- `controllers/progression.ts` and `routes/progression.ts`: `POST .../<rank>/confirm/premium` confirms the
+  premium lane (403 `not_entitled` without Elite); for the active pass a rank above 50 is allowed when the
+  XP covers it.
+- `controllers/wallet.ts`: prestige-funded rewards of a `seasonNN` track only spend XP above the 50 ranks.
+- `controllers/store.ts` and `routes/store.ts`: the store listing reports `remaining: 0` for a one-time SKU
+  the player already bought or already owns everything from; a `season43_pass` Platinum section is added.
+- `scripts/generate_platinum_store.ts` keeps the free Recruit pack (`store_tutorial_dye_bundle_console`)
+  and `season43_premium` from `game-data/raw/oct29-store-repair.json` when the store is regenerated.
+  Tests: `tutorialHuntPass.gamedata.test.ts`, `storeRegistry.gamedata.test.ts` (both need the game data).
+  The server preset (`preset/backend`) now carries the VPS's `season43` free/premium rewards and prestige
+  coins, and the storage policy for `PR_DISCIPLINE`, `TOKEN_STORE_TUTORIAL_DYE_BUNDLE`,
+  `TOKEN_DAILY_PATROL_BONUS_PURCHASED` and `CURRENCY_TOKEN_TRANSMOG`. The store repair file is store data,
+  so like the stores themselves it is not in the preset.
+
+### 0049: twelve loadout slots
+
+`ParadoxBackend/src/loadoutSlots.ts`, `controllers/loadout.ts` and `validation.ts`. Every character gets 12
+saved equipment sets: the default slot, the five Slayer's Path slots and six account slots granted by the
+server. On the wire the six account slots are reported as `num/max_account_slots` and the native six stay
+character slots. Loadout writes accept indices 0 to 11. It also adds `weaponLevelPersistence.ts` (a helper,
+with tests, that keeps a stored weapon `CurrentLevel` when a client sends back level 0); it is not wired in.
+
+### 0050: native weapon reforge sync (backend side)
+
+`ParadoxBackend/src/controllers/progression.ts` and `routes/progression.ts`. Pairs with the runtime's
+`ReforgeSync.inl` (0053), which a game server only enables with `NATIVE_REFORGE_SYNC.flag` and then sends the
+header `x-reforged-native-reforge-sync: 1`. With that header, `GET /progression/<user>/<track>` answers the
+weapon track so the game finishes its own reforge animation, and the game's follow-up `+1` on
+`PrestigeTrack_Weapon_*` only acknowledges the reset (logged `reforgeAck=1`) instead of paying a second rank.
+Without the header both behave as before (the read stays 404).
+
+### 0051: Gauntlet levels are saved, and story missions use their game mode
+
+- `ParadoxBackend/src/gauntletProgress.ts` and `routes/system.ts`: `POST /process_run` from a game server
+  saves a cleared Gauntlet level for every player in the run (one level at a time, never lowers it).
+  `level_access` with several `account_id`s answers the lowest level of that party, personal rewards list the
+  cleared levels, and `level_access` now answers the plain level number.
+- `routes/matchmaking.ts`: the chosen level is passed on as `GauntletLevel=<n>` and every party member must
+  have unlocked it (403 `GAUNTLET_LEVEL_LOCKED`).
+- `ParadoxDirector`: `matchmaker.ts` launches the Gauntlet at that level, `gauntletLaunch.ts` adds the
+  `BPGM_ArchonGauntlet` game mode to the map URL (test updated), and `gameservers.ts` opens story missions
+  with their `BPGM_ArchonStoryMissions` override so NPCs, objectives and scripted encounters run.
+
+### 0052: Trials rotation on Sunday 23:59 (Brasília) and run capture
+
+- `ParadoxDirector/src/controllers/trialsRotation.ts` and `gameservers.ts`: the weekly Trials row is counted
+  from Sunday 2026-10-25 23:59 America/Sao_Paulo at row 85 (so the live week moved to row 87), the same
+  formula as the runtime's `TrialsRotation.inl`. When Normal difficulty has no row for the featured week, the
+  Director picks the Normal encounter with the same Behemoth (closest modifiers) instead of a random one.
+- `ParadoxBackend/src/routes/system.ts`: `POST /trials/leaderboards` from a game server stores the run in the
+  `trialsRunCaptures` collection (diagnostic only, logged `[TrialsRunCapture]`).
+
+### 0053: runtime fixes from the VPS
+
+`ParadoxRuntime/dllmain.cpp` and new files beside it. Each fix logs under its own tag and can be turned off
+with a flag file beside the game executable.
+
+- `TrialsRotation.inl`: same Sunday 23:59 anchor as 0052; a launched Trial's reward-cooldown window starts at
+  the current week instead of the process start, so a star already claimed no longer looks new.
+- `TrialsFirstHit.inl`: if the first hit lands through the monster-part damage event, the arena is started
+  with the native `AuthStartArena` (`DISABLE_TRIALS_FIRST_HIT_FIX.flag`); also logs the start roster.
+- `ReforgeSync.inl` (`NATIVE_REFORGE_SYNC.flag`, opt-in): keeps the native reforge completion but suppresses
+  its second XP grant, see 0050.
+- `BankedQuestXP.inl`: XP banked past the final level counts for "banked XP" objectives
+  (`DISABLE_BANKED_QUEST_XP_FIX.flag`).
+- `FrostRelicPawnFix.inl`: Frost Escalation relic filters evaluate the right player
+  (`DISABLE_FROST_RELIC_PAWN_FIX.flag`).
+- `WeaponBondFilter.inl`: weapon bond (soul) compatibility uses the weapon's own element
+  (`DISABLE_WEAPON_BOND_FILTER_FIX.flag`).
+- `StormclawRecovery.inl`: reflected Stormclaw balls keep moving on the dedicated server
+  (`DISABLE_STORMCLAW_REFLECT_FIX.flag`); `StormclawTrace.inl` traces them (`STORMCLAW_REFLECT_TRACE.flag`).
+- `VentFallGuard.inl` / `VentFallPolicy.h` (client): no fall-recovery request while the player is still on an
+  escalation vent spline (`DISABLE_VENT_FALL_GUARD.flag`); `VentTrajectoryTrace.inl` traces rare returns.
+- `GatherableStreamGate.inl`: island gatherables are enumerated only once streamed actors are visible
+  (`DISABLE_GATHERABLE_STREAM_GATE.flag`).
+- Read-only diagnostics: `HuntRewardAudit.inl` (`HUNT_REWARD_AUDIT.flag`), `ThraxTrailTrace.inl`, and an
+  `[AgarusBoundary]` log for the Terra Agarus handled by 0047.
+
+`StormclawTrace.inl` includes `SDK/shockmane_balllightning_proj_parameters.hpp` from the generated SDK.

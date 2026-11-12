@@ -362,6 +362,9 @@ export function buildEnvFiles(c: HostConfig, s: Secrets, p: Paths, extra: { sour
         ] as [string, string][] : []),
         // Stacked items given back to a fixed quantity at each login, per account (upstream patch 0023).
         ["REFORGED_SESSION_SUPPLIES_FILE", path.join(p.config, "session-supplies.json")],
+        // Seasonal items (Granny's Heartbreaker / Crit Potion) stay usable while their event is scheduled
+        // (upstream patch 0044). The VPS had it added to backend.env by hand, which setup would drop.
+        ["SEASONAL_EVENTS", "Season_11A_StoryMissions"],
         ["LOG_LEVEL", "info"],
     ];
     const exe = c.gameDir ? path.join(c.gameDir, GAME_EXE_RELATIVE) : "";

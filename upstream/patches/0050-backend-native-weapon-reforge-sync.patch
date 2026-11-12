@@ -1,0 +1,100 @@
+diff --git a/ParadoxBackend/src/controllers/progression.ts b/ParadoxBackend/src/controllers/progression.ts
+--- a/ParadoxBackend/src/controllers/progression.ts
++++ b/ParadoxBackend/src/controllers/progression.ts
+@@ -149,7 +149,8 @@ export async function GrantProgressionXp(
+     progressionId: string,
+     amount: number,
+     grantId: string,
+-    unitOfWork: Pick<UnitOfWork, "withTransaction"> = GetUnitOfWork()
++    unitOfWork: Pick<UnitOfWork, "withTransaction"> = GetUnitOfWork(),
++    acknowledgeNativeReforge = false
+ ): Promise<ProgressionGrantResult> {
+     if(!IsApprovedXpProgressionTrack(progressionId)) {
+         throw new Error(`Unsupported progression track '${progressionId}'.`);
+@@ -173,7 +174,11 @@ export async function GrantProgressionXp(
+                 }
+ 
+                 const Before = await repos.progressionTracks.get(userId, progressionId, session);
+-                const After = await repos.progressionTracks.increment(userId, progressionId, amount, session);
++                // The reset transaction owns weapon prestige. The native completion's
++                // +1 only acknowledges that result and must not pay a second rank.
++                const ReforgeAck = acknowledgeNativeReforge && progressionId.startsWith("PrestigeTrack_Weapon_") && amount === 1;
++                if (ReforgeAck && Before === undefined) throw new Error("Native reforge acknowledgement has no committed prestige state");
++                const After = ReforgeAck ? Before! : await repos.progressionTracks.increment(userId, progressionId, amount, session);
+                 const Ledger: ProgressionGrantRecord = {
+                     grantId,
+                     userId,
+@@ -186,7 +191,7 @@ export async function GrantProgressionXp(
+                 };
+                 await repos.progressionGrants.insertApplied(Ledger, session);
+ 
+-                logger.info(`[ProgressionGrant] grant=${grantId} user=${userId} track=${progressionId} delta=${amount} old=${Before?.progress ?? 0} new=${After.progress} source=gameserver applied=1`);
++                logger.info(`[ProgressionGrant] grant=${grantId} user=${userId} track=${progressionId} delta=${ReforgeAck ? 0 : amount} old=${Before?.progress ?? 0} new=${After.progress} source=gameserver applied=${ReforgeAck ? 0 : 1} reforgeAck=${ReforgeAck ? 1 : 0}`);
+                 return { record: After, replayed: false };
+             });
+         } catch (ErrorValue) {
+@@ -489,12 +494,11 @@ export function RankForProgress(curve: { maxRank: number; cumulativeXpForRank: M
+     return Rank;
+ }
+ 
+-// [Reforged 0043] Each reforge pays one Aether Heart. The 1.14.7 game server pays it itself only after reading the
+-// weapon back (GET /progression/<user>/<track>, which has no route here) and only from the prestige track's
+-// `prestige.free_rewards`, which the generated config does not carry (the export has no table for it). So after the
+-// reset it stopped, and no reforge ever paid a Heart (VPS 2026-10-25: Spear reforges 2 and 3, -100 sparks each, no
+-// Heart). The backend pays it in the reset's own transaction, so a refused or repeated reset pays nothing. That read
+-// stays unrouted on purpose: answering it would let the game also send its own +1 and banked XP on top of this reset.
++// Each reforge pays one Aether Heart in the reset transaction. The exported
++// weapon config has no native prestige.free_rewards grant, so native completion
++// cannot supply this reward. Its follow-up read is enabled only for a runtime
++// that suppresses the already-carried banked XP; its prestige +1 acknowledges
++// the authoritative reset result without increasing that result again.
+ export const REFORGE_REWARD_CATALOG_ID = "CURRENCY_PJM_PRESTIGE_FILLED";
+ export const REFORGE_REWARD_QUANTITY = 1;
+ 
+diff --git a/ParadoxBackend/src/routes/progression.ts b/ParadoxBackend/src/routes/progression.ts
+--- a/ParadoxBackend/src/routes/progression.ts
++++ b/ParadoxBackend/src/routes/progression.ts
+@@ -459,14 +459,16 @@ progressionRouter.post("/progression/:userId/:progressionId/:amount", HasParadox
+     }
+ 
+     // [Dauntless Reforged Revival] A private test server's XP multiplier (testMultipliers.ts), capped at the route's maximum.
+-    const GrantedAmount = MultiplyXpGrant(Amount, MAX_XP_GRANT_AMOUNT);
++    const NativeReforgeAck = req.get?.("x-reforged-native-reforge-sync") === "1" &&
++        ProgressionId.startsWith("PrestigeTrack_Weapon_") && Amount === 1;
++    const GrantedAmount = NativeReforgeAck ? Amount : MultiplyXpGrant(Amount, MAX_XP_GRANT_AMOUNT);
+     if(GrantedAmount !== Amount){
+         logger.info(`[TestMultiplier] XP grant ${Amount} -> ${GrantedAmount} (user=${RequestedUserId}, track=${ProgressionId})`);
+     }
+ 
+     let GrantResult;
+     try{
+-        GrantResult = await GrantProgressionXp(RequestedUserId, ProgressionId, GrantedAmount, GrantId);
++        GrantResult = await GrantProgressionXp(RequestedUserId, ProgressionId, GrantedAmount, GrantId, undefined, NativeReforgeAck);
+     }
+     catch(ErrorValue){
+         if(ErrorValue instanceof ProgressionGrantConflictError){
+@@ -642,6 +644,24 @@ progressionRouter.delete("/progression/:userId/:progressionId", HasParadoxBacken
+     });
+ });
+ 
++// Continue the native reset only when its verified hook suppresses the extra
++// banked-XP regrant. Legacy servers retain their previous failure behavior.
++progressionRouter.get("/progression/:userId/:progressionId", HasParadoxBackendAuth, async (req: any, res) => {
++    const UserId = ResolveRequestUserId(req);
++    if (!RequireProgressionRead(req, res, UserId)) return;
++    const TrackId = String(req.params.progressionId);
++    if (!IsApprovedXpProgressionTrack(TrackId) || UserId === NO_PLAYER_SENTINEL) {
++        res.status(404).json({code:null,message:"Not Found",payload:{}}); return;
++    }
++    if (req.AuthData?.IsGameserver === true && req.get?.("x-reforged-native-reforge-sync") !== "1") {
++        res.status(404).json({code:null,message:"Native reforge sync unavailable",payload:{}}); return;
++    }
++    const Rows = await GetPersistedProgressionForUser(UserId,[TrackId]);
++    const Row = Rows.find((Entry) => Entry.progression_id === TrackId)!;
++    logger.info(`[ReforgeSync] served user=${UserId} track=${TrackId} progress=${Row.progress}`);
++    res.status(200).json({code:null,message:"OK",payload:Row});
++});
++
+ progressionRouter.get("/progression/:userId", HasParadoxBackendAuth, async (req: any, res) => {
+     const RequestorAccountId = ResolveRequestUserId(req);
+     if(!RequireProgressionRead(req, res, RequestorAccountId)) return;

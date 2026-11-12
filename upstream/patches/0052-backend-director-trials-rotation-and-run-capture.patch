@@ -1,0 +1,106 @@
+diff --git a/ParadoxBackend/src/routes/system.ts b/ParadoxBackend/src/routes/system.ts
+--- a/ParadoxBackend/src/routes/system.ts
++++ b/ParadoxBackend/src/routes/system.ts
+@@ -122,6 +122,22 @@ systemRouter.post("/profile/update", HasParadoxBackendAuth, (req, res) => {
+ // leaderboard in the documented shape ({ code, message, payload }) — this stops the 404 and lets the
+ // results page render cleanly. Populating actual times/ranks would require persisting per-run results
+ // reported by the game server (future leaderboard service). Shapes per DauntlessEndpointDocumentation.
++// Native result capture: only an authenticated game server can submit a run.
++// Preserve the shipped request shape before enabling ranked records; invalid
++// (zero/negative) times are retained solely as diagnostic evidence.
++systemRouter.post("/trials/leaderboards", HasParadoxBackendAuth, async (req: any, res, next) => {
++    if (req.AuthData?.IsGameserver !== true) { res.status(403).json({code:403,message:"Gameserver required",payload:{}}); return; }
++    try {
++        const fields=["difficulty","completion_time","objectives_completed","trial_id","session_id","party_members"];
++        const body=Object.fromEntries(fields.filter(k => req.body?.[k] !== undefined).map(k => [k,req.body[k]]));
++        if (JSON.stringify(body).length > 65536) { res.status(400).send(); return; }
++        const {GetMongoDb}=await import("../persistence/mongo/client");
++        await (await GetMongoDb()).collection("trialsRunCaptures").insertOne({receivedAt:new Date(),body});
++        logger.info(`[TrialsRunCapture] received fields=${Object.keys(body).join(",")} difficulty=${body.difficulty} time=${body.completion_time} members=${Array.isArray(body.party_members)?body.party_members.length:"invalid"}`);
++        res.status(200).json({code:null,message:"OK",payload:{}});
++    } catch(error) { next(error); }
++});
++
+ systemRouter.post("/trials/leaderboards/all", HasParadoxBackendAuth, (req, res) => {
+ 	const body = (req.body ?? {}) as { difficulty?: number; page?: number; page_size?: number; trial_id?: string };
+ 	const difficulty = body.difficulty ?? 1;
+diff --git a/ParadoxDirector/src/controllers/gameservers.ts b/ParadoxDirector/src/controllers/gameservers.ts
+--- a/ParadoxDirector/src/controllers/gameservers.ts
++++ b/ParadoxDirector/src/controllers/gameservers.ts
+@@ -1,3 +1,5 @@
++import { TrialsRotationAt } from "./trialsRotation";
++import { GauntletMapPath } from "./gauntletLaunch";
+ //0503
+ /*
+  * Original work Copyright (C) 2026 gwog :3 (SyST3MDeV/Undaunted)
+@@ -19,7 +21,6 @@ import path from "node:path";
+ 
+ import { kill } from "node:process";
+ import { logger } from "../logger";
+-import { GauntletMapPath } from "./gauntletLaunch";
+ import { loadGameData } from "../gameData/loader";
+ import { PortPool } from "./portPool";
+ import { CreateSerialGate, HubSupervisor, HubLogLevel } from "./hubSupervisor";
+@@ -226,10 +227,8 @@ const TrainingHub = new HubSupervisor<Gameserver>({
+     log: HubLog
+ });
+ 
+-// Trials uses 181 real numbered arena rows. Keep the live default at one week, but permit short,
+-// deterministic UTC buckets for end-to-end rotation testing (for example, 30 minutes). The injected
+-// server DLL reads the same inherited environment variable and uses the same Unix-epoch bucket formula,
+-// so Ramsgate's advertised row and DeployServer's spawned matchmaker row cannot drift apart.
++// Trials uses the same Sunday 23:59 Brasilia anchor and row as the native runtime.
++// Keep interval overrides available for testing; ongoing hunt processes stay launch-pinned.
+ const TRIALS_ROTATION_ROW_COUNT = 181;
+ const DEFAULT_TRIALS_ROTATION_MINUTES = 7 * 24 * 60;
+ 
+@@ -245,8 +244,7 @@ function ParseTrialsRotationMinutes(Value: string | undefined): number {
+ const TRIALS_ROTATION_MINUTES = ParseTrialsRotationMinutes(process.env.TRIALS_ROTATION_MINUTES);
+ 
+ function GetCurrentTrialsWeek(NowMs: number = Date.now()): string {
+-    const Bucket = Math.floor(NowMs / (TRIALS_ROTATION_MINUTES * 60_000));
+-    return String((Bucket % TRIALS_ROTATION_ROW_COUNT) + 1).padStart(3, "0");
++    return String(TrialsRotationAt(NowMs, TRIALS_ROTATION_MINUTES).week).padStart(3, "0");
+ }
+ 
+ // [2026-07-17 resource guardrails] Each hunt is a full UE4 dedicated-server process (~1 GB even at
+@@ -1142,9 +1140,18 @@ function GetMatchmakerHuntIdFromPlayerHuntId(PlayerHuntId: string): string{
+                 logger.info(`[TrialsRotation] interval=${TRIALS_ROTATION_MINUTES}m featured=_${Week} -> ${Chosen}`);
+                 return Chosen;
+             }
+-            logger.warn(`[TrialsRotation] no arena row matched featured week _${Week}; falling back to a numbered arena candidate`);
+-            const Chosen = ArenaCandidates[crypto.randomInt(0, ArenaCandidates.length)];
+-            return Chosen;
++            // Normal Trials has only the original short table. Resolve its native
++            // encounter for this week's Behemoth instead of picking an unrelated boss.
++            const Featured = FindMatchmakerRow(`Arena_MatchmakerHunt_Hard_${Week}`);
++            const Behemoth = Featured?.SpecificBehemoth?.BehemothName;
++            const Equivalent = ArenaCandidates.filter((Id) => Behemoth && FindMatchmakerRow(Id)?.SpecificBehemoth?.BehemothName === Behemoth);
++            if (Equivalent.length > 0) {
++                const Score = (Id: string) => (FindMatchmakerRow(Id)?.Modifiers ?? []).filter((Modifier: string) => (Featured?.Modifiers ?? []).includes(Modifier)).length;
++                Equivalent.sort((A, B) => Score(B)-Score(A) || A.localeCompare(B));
++                logger.info(`[TrialsRotation] featured=_${Week} normal equivalent -> ${Equivalent[0]}`);
++                return Equivalent[0];
++            }
++            throw new Error(`Trials rotation _${Week} has no compatible encounter for ${PlayerHuntId}`);
+         }
+     }
+ 
+diff --git a/ParadoxDirector/src/controllers/trialsRotation.ts b/ParadoxDirector/src/controllers/trialsRotation.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxDirector/src/controllers/trialsRotation.ts
+@@ -0,0 +1,13 @@
++// Sunday 2026-10-25 23:59 America/Sao_Paulo (UTC-03:00).
++// Row085 preserves the weekly boundary while advancing the active rotation to 087.
++export const TRIALS_ROTATION_ANCHOR_UNIX = 1792983540;
++export const TRIALS_ROTATION_ANCHOR_ROW = 85;
++export const TRIALS_ROTATION_ROWS = 181;
++export function TrialsRotationAt(nowMs: number, intervalMinutes = 10080) {
++    if (!Number.isFinite(nowMs) || !Number.isSafeInteger(intervalMinutes) || intervalMinutes<1 || intervalMinutes>525600) throw new Error("Invalid Trials rotation time or interval");
++    const period = intervalMinutes*60000;
++    const bucket = Math.floor((nowMs-TRIALS_ROTATION_ANCHOR_UNIX*1000)/period);
++    const week = ((TRIALS_ROTATION_ANCHOR_ROW-1+bucket)%TRIALS_ROTATION_ROWS+TRIALS_ROTATION_ROWS)%TRIALS_ROTATION_ROWS+1;
++    const startMs=TRIALS_ROTATION_ANCHOR_UNIX*1000+bucket*period;
++    return {week,startMs,endMs:startMs+period};
++}

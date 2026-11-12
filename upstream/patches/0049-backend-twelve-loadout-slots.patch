@@ -1,0 +1,211 @@
+diff --git a/ParadoxBackend/src/controllers/loadout.ts b/ParadoxBackend/src/controllers/loadout.ts
+--- a/ParadoxBackend/src/controllers/loadout.ts
++++ b/ParadoxBackend/src/controllers/loadout.ts
+@@ -16,6 +16,7 @@ import { logger } from "../logger";
+ import {
+     DEFAULT_ACCOUNT_LOADOUT_SLOTS,
+     MAX_TOTAL_LOADOUT_SLOTS,
++    SERVER_GRANTED_TOTAL_LOADOUT_SLOTS,
+     ResolveActiveLoadoutIndex,
+     ResolveRequestedTotalLoadoutSlots,
+     ResolveVisibleTotalLoadoutSlots
+@@ -45,7 +46,7 @@ function CloneLoadoutForSlot(Source: any, SlotIndex: number): any {
+ export async function GetLoadoutStateForUserIdAndCharacterId(UserId: string, CharacterId: string){
+     // This is a no-op when inventory and loadout both exist. If either is missing, the helper
+     // repairs both records atomically and derives slot IDs from inventory rather than constants.
+-    await EnsureStarterBootstrapRecords(UserId, CharacterId);
++    await EnsureTotalLoadoutSlots(UserId, CharacterId, SERVER_GRANTED_TOTAL_LOADOUT_SLOTS);
+     const LoadoutDbRow = await GetRepositories().loadouts.findByCharacterIdAndUserId(CharacterId, UserId);
+     if (LoadoutDbRow == undefined) throw new Error(`Bootstrap recovery did not create loadout for ${CharacterId}`);
+     const StoredLoadouts = ParseLoadoutArray(LoadoutDbRow.loadouts, CharacterId);
+diff --git a/ParadoxBackend/src/loadoutSlots.ts b/ParadoxBackend/src/loadoutSlots.ts
+--- a/ParadoxBackend/src/loadoutSlots.ts
++++ b/ParadoxBackend/src/loadoutSlots.ts
+@@ -9,11 +9,14 @@
+  * Additional terms under AGPLv3 Section 7 apply. See ADDITIONAL_TERMS.md.
+  */
+ 
+-// ENTITLEMENT model only (1 default slot + up to 5 Slayer's Path unlocks). These are NOT wire fields:
+-// responses report account 0/0 and character (1+U)/MAX_TOTAL_LOADOUT_SLOTS via ResolveWireLoadoutSlotCounts.
++// Entitlement model: 1 default + 5 Slayer's Path slots + 6 account slots. These are NOT wire fields:
++// wire counts preserve the native six-character-slot progression bucket plus six account slots.
+ export const DEFAULT_ACCOUNT_LOADOUT_SLOTS = 1;
+ export const MAX_CHARACTER_LOADOUT_SLOTS = 5;
+-export const MAX_TOTAL_LOADOUT_SLOTS = DEFAULT_ACCOUNT_LOADOUT_SLOTS + MAX_CHARACTER_LOADOUT_SLOTS;
++export const MAX_PURCHASED_LOADOUT_SLOTS = 6;
++export const MAX_TOTAL_LOADOUT_SLOTS = DEFAULT_ACCOUNT_LOADOUT_SLOTS + MAX_CHARACTER_LOADOUT_SLOTS + MAX_PURCHASED_LOADOUT_SLOTS;
++// Operator policy: twelve saved equipment sets for existing and future characters.
++export const SERVER_GRANTED_TOTAL_LOADOUT_SLOTS = MAX_TOTAL_LOADOUT_SLOTS;
+ export const PLAYER_JOURNEY_LOADOUT_NODE_IDS = [
+     "LoadoutSlot_01",
+     "LoadoutSlot_02",
+@@ -101,9 +104,9 @@ export function ResolveActiveLoadoutIndex(StoredActiveIndex: number | undefined,
+  *  Reporting the default slot as an account slot (1 account + U character) made the delta 1 for every account,
+  *  so every 200 to /unlock immediately triggered the next one: ~4.5 requests per second for as long as the
+  *  player stayed on a server (937 on 8 Oct; 1266 on 24 Sep under 1.12 - not a 1.14.7 regression).
+- *  Totals are unchanged: NumLoadoutSlots = num_acc + num_char, MaxNumLoadoutSlots = max_acc + max_char = 6.
++ *  Totals are unchanged: NumLoadoutSlots = num_acc + num_char, MaxNumLoadoutSlots = max_acc + max_char = 12.
+  *  The native unlock payload is an uninitialised stack local, so all four fields are mandatory.
+- *  Entitlement (1 + unlocked LoadoutSlot_01..05) is untouched; only the wire split changes. Never throws. */
++ *  The six account slots are operator-granted extras; Slayer's Path node state is untouched. Never throws. */
+ export interface WireLoadoutSlotCounts {
+     num_account_slots: number;
+     max_account_slots: number;
+@@ -115,9 +118,9 @@ export function ResolveWireLoadoutSlotCounts(EntitledTotalSlots: number): WireLo
+     const Requested = Number.isFinite(EntitledTotalSlots) ? Math.trunc(EntitledTotalSlots) : 0;
+     const Total = Math.min(MAX_TOTAL_LOADOUT_SLOTS, Math.max(DEFAULT_ACCOUNT_LOADOUT_SLOTS, Requested));
+     return {
+-        num_account_slots: 0,
+-        max_account_slots: 0,
+-        num_character_slots: Total,
+-        max_character_slots: MAX_TOTAL_LOADOUT_SLOTS
++        num_account_slots: Math.max(0, Total - DEFAULT_ACCOUNT_LOADOUT_SLOTS - MAX_CHARACTER_LOADOUT_SLOTS),
++        max_account_slots: MAX_PURCHASED_LOADOUT_SLOTS,
++        num_character_slots: Math.min(Total, DEFAULT_ACCOUNT_LOADOUT_SLOTS + MAX_CHARACTER_LOADOUT_SLOTS),
++        max_character_slots: DEFAULT_ACCOUNT_LOADOUT_SLOTS + MAX_CHARACTER_LOADOUT_SLOTS
+     };
+ }
+diff --git a/ParadoxBackend/src/validation.ts b/ParadoxBackend/src/validation.ts
+--- a/ParadoxBackend/src/validation.ts
++++ b/ParadoxBackend/src/validation.ts
+@@ -1,3 +1,4 @@
++import { MAX_TOTAL_LOADOUT_SLOTS } from "./loadoutSlots";
+ /*
+  * Original work Copyright (C) 2026 gwog :3 (SyST3MDeV/Undaunted)
+  * Modified work Copyright (C) 2026 MysticFox / Pranav Karande (pranav158/Mystic-Paradox)
+@@ -98,14 +99,12 @@ export function ValidateInstancedItemUpdateBody(body: any): string | null {
+     return null;
+ }
+ 
+-// Validates a POST /loadout/:userId/:characterId/:index body. 1.12 supports six total
+-// loadouts: the default slot (index 0) plus five slots unlocked through Slayer's Path
+-// (indices 1..5); on the wire all entitled slots are reported as character slots (account 0/0,
+-// see ResolveWireLoadoutSlotCounts). `persistent` remains the separate persistent-data write.
++// Validates the twelve supported loadout indices (0..11).
++// `persistent` remains the separate persistent-data write.
+ // Existence/unlock state for a numeric slot is checked by the loadout repository when saving.
+ export function ValidateLoadoutWriteData(index: string, data: unknown): string | null {
+     const NumericIndex = Number(index);
+-    if (index !== "persistent" && (!Number.isSafeInteger(NumericIndex) || String(NumericIndex) !== index || NumericIndex < 0 || NumericIndex > 5)) {
++    if (index !== "persistent" && (!Number.isSafeInteger(NumericIndex) || String(NumericIndex) !== index || NumericIndex < 0 || NumericIndex >= MAX_TOTAL_LOADOUT_SLOTS)) {
+         return `unsupported loadout index ${index}`;
+     }
+     if (typeof data !== "string" || data.length === 0) return "data must be a non-empty JSON string";
+diff --git a/ParadoxBackend/src/weaponLevelPersistence.test.ts b/ParadoxBackend/src/weaponLevelPersistence.test.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/weaponLevelPersistence.test.ts
+@@ -0,0 +1,56 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { PreserveStoredWeaponLevel } from "./weaponLevelPersistence";
++
++test("preserves stored weapon level when client returns synthetic zero", () => {
++    const stored = JSON.stringify({ CurrentLevel: 14, Cells: ["old"] });
++    const incoming = JSON.stringify({ CurrentLevel: 0, Cells: ["new"] });
++
++    const result = PreserveStoredWeaponLevel("WP_GA_FUNGUY", stored, incoming);
++
++    assert.deepEqual(JSON.parse(result as string), {
++        CurrentLevel: 14,
++        Cells: ["new"]
++    });
++});
++
++test("allows legitimate positive level updates", () => {
++    const stored = JSON.stringify({ CurrentLevel: 5 });
++    const incoming = JSON.stringify({ CurrentLevel: 6 });
++
++    assert.equal(
++        PreserveStoredWeaponLevel("WP_GA_FUNGUY", stored, incoming),
++        incoming
++    );
++});
++
++test("does not modify non-weapon items", () => {
++    const stored = JSON.stringify({ CurrentLevel: 10 });
++    const incoming = JSON.stringify({ CurrentLevel: 0 });
++
++    assert.equal(
++        PreserveStoredWeaponLevel("AR_HEAD_TEST", stored, incoming),
++        incoming
++    );
++});
++
++test("does not modify invalid or missing item data", () => {
++    assert.equal(
++        PreserveStoredWeaponLevel("WP_GA_FUNGUY", "invalid", '{"CurrentLevel":0}'),
++        '{"CurrentLevel":0}'
++    );
++
++    assert.equal(
++        PreserveStoredWeaponLevel("WP_GA_FUNGUY", '{"Other":1}', '{"CurrentLevel":0}'),
++        '{"CurrentLevel":0}'
++    );
++});
++
++test("preserves already-zero weapons", () => {
++    const incoming = '{"CurrentLevel":0}';
++
++    assert.equal(
++        PreserveStoredWeaponLevel("WP_GA_FUNGUY", '{"CurrentLevel":0}', incoming),
++        incoming
++    );
++});
+diff --git a/ParadoxBackend/src/weaponLevelPersistence.ts b/ParadoxBackend/src/weaponLevelPersistence.ts
+new file mode 100644
+--- /dev/null
++++ b/ParadoxBackend/src/weaponLevelPersistence.ts
+@@ -0,0 +1,52 @@
++/**
++ * Preserves a stored weapon level when the client sends back
++ * the synthetic level zero produced by Reforged 0036.
++ *
++ * Not connected to production inventory persistence.
++ */
++export function PreserveStoredWeaponLevel(
++    catalogId: unknown,
++    storedItemData: unknown,
++    incomingItemData: unknown
++): unknown {
++    if (
++        typeof catalogId !== "string" ||
++        !catalogId.startsWith("WP_") ||
++        typeof storedItemData !== "string" ||
++        typeof incomingItemData !== "string"
++    ) {
++        return incomingItemData;
++    }
++
++    try {
++        const stored = JSON.parse(storedItemData);
++        const incoming = JSON.parse(incomingItemData);
++
++        if (
++            stored === null ||
++            incoming === null ||
++            typeof stored !== "object" ||
++            typeof incoming !== "object" ||
++            Array.isArray(stored) ||
++            Array.isArray(incoming)
++        ) {
++            return incomingItemData;
++        }
++
++        if (
++            typeof stored.CurrentLevel === "number" &&
++            Number.isInteger(stored.CurrentLevel) &&
++            stored.CurrentLevel > 0 &&
++            incoming.CurrentLevel === 0
++        ) {
++            return JSON.stringify({
++                ...incoming,
++                CurrentLevel: stored.CurrentLevel
++            });
++        }
++
++        return incomingItemData;
++    } catch {
++        return incomingItemData;
++    }
++}
